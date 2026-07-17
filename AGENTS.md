@@ -29,6 +29,10 @@ Use these sources according to their role:
 - Treat actions against agent sessions as privileged. Do not enable an action
   until the intended target can be verified well enough to prevent acting on the
   wrong session.
+- Use [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)
+  for every commit message and pull request title, including a valid type,
+  optional scope, and concise description such as
+  `feat(web): add the fixed deck grid`.
 
 ## POC standard
 
