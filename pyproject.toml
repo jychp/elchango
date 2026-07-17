@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "elchango"
+version = "0.1.0.dev0"
+description = "A local web command deck for native AI coding agent sessions."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "elChango contributors" }]
+dependencies = []
+
+[project.scripts]
+chango = "elchango.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
