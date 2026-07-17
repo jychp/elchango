@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from elchango.activity import ActivityStore
 from elchango.providers.cursor import CursorProvider, CursorProviderError
 
 
@@ -24,6 +25,8 @@ class CursorProviderTests(unittest.TestCase):
         provider = CursorProvider(
             database=self.database,
             workspace_storage=self.workspace_storage,
+            active_signal_ttl_ms=1_000,
+            clock=lambda: 1_000,
         )
 
         snapshot = provider.snapshot()
@@ -37,6 +40,82 @@ class CursorProviderTests(unittest.TestCase):
         self.assertEqual(session.state, "working")
         self.assertEqual(session.confidence, "candidate")
         self.assertTrue(session.selected)
+
+    def test_active_signal_expires_and_persisted_result_wins(self) -> None:
+        self._create_database()
+        now = [1_000]
+        provider = CursorProvider(
+            database=self.database,
+            workspace_storage=self.workspace_storage,
+            active_signal_ttl_ms=1_000,
+            clock=lambda: now[0],
+        )
+
+        self.assertEqual(provider.snapshot().sessions[0].state, "working")
+
+        now[0] = 2_000
+        stale = provider.snapshot().sessions[0]
+        self.assertEqual(stale.state, "idle")
+        self.assertIn("stale", stale.state_detail)
+
+        self._write_bubble(
+            {
+                "toolFormerData": {
+                    "status": "completed",
+                    "additionalData": {"status": "success"},
+                }
+            }
+        )
+        completed = provider.snapshot().sessions[0]
+        self.assertEqual(completed.state, "done")
+        self.assertEqual(completed.confidence, "persisted")
+
+        self._write_bubble(
+            {
+                "toolFormerData": {
+                    "status": "completed",
+                    "additionalData": {"status": "error"},
+                }
+            }
+        )
+        failed = provider.snapshot().sessions[0]
+        self.assertEqual(failed.state, "error")
+        self.assertEqual(failed.confidence, "observed")
+
+    def test_exact_hook_conversation_id_overrides_database_state(self) -> None:
+        self._create_database()
+        store = ActivityStore()
+        now = [1_000]
+        provider = CursorProvider(
+            database=self.database,
+            workspace_storage=self.workspace_storage,
+            clock=lambda: now[0],
+            activity_store=store,
+        )
+        store.record(
+            {
+                "hook_event_name": "beforeSubmitPrompt",
+                "conversation_id": "composer-1",
+            },
+            observed_at_ms=now[0],
+        )
+
+        working = provider.snapshot().sessions[0]
+        self.assertEqual(working.state, "working")
+        self.assertEqual(working.state_detail, "Cursor prompt submitted")
+
+        now[0] += 100
+        store.record(
+            {
+                "hook_event_name": "stop",
+                "conversation_id": "composer-1",
+                "status": "completed",
+            },
+            observed_at_ms=now[0],
+        )
+        done = provider.snapshot().sessions[0]
+        self.assertEqual(done.state, "done")
+        self.assertEqual(done.confidence, "observed")
 
     def test_snapshot_rejects_unknown_schema(self) -> None:
         sqlite3.connect(self.database).close()
@@ -111,6 +190,18 @@ class CursorProviderTests(unittest.TestCase):
                     json.dumps(bubble_data),
                 ),
             ],
+        )
+        connection.commit()
+        connection.close()
+
+    def _write_bubble(self, payload: dict[str, object]) -> None:
+        connection = sqlite3.connect(self.database)
+        connection.execute(
+            "UPDATE cursorDiskKV SET value = ? WHERE key = ?",
+            (
+                json.dumps(payload),
+                "bubbleId:composer-1:bubble-1",
+            ),
         )
         connection.commit()
         connection.close()

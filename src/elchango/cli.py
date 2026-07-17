@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
+from elchango.activity import ActivityStore
 from elchango.deck import DeckService
+from elchango.hook_reporter import DEFAULT_HOOK_ENDPOINT, report_hook
 from elchango.providers.cursor import (
     DEFAULT_DATABASE,
     DEFAULT_WORKSPACE_STORAGE,
@@ -55,12 +58,24 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_WORKSPACE_STORAGE,
         help=f"Cursor workspace metadata (default: {DEFAULT_WORKSPACE_STORAGE}).",
     )
+    hook_parser = subparsers.add_parser(
+        "report-hook",
+        help="Forward one Cursor lifecycle hook to a running deck.",
+    )
+    hook_parser.add_argument(
+        "--endpoint",
+        default=os.environ.get("ELCHANGO_HOOK_ENDPOINT", DEFAULT_HOOK_ENDPOINT),
+        help="Loopback Cursor hook endpoint.",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command == "report-hook":
+        report_hook(sys.stdin, sys.stdout, args.endpoint)
+        return 0
     if args.command != "serve":
         parser.error(f"unsupported command: {args.command}")
     if args.host not in {"127.0.0.1", "::1", "localhost"}:
@@ -77,9 +92,11 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
+    activity_store = ActivityStore()
     provider = CursorProvider(
         database=args.database,
         workspace_storage=args.workspace_storage,
+        activity_store=activity_store,
     )
     try:
         provider.snapshot()
@@ -95,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
     print("Actions: disabled")
     print("Press Ctrl-C to stop.")
     try:
-        serve(service, assets, args.host, args.port)
+        serve(service, activity_store, assets, args.host, args.port)
     except KeyboardInterrupt:
         print("\nStopped.")
     return 0

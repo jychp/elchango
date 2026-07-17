@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 import tempfile
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
 from pathlib import Path
 
+from elchango.activity import ActivityStore
 from elchango.deck import DeckService
 from elchango.models import AgentSession, ProviderSnapshot
 from elchango.server import DeckHTTPServer, DeckRequestHandler
@@ -41,6 +43,7 @@ class DeckServerTests(unittest.TestCase):
         (assets / "index.html").write_text("<main>deck</main>", encoding="utf-8")
         self.server = DeckHTTPServer(("127.0.0.1", 0), DeckRequestHandler)
         self.server.deck_service = DeckService(StaticProvider())
+        self.server.activity_store = ActivityStore()
         self.server.assets = assets
         self.thread = threading.Thread(
             target=self.server.serve_forever,
@@ -93,6 +96,32 @@ class DeckServerTests(unittest.TestCase):
         finally:
             error.close()
         self.assertIn("not enabled", payload["error"])
+
+    def test_cursor_hook_endpoint_accepts_lifecycle_metadata(self) -> None:
+        request = urllib.request.Request(
+            f"{self.base_url}/api/hooks/cursor",
+            data=json.dumps(
+                {
+                    "hook_event_name": "beforeSubmitPrompt",
+                    "conversation_id": "session-1",
+                    "prompt": "must not be stored",
+                }
+            ).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        with urllib.request.urlopen(request, timeout=2) as response:
+            payload = json.load(response)
+
+        self.assertEqual(response.status, 202)
+        self.assertTrue(payload["accepted"])
+        state = self.server.activity_store.state_for(
+            "session-1",
+            observed_at_ms=time.time_ns() // 1_000_000,
+        )
+        self.assertIsNotNone(state)
+        self.assertEqual(state[0], "working")
 
 
 if __name__ == "__main__":

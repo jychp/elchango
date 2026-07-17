@@ -5,7 +5,7 @@
 
   type ConnectionState = 'connecting' | 'connected' | 'stale' | 'error'
 
-  const POLL_INTERVAL_MS = 750
+  const POLL_INTERVAL_MS = 1_000
   const STALE_AFTER_MS = 3_000
   const SLOT_COUNT = 15
 

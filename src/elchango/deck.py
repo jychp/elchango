@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
-from elchango.models import DeckButton, DeckSnapshot, ProviderSnapshot
+from elchango.models import AgentSession, DeckButton, DeckSnapshot, ProviderSnapshot
 from elchango.providers.base import AgentProvider
 
 
@@ -21,22 +21,25 @@ class DeckService:
         self._revision = 0
         self._signature: object | None = None
         self._lock = threading.Lock()
+        self._session_slots: list[str | None] = [None] * SESSION_SLOTS
 
     def snapshot(self) -> DeckSnapshot:
         provider_snapshot = self._provider.snapshot()
-        signature = (
-            provider_snapshot.selected_session_id,
-            provider_snapshot.sessions,
-            provider_snapshot.source,
-            provider_snapshot.read_only,
-        )
         with self._lock:
+            visible_sessions = self._assign_session_slots(provider_snapshot)
+            signature = (
+                provider_snapshot.selected_session_id,
+                provider_snapshot.sessions,
+                tuple(self._session_slots),
+                provider_snapshot.source,
+                provider_snapshot.read_only,
+            )
             if signature != self._signature:
                 self._revision += 1
                 self._signature = signature
             revision = self._revision
 
-        buttons = _build_buttons(provider_snapshot)
+        buttons = _build_buttons(visible_sessions)
         if len(buttons) != TOTAL_BUTTONS:
             raise RuntimeError(
                 f"Deck invariant violated: expected {TOTAL_BUTTONS} buttons, "
@@ -51,42 +54,81 @@ class DeckService:
             buttons=tuple(buttons),
         )
 
+    def _assign_session_slots(
+        self,
+        snapshot: ProviderSnapshot,
+    ) -> tuple[AgentSession | None, ...]:
+        sessions_by_id = {session.id: session for session in snapshot.sessions}
+        for index, session_id in enumerate(self._session_slots):
+            if session_id not in sessions_by_id:
+                self._session_slots[index] = None
+
+        selected_id = snapshot.selected_session_id
+        if selected_id in sessions_by_id and selected_id not in self._session_slots:
+            try:
+                selected_slot = self._session_slots.index(None)
+            except ValueError:
+                def slot_updated_at(index: int) -> int:
+                    session_id = self._session_slots[index]
+                    if session_id is None:
+                        return -1
+                    return sessions_by_id[session_id].updated_at_ms
+
+                selected_slot = min(
+                    range(SESSION_SLOTS),
+                    key=slot_updated_at,
+                )
+            self._session_slots[selected_slot] = selected_id
+
+        for session in snapshot.sessions:
+            if session.id in self._session_slots:
+                continue
+            try:
+                empty_slot = self._session_slots.index(None)
+            except ValueError:
+                break
+            self._session_slots[empty_slot] = session.id
+
+        return tuple(
+            sessions_by_id.get(session_id) if session_id is not None else None
+            for session_id in self._session_slots
+        )
+
 
 def _build_buttons(
-    snapshot: ProviderSnapshot,
+    sessions: tuple[AgentSession | None, ...],
 ) -> list[DeckButton]:
-    visible_sessions = snapshot.sessions[:SESSION_SLOTS]
-    buttons = [
-        DeckButton(
-            id=f"session:{session.id}",
-            position=position,
-            kind="session",
-            label=session.title,
-            detail=_session_detail(session.workspace_path),
-            icon="repo",
-            color=session.state,
-            selected=session.selected,
-            enabled=False,
-            confidence=session.confidence,
-            session_id=session.id,
-        )
-        for position, session in enumerate(visible_sessions)
-    ]
-
-    while len(buttons) < SESSION_SLOTS:
-        position = len(buttons)
+    buttons: list[DeckButton] = []
+    for position, session in enumerate(sessions):
+        if session is None:
+            buttons.append(
+                DeckButton(
+                    id=f"empty:{position}",
+                    position=position,
+                    kind="empty",
+                    label="Available",
+                    detail="No session",
+                    icon="plus",
+                    color="unknown",
+                    selected=False,
+                    enabled=False,
+                    confidence="unknown",
+                )
+            )
+            continue
         buttons.append(
             DeckButton(
-                id=f"empty:{position}",
+                id=f"session:{session.id}",
                 position=position,
-                kind="empty",
-                label="Available",
-                detail="No session",
-                icon="plus",
-                color="unknown",
-                selected=False,
+                kind="session",
+                label=session.title,
+                detail=_session_detail(session.workspace_path),
+                icon="repo",
+                color=session.state,
+                selected=session.selected,
                 enabled=False,
-                confidence="unknown",
+                confidence=session.confidence,
+                session_id=session.id,
             )
         )
 

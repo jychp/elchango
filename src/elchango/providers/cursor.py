@@ -7,9 +7,10 @@ import sqlite3
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import unquote, urlparse
 
+from elchango.activity import ActivityStore
 from elchango.models import (
     AgentSession,
     ProviderSnapshot,
@@ -24,6 +25,11 @@ DEFAULT_WORKSPACE_STORAGE = DEFAULT_CURSOR_ROOT / "workspaceStorage"
 SELECTED_AGENT_KEY = "cursor/glass.selectedAgent"
 MEMBERSHIP_KEY = "glass.localAgentProjectMembership.v1"
 REQUIRED_TABLES = {"ItemTable", "composerHeaders", "cursorDiskKV"}
+ACTIVE_SIGNAL_TTL_MS = 5 * 60 * 1_000
+
+
+def _now_ms() -> int:
+    return time.time_ns() // 1_000_000
 
 
 class CursorProviderError(RuntimeError):
@@ -36,8 +42,12 @@ class CursorProvider:
 
     database: Path = DEFAULT_DATABASE
     workspace_storage: Path = DEFAULT_WORKSPACE_STORAGE
+    active_signal_ttl_ms: int = ACTIVE_SIGNAL_TTL_MS
+    clock: Callable[[], int] = _now_ms
+    activity_store: ActivityStore | None = None
 
     def snapshot(self) -> ProviderSnapshot:
+        observed_at_ms = self.clock()
         connection = self._connect()
         try:
             self._validate_schema(connection)
@@ -49,6 +59,7 @@ class CursorProvider:
                 selected_id,
                 workspace_paths,
                 memberships,
+                observed_at_ms,
             )
         except sqlite3.Error as error:
             raise CursorProviderError(f"Cursor database read failed: {error}") from error
@@ -56,7 +67,7 @@ class CursorProvider:
             connection.close()
 
         return ProviderSnapshot(
-            observed_at_ms=time.time_ns() // 1_000_000,
+            observed_at_ms=observed_at_ms,
             selected_session_id=selected_id,
             sessions=tuple(sessions),
             source=str(self.database),
@@ -95,6 +106,7 @@ class CursorProvider:
         selected_id: str | None,
         workspace_paths: dict[str, str],
         memberships: dict[str, Any],
+        observed_at_ms: int,
     ) -> list[AgentSession]:
         sessions: list[AgentSession] = []
         rows = connection.execute(
@@ -123,7 +135,19 @@ class CursorProvider:
                 continue
 
             workspace_id = str(row["workspaceId"] or "")
-            state, confidence, detail = self._infer_state(connection, composer_id)
+            state, confidence, detail = self._infer_state(
+                connection,
+                composer_id,
+                updated_at_ms,
+                observed_at_ms,
+            )
+            if self.activity_store is not None:
+                hook_state = self.activity_store.state_for(
+                    composer_id,
+                    observed_at_ms,
+                )
+                if hook_state is not None:
+                    state, confidence, detail = hook_state
             sessions.append(
                 AgentSession(
                     id=composer_id,
@@ -148,6 +172,8 @@ class CursorProvider:
         self,
         connection: sqlite3.Connection,
         composer_id: str,
+        updated_at_ms: int,
+        observed_at_ms: int,
     ) -> tuple[SessionState, StateConfidence, str]:
         data = self._read_disk_object(connection, f"composerData:{composer_id}")
         if not data:
@@ -160,21 +186,32 @@ class CursorProvider:
         )
         tool = tool_status.lower() if tool_status else None
         result = result_status.lower() if result_status else None
+        active_signal_is_fresh = (
+            observed_at_ms - updated_at_ms <= self.active_signal_ttl_ms
+        )
 
         if result in {"error", "failed", "failure"}:
             return "error", "observed", f"tool result {result}"
         if tool in {"error", "failed", "failure"}:
             return "error", "observed", f"tool {tool}"
         if bool(data.get("hasBlockingPendingActions", False)):
-            return "waiting", "candidate", "blocking action pending"
+            if active_signal_is_fresh:
+                return "waiting", "candidate", "blocking action pending"
+            return "idle", "persisted", "stale pending-action signal ignored"
         if result in {"aborted", "cancelled", "canceled"}:
-            return "unknown", "candidate", f"provisional tool result {result}"
+            if active_signal_is_fresh:
+                return "unknown", "candidate", f"provisional tool result {result}"
+            return "idle", "persisted", f"last tool result {result}"
         if tool in {"loading", "running", "pending", "in_progress"}:
-            return "working", "candidate", f"tool {tool}"
+            if active_signal_is_fresh:
+                return "working", "candidate", f"tool {tool}"
+            return "idle", "persisted", f"stale tool {tool} signal ignored"
         if data.get("generatingBubbleIds") or bool(
             data.get("isContinuationInProgress", False)
         ):
-            return "working", "candidate", "generation signal present"
+            if active_signal_is_fresh:
+                return "working", "candidate", "generation signal present"
+            return "idle", "persisted", "stale generation signal ignored"
         if tool == "completed":
             detail = (
                 "tool completed successfully"
@@ -191,8 +228,10 @@ class CursorProvider:
         if raw_status == "aborted":
             return "idle", "persisted", "last turn aborted"
         if raw_status in {"generating", "running", "pending"}:
-            return "working", "candidate", f"composer {raw_status}"
-        return "unknown", "unknown", "no decisive state signal"
+            if active_signal_is_fresh:
+                return "working", "candidate", f"composer {raw_status}"
+            return "idle", "persisted", f"stale composer {raw_status} ignored"
+        return "idle", "persisted", "no active state signal"
 
     def _latest_tool_status(
         self,

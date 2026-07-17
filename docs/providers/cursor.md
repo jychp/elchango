@@ -126,6 +126,24 @@ Intermediate result values can be revised when Cursor persists a completed
 turn. Consumers must treat them as provisional. Waiting, genuine cancellation,
 and error differentiation remain unvalidated.
 
+## v0.1 live-state strategy
+
+A live product check on July 17, 2026 confirmed that SQLite can still report the
+selected session as `completed` while its agent is actively responding. The
+provider therefore cannot meet the one-second live-state target from database
+polling alone.
+
+Cursor's documented lifecycle hooks expose a stable `conversation_id`,
+`generation_id`, event name, and terminal status. The v0.1 service accepts
+sanitized `sessionStart`, `beforeSubmitPrompt`, `stop`, and `sessionEnd` events
+as an in-memory overlay on the SQLite snapshot. Prompt, response, tool, email,
+and transcript content is discarded before transmission.
+
+Cursor does not document whether a hook `conversation_id` equals the
+`composerHeaders.composerId` stored in SQLite. elChango applies a hook signal
+only when those identifiers match exactly. A focused live test is still
+required before hook-backed state can be considered validated.
+
 ## M0.5: best-effort focus
 
 POC: `scripts/poc/05_cursor_best_effort_focus.py`
@@ -163,6 +181,7 @@ does not prevent an incorrect session from briefly receiving focus.
 - Which events change `lastUpdatedAt`, visibility timestamps, or both?
 - Can an open session be distinguished reliably from an unarchived historical
   session?
+- Does a hook `conversation_id` always equal its SQLite `composerId`?
 - How does the schema behave across Cursor upgrades?
 - Does `composerHeaders.recency` continue to match the switcher across larger
   and mixed local/cloud session sets?

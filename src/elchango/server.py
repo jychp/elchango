@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from elchango.activity import ActivityStore
 from elchango.deck import DeckService
 from elchango.providers.cursor import CursorProviderError
 
@@ -19,6 +21,7 @@ class DeckHTTPServer(ThreadingHTTPServer):
 
     daemon_threads = True
     deck_service: DeckService
+    activity_store: ActivityStore
     assets: Path
 
 
@@ -44,11 +47,50 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
         self._serve_asset(parsed.path)
 
     def do_POST(self) -> None:
+        if urlparse(self.path).path == "/api/hooks/cursor":
+            self._receive_cursor_hook()
+            return
         self._send_json(
             HTTPStatus.METHOD_NOT_ALLOWED,
             {
                 "error": "actions are not enabled in the foundation slice",
             },
+        )
+
+    def _receive_cursor_hook(self) -> None:
+        if self.headers.get_content_type() != "application/json":
+            self._send_json(
+                HTTPStatus.UNSUPPORTED_MEDIA_TYPE,
+                {"error": "hook payload must use application/json"},
+            )
+            return
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            content_length = 0
+        if not 0 < content_length <= 65_536:
+            self._send_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "invalid hook payload size"},
+            )
+            return
+        try:
+            payload = json.loads(self.rfile.read(content_length))
+            if not isinstance(payload, dict):
+                raise ValueError("payload must be an object")
+            signal = self.server.activity_store.record(
+                payload,
+                time.time_ns() // 1_000_000,
+            )
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as error:
+            self._send_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": str(error)},
+            )
+            return
+        self._send_json(
+            HTTPStatus.ACCEPTED,
+            {"accepted": True, "session_id": signal.session_id},
         )
 
     def _serve_snapshot(self) -> None:
@@ -146,6 +188,7 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
 
 def serve(
     service: DeckService,
+    activity_store: ActivityStore,
     assets: Path,
     host: str,
     port: int,
@@ -154,6 +197,7 @@ def serve(
 
     server = DeckHTTPServer((host, port), DeckRequestHandler)
     server.deck_service = service
+    server.activity_store = activity_store
     server.assets = assets
     try:
         server.serve_forever(poll_interval=0.2)

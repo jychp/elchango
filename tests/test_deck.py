@@ -80,6 +80,28 @@ class DeckServiceTests(unittest.TestCase):
         self.assertEqual(first.revision, second.revision)
         self.assertEqual(third.revision, second.revision + 1)
 
+    def test_session_slots_survive_provider_reordering(self) -> None:
+        provider = FakeProvider(make_snapshot(3))
+        service = DeckService(provider)
+
+        first = service.snapshot()
+        provider.current = ProviderSnapshot(
+            observed_at_ms=456,
+            selected_session_id="session-0",
+            sessions=tuple(reversed(provider.current.sessions)),
+            source="test",
+        )
+        second = service.snapshot()
+
+        self.assertEqual(
+            [button.session_id for button in first.buttons[:3]],
+            ["session-0", "session-1", "session-2"],
+        )
+        self.assertEqual(
+            [button.session_id for button in second.buttons[:3]],
+            ["session-0", "session-1", "session-2"],
+        )
+
     def test_session_overflow_is_truncated_and_control_row_stays_fixed(self) -> None:
         service = DeckService(FakeProvider(make_snapshot(12)))
 
@@ -92,6 +114,34 @@ class DeckServiceTests(unittest.TestCase):
         self.assertEqual(snapshot.buttons[10].action, "new_session")
         self.assertEqual(snapshot.buttons[11].action, "focus_session")
         self.assertEqual(snapshot.buttons[14].action, "stop_session")
+
+    def test_selected_session_replaces_oldest_hidden_slot(self) -> None:
+        provider = FakeProvider(make_snapshot(11))
+        service = DeckService(provider)
+        service.snapshot()
+        provider.current = ProviderSnapshot(
+            observed_at_ms=456,
+            selected_session_id="session-10",
+            sessions=tuple(
+                make_session(index, selected=index == 10) for index in range(11)
+            ),
+            source="test",
+        )
+
+        snapshot = service.snapshot()
+        visible_ids = [
+            button.session_id for button in snapshot.buttons[:10]
+        ]
+
+        self.assertIn("session-10", visible_ids)
+        self.assertNotIn("session-9", visible_ids)
+        self.assertTrue(
+            next(
+                button.selected
+                for button in snapshot.buttons
+                if button.session_id == "session-10"
+            )
+        )
 
 
 if __name__ == "__main__":
