@@ -140,7 +140,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--host",
         default="127.0.0.1",
-        help="HTTP bind host (default: 127.0.0.1).",
+        help="Loopback HTTP bind host (default: 127.0.0.1).",
     )
     parser.add_argument(
         "--port",
@@ -165,6 +165,8 @@ def parse_args() -> argparse.Namespace:
         help="Print one snapshot as JSON instead of starting a server.",
     )
     args = parser.parse_args()
+    if args.host not in {"127.0.0.1", "localhost"}:
+        parser.error("--host must be 127.0.0.1 or localhost")
     if not 1 <= args.port <= 65535:
         parser.error("--port must be between 1 and 65535")
     if args.poll_ms < 100:

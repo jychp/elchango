@@ -154,8 +154,8 @@ def parse_args() -> argparse.Namespace:
         help="Open the deck in the default browser after startup.",
     )
     args = parser.parse_args()
-    if args.host not in {"127.0.0.1", "::1", "localhost"}:
-        parser.error("--host must be a loopback address")
+    if args.host not in {"127.0.0.1", "localhost"}:
+        parser.error("--host must be 127.0.0.1 or localhost")
     if not 1 <= args.port <= 65535:
         parser.error("--port must be between 1 and 65535")
     if args.poll_ms < 100:

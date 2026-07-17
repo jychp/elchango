@@ -271,9 +271,20 @@ def load_workspace_paths(workspace_storage: Path) -> dict[str, str]:
 def embedded_workspace_path(header: dict[str, Any]) -> str | None:
     """Prefer the path embedded in the composer header's agent location."""
 
+    agent_location = header.get("agentLocation")
+    environment = (
+        agent_location.get("environment")
+        if isinstance(agent_location, dict)
+        else None
+    )
+    workspace_identifier = header.get("workspaceIdentifier")
     candidates = [
-        header.get("agentLocation", {}).get("environment", {}).get("uri", {}),
-        header.get("workspaceIdentifier", {}).get("uri", {}),
+        environment.get("uri") if isinstance(environment, dict) else None,
+        (
+            workspace_identifier.get("uri")
+            if isinstance(workspace_identifier, dict)
+            else None
+        ),
     ]
     for uri in candidates:
         if not isinstance(uri, dict):

@@ -566,8 +566,9 @@ def watch_selected_agent(
     workspace_paths: dict[str, str],
     args: argparse.Namespace,
     initial: SelectedAgent,
-) -> None:
+) -> SelectedAgent:
     previous = initial
+    latest = initial
     deadline = time.monotonic() + args.watch
     print()
     print(f"Watching for {args.watch:g}s every {args.interval:g}s. Press Ctrl-C to stop.")
@@ -575,6 +576,7 @@ def watch_selected_agent(
         while time.monotonic() < deadline:
             time.sleep(min(args.interval, max(0, deadline - time.monotonic())))
             current = inspect_selected_agent(connection, workspace_paths)
+            latest = current
             if current.fingerprint() == previous.fingerprint():
                 continue
             now = datetime.now().astimezone().isoformat(timespec="milliseconds")
@@ -597,6 +599,7 @@ def watch_selected_agent(
             previous = current
     except KeyboardInterrupt:
         print("\nWatch stopped.")
+    return latest
 
 
 def main() -> int:
@@ -612,7 +615,12 @@ def main() -> int:
             else:
                 print_human(selected, args, query_only)
             if args.watch:
-                watch_selected_agent(connection, workspace_paths, args, selected)
+                selected = watch_selected_agent(
+                    connection,
+                    workspace_paths,
+                    args,
+                    selected,
+                )
             failures = expectation_failures(
                 selected,
                 args.expect_id,

@@ -52,6 +52,10 @@ means the requested ID was not selected before timeout.
 so the POC sent no keys. ``UNSUPPORTED_SESSION_SWITCH`` means the target is
 absent from the validated local MRU snapshot.
 
+``CURSOR_NOT_FOREGROUND`` means activation did not leave Cursor as the
+foreground macOS application. The POC aborts before sending Control+Tab so the
+shortcut cannot reach another application.
+
 Observed on July 16, 2026
 =========================
 Activating Cursor while the requested composer was already selected produced
@@ -669,6 +673,30 @@ def inspect_or_focus(
                 verdict="STALE_MRU_SNAPSHOT",
                 reasons=(
                     "Selection or recency changed before keyboard injection.",
+                    "No keyboard event was sent.",
+                ),
+            )
+        frontmost_name = read_frontmost_application()
+        if frontmost_name != "Cursor":
+            return FocusResult(
+                target=target,
+                selected_before=selected_before,
+                selected_after=latest_selected,
+                selected_workspace_before=selected_workspace_before,
+                strategy="none_cursor_not_foreground",
+                mru_rank=mru_rank,
+                cycle_steps=0,
+                mru_before=mru_before,
+                mru_after=latest_mru,
+                executed=False,
+                cursor_frontmost=(
+                    False if frontmost_name is not None else None
+                ),
+                elapsed_ms=elapsed_ms(started),
+                verdict="CURSOR_NOT_FOREGROUND",
+                reasons=(
+                    "Cursor was not the foreground macOS application "
+                    "immediately before keyboard injection.",
                     "No keyboard event was sent.",
                 ),
             )
