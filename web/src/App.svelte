@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import DeckKey from './lib/DeckKey.svelte'
-  import type { DeckButton, DeckSnapshot } from './lib/contracts'
+  import type { DeckButton, DeckIntentResponse, DeckSnapshot } from './lib/contracts'
 
   type ConnectionState = 'connecting' | 'connected' | 'stale' | 'error'
 
@@ -12,8 +12,8 @@
   let snapshot = $state.raw<DeckSnapshot | null>(null)
   let connectionState = $state<ConnectionState>('connecting')
   let errorMessage = $state('')
-  let pendingSessionId = $state<string | null>(null)
-  let focusError = $state('')
+  let pendingButtonId = $state<string | null>(null)
+  let deckActionError = $state('')
 
   const slots = $derived.by((): Array<DeckButton | null> => {
     const positionOffset = snapshot?.buttons.some((button) => button.position === 0) ? 0 : 1
@@ -35,6 +35,24 @@
           : 'Connection error',
   )
 
+  function installSnapshot(nextSnapshot: DeckSnapshot): void {
+    if (
+      !Array.isArray(nextSnapshot.buttons) ||
+      typeof nextSnapshot.observed_at_ms !== 'number' ||
+      typeof nextSnapshot.page !== 'number' ||
+      typeof nextSnapshot.page_count !== 'number' ||
+      typeof nextSnapshot.has_previous !== 'boolean' ||
+      typeof nextSnapshot.has_next !== 'boolean'
+    ) {
+      throw new Error('Snapshot response is invalid')
+    }
+
+    snapshot = nextSnapshot
+    connectionState =
+      Date.now() - nextSnapshot.observed_at_ms > STALE_AFTER_MS ? 'stale' : 'connected'
+    errorMessage = ''
+  }
+
   async function responseErrorMessage(response: Response): Promise<string> {
     try {
       const body = (await response.json()) as unknown
@@ -49,45 +67,65 @@
       // Use the status fallback when the response body is not JSON.
     }
 
-    return `Focus request failed (${response.status})`
+    return `Deck action failed (${response.status})`
   }
 
-  async function focusSession(button: DeckButton | null): Promise<void> {
+  async function activateButton(button: DeckButton | null): Promise<void> {
     const currentSnapshot = snapshot
 
     if (
-      pendingSessionId !== null ||
+      pendingButtonId !== null ||
       !currentSnapshot ||
-      button?.kind !== 'session' ||
-      !button.enabled ||
-      typeof button.session_id !== 'string' ||
-      !button.session_id
+      !button ||
+      !button.enabled
     ) {
       return
     }
 
-    pendingSessionId = button.session_id
-    focusError = ''
+    pendingButtonId = button.id
+    deckActionError = ''
 
     try {
-      const response = await fetch('/api/focus', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          session_id: button.session_id,
-          revision: currentSnapshot.revision,
-        }),
-      })
+      let response: Response
+
+      if (button.kind === 'session') {
+        if (typeof button.session_id !== 'string' || !button.session_id) {
+          throw new Error('Session button is missing its session identifier')
+        }
+
+        response = await fetch('/api/focus', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: button.session_id,
+            revision: currentSnapshot.revision,
+          }),
+        })
+      } else {
+        response = await fetch('/api/intent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            button_id: button.id,
+            revision: currentSnapshot.revision,
+          }),
+        })
+      }
 
       if (!response.ok) {
         throw new Error(await responseErrorMessage(response))
       }
 
-      focusError = ''
+      if (button.kind !== 'session') {
+        const intent = (await response.json()) as DeckIntentResponse
+        if (intent.snapshot !== undefined) installSnapshot(intent.snapshot)
+      }
+
+      deckActionError = ''
     } catch (error) {
-      focusError = error instanceof Error ? error.message : 'Focus request failed'
+      deckActionError = error instanceof Error ? error.message : 'Deck action failed'
     } finally {
-      pendingSessionId = null
+      pendingButtonId = null
     }
   }
 
@@ -111,15 +149,8 @@
 
         const nextSnapshot = (await response.json()) as DeckSnapshot
 
-        if (!Array.isArray(nextSnapshot.buttons) || typeof nextSnapshot.observed_at_ms !== 'number') {
-          throw new Error('Snapshot response is invalid')
-        }
-
         if (!stopped) {
-          snapshot = nextSnapshot
-          connectionState =
-            Date.now() - nextSnapshot.observed_at_ms > STALE_AFTER_MS ? 'stale' : 'connected'
-          errorMessage = ''
+          installSnapshot(nextSnapshot)
         }
       } catch (error) {
         if (!stopped && !(error instanceof DOMException && error.name === 'AbortError')) {
@@ -170,8 +201,8 @@
         <DeckKey
           {button}
           slot={index}
-          busy={pendingSessionId !== null && pendingSessionId === button?.session_id}
-          onactivate={() => void focusSession(button)}
+          busy={pendingButtonId !== null && pendingButtonId === button?.id}
+          onactivate={() => void activateButton(button)}
         />
       {/each}
     </div>
@@ -180,8 +211,8 @@
       <p class="instrument__error" role="status">{errorMessage}</p>
     {/if}
 
-    {#if focusError}
-      <p class="instrument__error" role="status">{focusError}</p>
+    {#if deckActionError}
+      <p class="instrument__error" role="status">{deckActionError}</p>
     {/if}
   </section>
 </main>

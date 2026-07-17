@@ -126,6 +126,13 @@ Intermediate result values can be revised when Cursor persists a completed
 turn. Consumers must treat them as provisional. Waiting, genuine cancellation,
 and error differentiation remain unvalidated.
 
+The v0.1 provider therefore does not treat an individual failed or completed
+tool as a terminal turn. Recent tool errors and completions remain `working`
+until a terminal lifecycle event arrives. Fresh `hasPendingPlan` or
+`hasBlockingPendingActions` signals map to `waiting`; stale copies are ignored.
+The deck presents terminal errors as attention-required orange and uncertain
+states as default gray, preserving the four-color product model.
+
 ## v0.1 live-state strategy
 
 A live product check on July 17, 2026 confirmed that SQLite can still report the
@@ -174,6 +181,35 @@ immediately before sending keys. It aborts if either value changed.
 
 Post-action verification is still mandatory. It detects a wrong target but
 does not prevent an incorrect session from briefly receiving focus.
+
+## v0.1 targeting strategy
+
+The Agents Window exposes direct `Cmd+1` through `Cmd+9` shortcuts in the same
+logical order as its pinned and repository-grouped sidebar. For later sessions,
+`Cmd+9` followed by repeated `Option+Down` continues through that order.
+
+The v0.1 focus controller reconstructs the current sidebar order from Cursor's
+settings immediately before keyboard injection, sends one shortcut sequence,
+and verifies the exact selected composer ID afterward. It accepts a stale web
+snapshot only when the requested session is still a focusable button in the
+current deck snapshot.
+
+## M0.8: native New Agent launch
+
+POC: `scripts/poc/08_cursor_new_session.py`
+
+Current verdict: `NO_NEW_COMPOSER`.
+
+Cursor 3.12.17 exposes `glass.newAgentFromKeyboard` as `Cmd+N` in the Agents
+Window. A controlled test activated Cursor, sent `Option+Cmd+N` to focus the
+Agents Window, and sent `Cmd+N` exactly once. Cursor changed
+`cursor/glass.selectedAgent` to `null`, but no new top-level `composerHeaders`
+row appeared before the 5-second timeout plus settling period.
+
+The shortcut likely opens an unpersisted blank New Agent view. Because no
+composer ID exists before a prompt, elChango cannot verify the launched target
+or add it to the deck. Product launch remains disabled, and the POC must not
+retry automatically after an ambiguous result.
 
 ## Open questions
 

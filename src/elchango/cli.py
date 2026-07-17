@@ -106,12 +106,16 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     service = DeckService(provider)
-    focus_controller = CursorFocusController(database=args.database)
+    focus_controller = CursorFocusController(
+        database=args.database,
+        workspace_storage=args.workspace_storage,
+    )
     url = f"http://{args.host}:{args.port}/"
     print("elChango v0.1 foundation")
     print(f"Deck: {url}")
     print(f"Cursor database: {args.database}")
     print("Session focus: enabled with exact post-action verification")
+    print("Session launch: disabled until exact identity can be verified")
     print("Agent actions: disabled")
     print("Press Ctrl-C to stop.")
     try:

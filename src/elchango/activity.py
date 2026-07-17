@@ -116,7 +116,7 @@ def _event_state(
         return "working", "observed", "Cursor prompt submitted"
     if event == "stop":
         if status == "error":
-            return "error", "observed", "Cursor agent stopped with error"
+            return "waiting", "observed", "Cursor agent stopped with error"
         if status == "completed":
             return "done", "observed", "Cursor agent completed"
         if status == "aborted":

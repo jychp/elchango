@@ -14,7 +14,12 @@ class FakeProvider:
         return self.current
 
 
-def make_session(index: int, *, selected: bool = False) -> AgentSession:
+def make_session(
+    index: int,
+    *,
+    selected: bool = False,
+    last_activity_at_ms: int | None = None,
+) -> AgentSession:
     return AgentSession(
         id=f"session-{index}",
         title=f"Session {index}",
@@ -24,7 +29,11 @@ def make_session(index: int, *, selected: bool = False) -> AgentSession:
         confidence="candidate" if selected else "persisted",
         state_detail="test state",
         selected=selected,
-        updated_at_ms=1_000 - index,
+        last_activity_at_ms=(
+            1_000 - index
+            if last_activity_at_ms is None
+            else last_activity_at_ms
+        ),
     )
 
 
@@ -59,10 +68,15 @@ class DeckServiceTests(unittest.TestCase):
         self.assertTrue(
             all(button.kind == "empty" for button in snapshot.buttons[3:10])
         )
+        self.assertTrue(
+            all(not button.enabled for button in snapshot.buttons[3:10])
+        )
         self.assertEqual(
             [button.kind for button in snapshot.buttons[10:]],
-            ["control", "empty", "control", "control", "control"],
+            ["control", "empty", "empty", "empty", "control"],
         )
+        self.assertEqual(snapshot.buttons[10].action, "refresh_sessions")
+        self.assertEqual(snapshot.buttons[14].action, "new_session")
 
     def test_revision_changes_only_when_provider_content_changes(self) -> None:
         provider = FakeProvider(make_snapshot(1))
@@ -104,47 +118,180 @@ class DeckServiceTests(unittest.TestCase):
             ["session-0", "session-1", "session-2"],
         )
 
-    def test_session_overflow_is_truncated_and_control_row_stays_fixed(self) -> None:
-        service = DeckService(FakeProvider(make_snapshot(12)))
+    def test_twenty_three_sessions_produce_three_pages(self) -> None:
+        service = DeckService(FakeProvider(make_snapshot(23)))
 
-        snapshot = service.snapshot()
+        first = service.snapshot()
+        second = service.next_page()
+        third = service.next_page()
 
         self.assertEqual(
-            [button.session_id for button in snapshot.buttons[:10]],
+            [button.session_id for button in first.buttons[:10]],
             [f"session-{index}" for index in range(10)],
         )
-        self.assertEqual(snapshot.buttons[10].action, "new_session")
-        self.assertEqual(snapshot.buttons[11].kind, "empty")
-        self.assertFalse(snapshot.buttons[11].enabled)
-        self.assertEqual(snapshot.buttons[14].action, "stop_session")
+        self.assertEqual(
+            [button.session_id for button in second.buttons[:10]],
+            [f"session-{index}" for index in range(10, 20)],
+        )
+        self.assertEqual(
+            [button.session_id for button in third.buttons[:3]],
+            ["session-20", "session-21", "session-22"],
+        )
+        self.assertEqual((first.page, first.page_count), (1, 3))
+        self.assertEqual((second.page, second.page_count), (2, 3))
+        self.assertEqual((third.page, third.page_count), (3, 3))
+        self.assertEqual(first.buttons[14].action, "next_page")
+        self.assertEqual(second.buttons[10].action, "previous_page")
+        self.assertEqual(third.buttons[14].action, "new_session")
 
-    def test_selected_session_replaces_oldest_hidden_slot(self) -> None:
-        provider = FakeProvider(make_snapshot(11))
+    def test_exactly_ten_sessions_offer_new_not_next(self) -> None:
+        snapshot = DeckService(FakeProvider(make_snapshot(10))).snapshot()
+
+        self.assertEqual(snapshot.page_count, 1)
+        self.assertFalse(snapshot.has_next)
+        self.assertEqual(snapshot.buttons[14].action, "new_session")
+        self.assertFalse(snapshot.buttons[14].enabled)
+
+    def test_equal_activity_dates_use_session_id_tie_breaker(self) -> None:
+        provider = FakeProvider(
+            ProviderSnapshot(
+                observed_at_ms=123,
+                selected_session_id=None,
+                sessions=(
+                    make_session(2, last_activity_at_ms=100),
+                    make_session(1, last_activity_at_ms=100),
+                ),
+                source="test",
+            )
+        )
+
+        snapshot = DeckService(provider).snapshot()
+
+        self.assertEqual(
+            [button.session_id for button in snapshot.buttons[:2]],
+            ["session-1", "session-2"],
+        )
+
+    def test_new_sessions_append_without_reordering_existing_slots(self) -> None:
+        provider = FakeProvider(make_snapshot(2))
         service = DeckService(provider)
-        service.snapshot()
+        first = service.snapshot()
         provider.current = ProviderSnapshot(
             observed_at_ms=456,
-            selected_session_id="session-10",
-            sessions=tuple(
-                make_session(index, selected=index == 10) for index in range(11)
+            selected_session_id="session-2",
+            sessions=(
+                make_session(2, selected=True, last_activity_at_ms=2_000),
+                *provider.current.sessions,
             ),
             source="test",
         )
 
-        snapshot = service.snapshot()
-        visible_ids = [
-            button.session_id for button in snapshot.buttons[:10]
-        ]
+        second = service.snapshot()
 
-        self.assertIn("session-10", visible_ids)
-        self.assertNotIn("session-9", visible_ids)
-        self.assertTrue(
-            next(
-                button.selected
-                for button in snapshot.buttons
-                if button.session_id == "session-10"
+        self.assertEqual(
+            [button.session_id for button in first.buttons[:2]],
+            ["session-0", "session-1"],
+        )
+        self.assertEqual(
+            [button.session_id for button in second.buttons[:3]],
+            ["session-0", "session-1", "session-2"],
+        )
+
+    def test_removed_sessions_leave_holes_until_refresh(self) -> None:
+        provider = FakeProvider(make_snapshot(3))
+        service = DeckService(provider)
+        service.snapshot()
+        provider.current = ProviderSnapshot(
+            observed_at_ms=456,
+            selected_session_id="session-0",
+            sessions=(make_session(0, selected=True), make_session(2)),
+            source="test",
+        )
+
+        with_hole = service.snapshot()
+        refreshed = service.refresh()
+
+        self.assertIsNone(with_hole.buttons[1].session_id)
+        self.assertEqual(with_hole.buttons[1].action, "new_session")
+        self.assertFalse(with_hole.buttons[1].enabled)
+        self.assertEqual(
+            [button.session_id for button in refreshed.buttons[:2]],
+            ["session-0", "session-2"],
+        )
+
+    def test_refresh_reorders_by_latest_activity_and_returns_to_page_one(self) -> None:
+        provider = FakeProvider(make_snapshot(12))
+        service = DeckService(provider)
+        service.snapshot()
+        service.next_page()
+        provider.current = ProviderSnapshot(
+            observed_at_ms=456,
+            selected_session_id="session-11",
+            sessions=tuple(
+                make_session(
+                    index,
+                    selected=index == 11,
+                    last_activity_at_ms=2_000 if index == 11 else 1_000 - index,
+                )
+                for index in range(12)
+            ),
+            source="test",
+        )
+
+        refreshed = service.refresh()
+
+        self.assertEqual(refreshed.page, 1)
+        self.assertEqual(refreshed.buttons[0].session_id, "session-11")
+
+    def test_navigation_rejects_page_boundaries(self) -> None:
+        service = DeckService(FakeProvider(make_snapshot(11)))
+        service.snapshot()
+
+        with self.assertRaisesRegex(ValueError, "first page"):
+            service.previous_page()
+        service.next_page()
+        with self.assertRaisesRegex(ValueError, "last page"):
+            service.next_page()
+
+    def test_uncertain_and_error_states_use_four_color_model(self) -> None:
+        unknown = make_session(1)
+        error = make_session(2)
+        provider = FakeProvider(
+            ProviderSnapshot(
+                observed_at_ms=123,
+                selected_session_id=None,
+                sessions=(
+                    AgentSession(
+                        id=unknown.id,
+                        title=unknown.title,
+                        workspace_id=unknown.workspace_id,
+                        workspace_path=unknown.workspace_path,
+                        state="unknown",
+                        confidence="unknown",
+                        state_detail="uncertain",
+                        selected=False,
+                        last_activity_at_ms=unknown.last_activity_at_ms,
+                    ),
+                    AgentSession(
+                        id=error.id,
+                        title=error.title,
+                        workspace_id=error.workspace_id,
+                        workspace_path=error.workspace_path,
+                        state="error",
+                        confidence="observed",
+                        state_detail="terminal error",
+                        selected=False,
+                        last_activity_at_ms=error.last_activity_at_ms,
+                    ),
+                ),
+                source="test",
             )
         )
+
+        snapshot = DeckService(provider).snapshot()
+
+        self.assertEqual(snapshot.buttons[0].color, "idle")
+        self.assertEqual(snapshot.buttons[1].color, "waiting")
 
 
 if __name__ == "__main__":

@@ -116,7 +116,7 @@ class CursorProvider:
         sessions: list[AgentSession] = []
         rows = connection.execute(
             """
-            SELECT composerId, workspaceId, lastUpdatedAt, recency,
+            SELECT composerId, workspaceId, lastUpdatedAt,
                    isArchived, isSubagent, value
             FROM composerHeaders
             """
@@ -133,17 +133,16 @@ class CursorProvider:
                 or bool(header.get("isEphemeral", False))
             ):
                 continue
-            updated_at_ms = _integer_or_none(row["recency"]) or _integer_or_none(
-                row["lastUpdatedAt"]
-            )
-            if updated_at_ms is None:
+            last_activity_at_ms = _integer_or_none(row["lastUpdatedAt"])
+            if last_activity_at_ms is None:
                 continue
 
             workspace_id = str(row["workspaceId"] or "")
             state, confidence, detail = self._infer_state(
                 connection,
                 composer_id,
-                updated_at_ms,
+                header,
+                last_activity_at_ms,
                 observed_at_ms,
             )
             if self.activity_store is not None:
@@ -166,23 +165,26 @@ class CursorProvider:
                     confidence=confidence,
                     state_detail=detail,
                     selected=composer_id == selected_id,
-                    updated_at_ms=updated_at_ms,
+                    last_activity_at_ms=last_activity_at_ms,
                 )
             )
 
-        sessions.sort(key=lambda session: session.updated_at_ms, reverse=True)
+        sessions.sort(
+            key=lambda session: (-session.last_activity_at_ms, session.id)
+        )
         return sessions
 
     def _infer_state(
         self,
         connection: sqlite3.Connection,
         composer_id: str,
-        updated_at_ms: int,
+        header: dict[str, Any],
+        last_activity_at_ms: int,
         observed_at_ms: int,
     ) -> tuple[SessionState, StateConfidence, str]:
         data = self._read_disk_object(connection, f"composerData:{composer_id}")
         if not data:
-            return "unknown", "unknown", "composer data unavailable"
+            return "idle", "unknown", "composer data unavailable"
 
         tool_status, result_status = self._latest_tool_status(
             connection,
@@ -192,21 +194,34 @@ class CursorProvider:
         tool = tool_status.lower() if tool_status else None
         result = result_status.lower() if result_status else None
         active_signal_is_fresh = (
-            observed_at_ms - updated_at_ms <= self.active_signal_ttl_ms
+            observed_at_ms - last_activity_at_ms <= self.active_signal_ttl_ms
         )
 
-        if result in {"error", "failed", "failure"}:
-            return "error", "observed", f"tool result {result}"
-        if tool in {"error", "failed", "failure"}:
-            return "error", "observed", f"tool {tool}"
-        if bool(data.get("hasBlockingPendingActions", False)):
+        blocking = bool(
+            data.get("hasBlockingPendingActions", False)
+            or header.get("hasBlockingPendingActions", False)
+            or data.get("hasPendingPlan", False)
+            or header.get("hasPendingPlan", False)
+        )
+        if blocking:
             if active_signal_is_fresh:
-                return "waiting", "candidate", "blocking action pending"
-            return "idle", "persisted", "stale pending-action signal ignored"
-        if result in {"aborted", "cancelled", "canceled"}:
+                return "waiting", "candidate", "user action or plan pending"
+            return "idle", "persisted", "stale blocking signal ignored"
+        if result in {
+            "error",
+            "failed",
+            "failure",
+            "aborted",
+            "cancelled",
+            "canceled",
+        } or tool in {"error", "failed", "failure"}:
             if active_signal_is_fresh:
-                return "unknown", "candidate", f"provisional tool result {result}"
-            return "idle", "persisted", f"last tool result {result}"
+                return (
+                    "working",
+                    "candidate",
+                    "recent provisional tool result; turn may continue",
+                )
+            return "idle", "persisted", "stale tool result ignored"
         if tool in {"loading", "running", "pending", "in_progress"}:
             if active_signal_is_fresh:
                 return "working", "candidate", f"tool {tool}"
@@ -218,6 +233,12 @@ class CursorProvider:
                 return "working", "candidate", "generation signal present"
             return "idle", "persisted", "stale generation signal ignored"
         if tool == "completed":
+            if active_signal_is_fresh:
+                return (
+                    "working",
+                    "candidate",
+                    "recent tool completion; awaiting terminal signal",
+                )
             detail = (
                 "last tool completed successfully"
                 if result == "success"
@@ -227,15 +248,31 @@ class CursorProvider:
 
         raw_status = _string_or_none(data.get("status"))
         if raw_status in {"error", "failed"}:
-            return "error", "persisted", f"composer {raw_status}"
+            if active_signal_is_fresh:
+                return "waiting", "candidate", f"composer {raw_status}"
+            return "idle", "persisted", f"stale composer {raw_status}"
         if raw_status == "completed":
+            if active_signal_is_fresh:
+                return (
+                    "working",
+                    "candidate",
+                    "recent completion; awaiting terminal signal",
+                )
             return "idle", "persisted", "last turn completed"
         if raw_status == "aborted":
+            if active_signal_is_fresh:
+                return (
+                    "working",
+                    "candidate",
+                    "recent activity with stale aborted status",
+                )
             return "idle", "persisted", "last turn aborted"
         if raw_status in {"generating", "running", "pending"}:
             if active_signal_is_fresh:
                 return "working", "candidate", f"composer {raw_status}"
             return "idle", "persisted", f"stale composer {raw_status} ignored"
+        if active_signal_is_fresh:
+            return "working", "candidate", "recent composer activity"
         return "idle", "persisted", "no active state signal"
 
     def _latest_tool_status(

@@ -33,6 +33,9 @@ ButtonColor = Literal[
 ]
 DeckAction = Literal[
     "new_session",
+    "refresh_sessions",
+    "previous_page",
+    "next_page",
     "primary_action",
     "secondary_action",
     "stop_session",
@@ -51,7 +54,7 @@ class AgentSession:
     confidence: StateConfidence
     state_detail: str
     selected: bool
-    updated_at_ms: int
+    last_activity_at_ms: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +95,10 @@ class DeckSnapshot:
     source: str
     read_only: bool
     selected_session_id: str | None
+    page: int
+    page_count: int
+    has_previous: bool
+    has_next: bool
     buttons: tuple[DeckButton, ...]
 
     def to_dict(self) -> dict[str, object]:

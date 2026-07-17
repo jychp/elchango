@@ -17,22 +17,28 @@ from elchango.server import DeckHTTPServer, DeckRequestHandler
 
 
 class StaticProvider:
+    def __init__(self, count: int = 1) -> None:
+        self.count = count
+
     def snapshot(self) -> ProviderSnapshot:
-        session = AgentSession(
-            id="session-1",
-            title="Server test",
-            workspace_id="workspace-1",
-            workspace_path="/tmp/server-test",
-            state="idle",
-            confidence="persisted",
-            state_detail="test",
-            selected=True,
-            updated_at_ms=1,
+        sessions = tuple(
+            AgentSession(
+                id=f"session-{index}",
+                title=f"Server test {index}",
+                workspace_id=f"workspace-{index}",
+                workspace_path="/tmp/server-test",
+                state="idle",
+                confidence="persisted",
+                state_detail="test",
+                selected=index == 1,
+                last_activity_at_ms=100 - index,
+            )
+            for index in range(1, self.count + 1)
         )
         return ProviderSnapshot(
             observed_at_ms=123,
-            selected_session_id=session.id,
-            sessions=(session,),
+            selected_session_id="session-1",
+            sessions=sessions,
             source="test",
         )
 
@@ -102,9 +108,9 @@ class DeckServerTests(unittest.TestCase):
         self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
         self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
 
-    def test_post_requests_are_disabled(self) -> None:
+    def test_unknown_post_requests_are_disabled(self) -> None:
         request = urllib.request.Request(
-            f"{self.base_url}/api/intent",
+            f"{self.base_url}/api/action",
             data=b"{}",
             method="POST",
         )
@@ -200,6 +206,90 @@ class DeckServerTests(unittest.TestCase):
         self.assertEqual(response.status, 200)
         self.assertEqual(payload["verdict"], "FOCUS_VERIFIED")
         self.assertEqual(self.focus_controller.focused_session_id, "session-1")
+
+    def test_refresh_intent_accepts_stale_revision(self) -> None:
+        request = urllib.request.Request(
+            f"{self.base_url}/api/intent",
+            data=json.dumps(
+                {
+                    "button_id": "control:refresh",
+                    "revision": 0,
+                }
+            ).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        with urllib.request.urlopen(request, timeout=2) as response:
+            payload = json.load(response)
+
+        self.assertEqual(response.status, 200)
+        self.assertTrue(payload["accepted"])
+        self.assertEqual(payload["action"], "refresh_sessions")
+        self.assertEqual(payload["snapshot"]["page"], 1)
+
+    def test_next_and_previous_intents_change_server_page(self) -> None:
+        self.server.deck_service = DeckService(StaticProvider(count=11))
+        self.server.deck_service.snapshot()
+
+        next_payload = self._post_intent("control:next")
+        previous_payload = self._post_intent("control:previous")
+
+        self.assertEqual(next_payload["snapshot"]["page"], 2)
+        self.assertEqual(previous_payload["snapshot"]["page"], 1)
+
+    def test_available_session_slot_rejects_new_until_launch_is_verified(self) -> None:
+        request = urllib.request.Request(
+            f"{self.base_url}/api/intent",
+            data=json.dumps(
+                {
+                    "button_id": "empty:1",
+                    "revision": 1,
+                }
+            ).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        with self.assertRaises(urllib.error.HTTPError) as context:
+            urllib.request.urlopen(request, timeout=2)
+
+        self.assertEqual(context.exception.code, 409)
+        context.exception.close()
+
+    def test_disabled_empty_control_rejects_intent(self) -> None:
+        request = urllib.request.Request(
+            f"{self.base_url}/api/intent",
+            data=json.dumps(
+                {
+                    "button_id": "empty:11",
+                    "revision": 1,
+                }
+            ).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        with self.assertRaises(urllib.error.HTTPError) as context:
+            urllib.request.urlopen(request, timeout=2)
+
+        self.assertEqual(context.exception.code, 409)
+        context.exception.close()
+
+    def _post_intent(self, button_id: str) -> dict[str, object]:
+        request = urllib.request.Request(
+            f"{self.base_url}/api/intent",
+            data=json.dumps(
+                {
+                    "button_id": button_id,
+                    "revision": 0,
+                }
+            ).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=2) as response:
+            return json.load(response)
 
 
 if __name__ == "__main__":

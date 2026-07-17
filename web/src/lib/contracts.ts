@@ -19,10 +19,9 @@ export type DeckButtonConfidence = 'observed' | 'candidate' | 'persisted' | 'unk
 
 export type DeckAction =
   | 'new_session'
-  | 'stop_session'
-  | 'primary_action'
-  | 'secondary_action'
-  | null
+  | 'refresh_sessions'
+  | 'previous_page'
+  | 'next_page'
 
 export interface DeckButton {
   id: string
@@ -36,7 +35,7 @@ export interface DeckButton {
   enabled: boolean
   confidence: DeckButtonConfidence
   session_id?: string | null
-  action?: DeckAction
+  action?: DeckAction | null
 }
 
 export interface DeckSnapshot {
@@ -45,5 +44,15 @@ export interface DeckSnapshot {
   source: string
   read_only: boolean
   selected_session_id: string | null
+  page: number
+  page_count: number
+  has_previous: boolean
+  has_next: boolean
   buttons: DeckButton[]
+}
+
+export interface DeckIntentResponse {
+  accepted: boolean
+  action: DeckAction
+  snapshot?: DeckSnapshot
 }

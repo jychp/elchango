@@ -40,6 +40,7 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
                 {
                     "status": "ok",
                     "focus_enabled": True,
+                    "launch_enabled": False,
                     "actions_enabled": False,
                 },
             )
@@ -58,6 +59,9 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
             return
         if urlparse(self.path).path == "/api/focus":
             self._focus_session()
+            return
+        if urlparse(self.path).path == "/api/intent":
+            self._activate_intent()
             return
         self._send_json(
             HTTPStatus.METHOD_NOT_ALLOWED,
@@ -120,6 +124,73 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
             else HTTPStatus.CONFLICT
         )
         self._send_json(status, result.to_dict())
+
+    def _activate_intent(self) -> None:
+        payload = self._read_json_payload(max_bytes=4_096)
+        if payload is None:
+            return
+        button_id = payload.get("button_id")
+        revision = payload.get("revision")
+        if not isinstance(button_id, str) or not button_id:
+            self._send_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "button_id must be a non-empty string"},
+            )
+            return
+        if isinstance(revision, bool) or not isinstance(revision, int):
+            self._send_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "revision must be an integer"},
+            )
+            return
+        try:
+            snapshot = self.server.deck_service.snapshot()
+            target = next(
+                (
+                    button
+                    for button in snapshot.buttons
+                    if button.id == button_id
+                    and button.enabled
+                    and button.action is not None
+                    and button.kind in {"control", "empty"}
+                ),
+                None,
+            )
+            if target is None:
+                self._send_json(
+                    HTTPStatus.CONFLICT,
+                    {"error": "button is not actionable in the current snapshot"},
+                )
+                return
+            if target.action == "refresh_sessions":
+                updated = self.server.deck_service.refresh()
+            elif target.action == "previous_page":
+                updated = self.server.deck_service.previous_page()
+            elif target.action == "next_page":
+                updated = self.server.deck_service.next_page()
+            else:
+                self._send_json(
+                    HTTPStatus.CONFLICT,
+                    {"error": f"unsupported deck action: {target.action}"},
+                )
+                return
+        except (CursorProviderError, RuntimeError) as error:
+            self._send_json(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                {"error": str(error), "retryable": True},
+            )
+            return
+        except ValueError as error:
+            self._send_json(HTTPStatus.CONFLICT, {"error": str(error)})
+            return
+        self._send_json(
+            HTTPStatus.OK,
+            {
+                "accepted": True,
+                "action": target.action,
+                "snapshot": updated.to_dict(),
+            },
+        )
 
     def _read_json_payload(
         self,

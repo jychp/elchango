@@ -11,15 +11,17 @@
 
   let { button, slot, busy = false, onactivate }: Props = $props()
 
+  const isBlank = $derived(
+    button !== null && !button.enabled && !button.label && !button.detail,
+  )
+
   const accessibleName = $derived(
     button
       ? [button.label, button.detail].filter(Boolean).join(', ') || `Empty key ${slot + 1}`
       : `Unavailable key ${slot + 1}`,
   )
 
-  const actionable = $derived(
-    button?.kind === 'session' && button.enabled && onactivate !== undefined,
-  )
+  const actionable = $derived(button?.enabled === true && onactivate !== undefined)
 
   function handleActivate(): void {
     if (actionable) onactivate?.()
@@ -33,6 +35,7 @@
     button && `deck-key--${button.color}`,
     button?.selected && 'deck-key--selected',
     !button && 'deck-key--vacant',
+    isBlank && 'deck-key--vacant',
     (!button || !button.enabled) && 'deck-key--disabled',
     actionable && 'deck-key--actionable',
   ]}
@@ -44,7 +47,7 @@
   data-disabled={!button || !button.enabled}
   onclick={handleActivate}
 >
-  {#if button}
+  {#if button && !isBlank}
     <span class="deck-key__topline">
       <span class="deck-key__icon"><DeckIcon name={button.icon} /></span>
       {#if button.kind === 'session'}
@@ -52,7 +55,7 @@
       {/if}
     </span>
     <span class="deck-key__copy">
-      <span class="deck-key__label">{button.label || 'Unassigned'}</span>
+      <span class="deck-key__label">{button.label}</span>
       {#if button.detail}
         <span class="deck-key__detail">{button.detail}</span>
       {/if}

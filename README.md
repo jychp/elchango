@@ -28,7 +28,8 @@ chango serve
 Open <http://127.0.0.1:8765/>.
 
 The production command serves both the compiled Svelte application and the
-read-only Cursor snapshot API from one loopback process.
+Cursor-backed loopback API from one process. All SQLite access remains
+read-only.
 
 ## Live Cursor activity
 
@@ -104,6 +105,10 @@ npm --prefix web run build
 - The HTTP server accepts loopback bind addresses only.
 - Hook events affect a session only when their conversation ID exactly matches a
   session ID observed in SQLite. Unmatched events are ignored.
-- The foundation service exposes no focus, launch, prompt, or agent-action
-  endpoint.
+- Session focus uses native Cursor shortcuts and requires exact post-action
+  verification.
+- Pagination intents never modify Cursor state.
+- Session launch, prompt dispatch, and agent actions remain disabled. The
+  launch POC could open a blank New Agent view but could not verify a new
+  composer ID before the first prompt.
 - Undocumented Cursor schema changes fail explicitly instead of guessing.

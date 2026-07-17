@@ -37,6 +37,7 @@ class CursorProviderTests(unittest.TestCase):
         session = snapshot.sessions[0]
         self.assertEqual(session.title, "Foundation work")
         self.assertEqual(session.workspace_path, "/tmp/elchango")
+        self.assertEqual(session.last_activity_at_ms, 100)
         self.assertEqual(session.state, "working")
         self.assertEqual(session.confidence, "candidate")
         self.assertTrue(session.selected)
@@ -79,8 +80,50 @@ class CursorProviderTests(unittest.TestCase):
             }
         )
         failed = provider.snapshot().sessions[0]
-        self.assertEqual(failed.state, "error")
-        self.assertEqual(failed.confidence, "observed")
+        self.assertEqual(failed.state, "idle")
+        self.assertIn("stale", failed.state_detail)
+
+    def test_recent_tool_error_remains_working_until_terminal_signal(self) -> None:
+        self._create_database()
+        provider = CursorProvider(
+            database=self.database,
+            workspace_storage=self.workspace_storage,
+            active_signal_ttl_ms=1_000,
+            clock=lambda: 1_000,
+        )
+        self._write_bubble(
+            {
+                "toolFormerData": {
+                    "status": "completed",
+                    "additionalData": {"status": "error"},
+                }
+            }
+        )
+
+        session = provider.snapshot().sessions[0]
+
+        self.assertEqual(session.state, "working")
+        self.assertIn("may continue", session.state_detail)
+
+    def test_pending_plan_is_waiting_when_fresh(self) -> None:
+        self._create_database()
+        self._write_composer_data(
+            {
+                "fullConversationHeadersOnly": [{"bubbleId": "bubble-1"}],
+                "hasPendingPlan": True,
+            }
+        )
+        provider = CursorProvider(
+            database=self.database,
+            workspace_storage=self.workspace_storage,
+            active_signal_ttl_ms=1_000,
+            clock=lambda: 1_000,
+        )
+
+        session = provider.snapshot().sessions[0]
+
+        self.assertEqual(session.state, "waiting")
+        self.assertIn("plan", session.state_detail)
 
     def test_exact_hook_conversation_id_overrides_database_state(self) -> None:
         self._create_database()
@@ -161,6 +204,22 @@ class CursorProviderTests(unittest.TestCase):
         state = store.state_for("composer-1", observed_at_ms=300)
         self.assertIsNotNone(state)
         self.assertEqual(state[0], "idle")
+
+    def test_terminal_hook_error_requires_attention(self) -> None:
+        store = ActivityStore()
+        store.record(
+            {
+                "hook_event_name": "stop",
+                "conversation_id": "composer-1",
+                "status": "error",
+            },
+            observed_at_ms=100,
+        )
+
+        state = store.state_for("composer-1", observed_at_ms=100)
+
+        self.assertIsNotNone(state)
+        self.assertEqual(state[0], "waiting")
 
     def test_snapshot_rejects_unknown_schema(self) -> None:
         sqlite3.connect(self.database).close()
@@ -246,6 +305,18 @@ class CursorProviderTests(unittest.TestCase):
             (
                 json.dumps(payload),
                 "bubbleId:composer-1:bubble-1",
+            ),
+        )
+        connection.commit()
+        connection.close()
+
+    def _write_composer_data(self, payload: dict[str, object]) -> None:
+        connection = sqlite3.connect(self.database)
+        connection.execute(
+            "UPDATE cursorDiskKV SET value = ? WHERE key = ?",
+            (
+                json.dumps(payload),
+                "composerData:composer-1",
             ),
         )
         connection.commit()
