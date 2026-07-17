@@ -17,10 +17,6 @@
     <path d="m7 9 3 3-3 3M13 15h4" />
   {:else if name === 'plus'}
     <path d="M12 5v14M5 12h14" />
-  {:else if name === 'arrow-left'}
-    <path d="m15 5-7 7 7 7" />
-  {:else if name === 'arrow-right'}
-    <path d="m9 5 7 7-7 7" />
   {:else}
     <circle cx="12" cy="12" r="8" />
     <path d="M12 8v5M12 16.5v.5" />

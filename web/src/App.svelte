@@ -14,9 +14,7 @@
   let errorMessage = $state('')
 
   const slots = $derived.by((): Array<DeckButton | null> => {
-    if (!snapshot) return []
-
-    const positionOffset = snapshot.buttons.some((button) => button.position === 0) ? 0 : 1
+    const positionOffset = snapshot?.buttons.some((button) => button.position === 0) ? 0 : 1
 
     return Array.from(
       { length: SLOT_COUNT },
@@ -109,33 +107,15 @@
       </div>
     </header>
 
-    <div class="instrument__readout">
-      {#if snapshot}
-        <span>{snapshot.source}</span>
-        <span>Page {snapshot.page + 1} / {snapshot.total_pages}</span>
-        <span>Revision {snapshot.revision}</span>
-        {#if snapshot.read_only}<span>Read only</span>{/if}
-      {:else}
-        <span>{errorMessage || 'Waiting for local bridge'}</span>
-      {/if}
+    <div class="deck-grid" aria-label="Stream Deck keys">
+      {#each slots as button, index (`slot-${index}`)}
+        <DeckKey {button} slot={index} />
+      {/each}
     </div>
 
-    {#if snapshot}
-      <div class="deck-grid" aria-label="Stream Deck keys">
-        {#each slots as button, index (`slot-${index}`)}
-          <DeckKey {button} slot={index} />
-        {/each}
-      </div>
-    {/if}
-
-    {#if connectionState === 'error' && snapshot}
+    {#if connectionState === 'error'}
       <p class="instrument__error" role="status">{errorMessage}</p>
     {/if}
-
-    <footer class="instrument__footer">
-      <span>5 × 3</span>
-      <span>Foundation v0.1</span>
-    </footer>
   </section>
 </main>
 
@@ -159,17 +139,12 @@
       inset 0 1px 0 #454a50;
   }
 
-  .instrument__header,
-  .instrument__footer,
-  .instrument__readout {
+  .instrument__header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-  }
-
-  .instrument__header {
     gap: 1rem;
-    margin-bottom: 0.8rem;
+    margin-bottom: clamp(0.8rem, 2vw, 1.3rem);
   }
 
   .eyebrow {
@@ -218,15 +193,6 @@
     background: #dc5d59;
   }
 
-  .instrument__readout {
-    min-height: 1.2rem;
-    gap: 0.75rem;
-    margin-bottom: clamp(0.8rem, 2vw, 1.3rem);
-    color: #737c84;
-    font-family: var(--font-mono);
-    font-size: clamp(0.54rem, 1.2vw, 0.68rem);
-  }
-
   .deck-grid {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -244,15 +210,6 @@
     font-size: 0.7rem;
   }
 
-  .instrument__footer {
-    margin-top: 0.8rem;
-    color: #555d65;
-    font-family: var(--font-mono);
-    font-size: 0.62rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
   @media (max-width: 38rem) {
     main {
       padding: 0.6rem;
@@ -261,11 +218,6 @@
     .instrument {
       padding: 0.8rem;
       border-radius: 0.9rem;
-    }
-
-    .instrument__readout span:nth-child(3),
-    .instrument__readout span:nth-child(4) {
-      display: none;
     }
   }
 </style>

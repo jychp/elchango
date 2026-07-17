@@ -4,8 +4,6 @@ export type DeckIconName =
   | 'repo'
   | 'terminal'
   | 'plus'
-  | 'arrow-left'
-  | 'arrow-right'
   | 'action'
 
 export type DeckButtonColor =
@@ -20,11 +18,11 @@ export type DeckButtonColor =
 export type DeckButtonConfidence = 'observed' | 'candidate' | 'persisted' | 'unknown'
 
 export type DeckAction =
-  | 'previous_page'
   | 'new_session'
+  | 'focus_session'
+  | 'stop_session'
   | 'primary_action'
   | 'secondary_action'
-  | 'next_page'
   | null
 
 export interface DeckButton {
@@ -47,8 +45,6 @@ export interface DeckSnapshot {
   observed_at_ms: number
   source: string
   read_only: boolean
-  page: number
-  total_pages: number
   selected_session_id: string | null
   buttons: DeckButton[]
 }

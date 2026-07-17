@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 import threading
 from pathlib import Path
 
@@ -23,7 +22,7 @@ class DeckService:
         self._signature: object | None = None
         self._lock = threading.Lock()
 
-    def snapshot(self, requested_page: int = 0) -> DeckSnapshot:
+    def snapshot(self) -> DeckSnapshot:
         provider_snapshot = self._provider.snapshot()
         signature = (
             provider_snapshot.selected_session_id,
@@ -37,12 +36,7 @@ class DeckService:
                 self._signature = signature
             revision = self._revision
 
-        total_pages = max(
-            1,
-            math.ceil(len(provider_snapshot.sessions) / SESSION_SLOTS),
-        )
-        page = min(max(requested_page, 0), total_pages - 1)
-        buttons = _build_buttons(provider_snapshot, page, total_pages)
+        buttons = _build_buttons(provider_snapshot)
         if len(buttons) != TOTAL_BUTTONS:
             raise RuntimeError(
                 f"Deck invariant violated: expected {TOTAL_BUTTONS} buttons, "
@@ -53,8 +47,6 @@ class DeckService:
             observed_at_ms=provider_snapshot.observed_at_ms,
             source=provider_snapshot.source,
             read_only=provider_snapshot.read_only,
-            page=page,
-            total_pages=total_pages,
             selected_session_id=provider_snapshot.selected_session_id,
             buttons=tuple(buttons),
         )
@@ -62,11 +54,8 @@ class DeckService:
 
 def _build_buttons(
     snapshot: ProviderSnapshot,
-    page: int,
-    total_pages: int,
 ) -> list[DeckButton]:
-    offset = page * SESSION_SLOTS
-    visible_sessions = snapshot.sessions[offset : offset + SESSION_SLOTS]
+    visible_sessions = snapshot.sessions[:SESSION_SLOTS]
     buttons = [
         DeckButton(
             id=f"session:{session.id}",
@@ -103,21 +92,8 @@ def _build_buttons(
 
     controls = (
         DeckButton(
-            id="control:previous",
-            position=10,
-            kind="control",
-            label="Previous",
-            detail=f"Page {page + 1} of {total_pages}",
-            icon="arrow-left",
-            color="control",
-            selected=False,
-            enabled=False,
-            confidence="observed",
-            action="previous_page",
-        ),
-        DeckButton(
             id="control:new",
-            position=11,
+            position=10,
             kind="control",
             label="New",
             detail="Coming in S5",
@@ -127,6 +103,19 @@ def _build_buttons(
             enabled=False,
             confidence="observed",
             action="new_session",
+        ),
+        DeckButton(
+            id="control:focus",
+            position=11,
+            kind="control",
+            label="Focus",
+            detail="Target required",
+            icon="action",
+            color="control",
+            selected=False,
+            enabled=False,
+            confidence="observed",
+            action="focus_session",
         ),
         DeckButton(
             id="control:primary",
@@ -155,17 +144,17 @@ def _build_buttons(
             action="secondary_action",
         ),
         DeckButton(
-            id="control:next",
+            id="control:stop",
             position=14,
             kind="control",
-            label="Next",
-            detail=f"Page {page + 1} of {total_pages}",
-            icon="arrow-right",
+            label="Stop",
+            detail="Target required",
+            icon="action",
             color="control",
             selected=False,
             enabled=False,
             confidence="observed",
-            action="next_page",
+            action="stop_session",
         ),
     )
     buttons.extend(controls)

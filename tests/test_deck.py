@@ -80,19 +80,18 @@ class DeckServiceTests(unittest.TestCase):
         self.assertEqual(first.revision, second.revision)
         self.assertEqual(third.revision, second.revision + 1)
 
-    def test_page_is_clamped_and_keeps_control_row_fixed(self) -> None:
+    def test_session_overflow_is_truncated_and_control_row_stays_fixed(self) -> None:
         service = DeckService(FakeProvider(make_snapshot(12)))
 
-        snapshot = service.snapshot(99)
+        snapshot = service.snapshot()
 
-        self.assertEqual(snapshot.page, 1)
-        self.assertEqual(snapshot.total_pages, 2)
         self.assertEqual(
-            [button.session_id for button in snapshot.buttons[:2]],
-            ["session-10", "session-11"],
+            [button.session_id for button in snapshot.buttons[:10]],
+            [f"session-{index}" for index in range(10)],
         )
-        self.assertEqual(snapshot.buttons[10].action, "previous_page")
-        self.assertEqual(snapshot.buttons[14].action, "next_page")
+        self.assertEqual(snapshot.buttons[10].action, "new_session")
+        self.assertEqual(snapshot.buttons[11].action, "focus_session")
+        self.assertEqual(snapshot.buttons[14].action, "stop_session")
 
 
 if __name__ == "__main__":

@@ -20,8 +20,6 @@ ButtonIcon = Literal[
     "repo",
     "terminal",
     "plus",
-    "arrow-left",
-    "arrow-right",
     "action",
 ]
 ButtonColor = Literal[
@@ -34,11 +32,11 @@ ButtonColor = Literal[
     "control",
 ]
 DeckAction = Literal[
-    "previous_page",
     "new_session",
+    "focus_session",
     "primary_action",
     "secondary_action",
-    "next_page",
+    "stop_session",
 ]
 
 
@@ -94,8 +92,6 @@ class DeckSnapshot:
     observed_at_ms: int
     source: str
     read_only: bool
-    page: int
-    total_pages: int
     selected_session_id: str | None
     buttons: tuple[DeckButton, ...]
 

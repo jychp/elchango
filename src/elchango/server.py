@@ -8,7 +8,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
 from elchango.deck import DeckService
 from elchango.providers.cursor import CursorProviderError
@@ -36,7 +36,7 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
             )
             return
         if parsed.path == "/api/snapshot":
-            self._serve_snapshot(parsed.query)
+            self._serve_snapshot()
             return
         if parsed.path.startswith("/api/"):
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
@@ -51,18 +51,9 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
             },
         )
 
-    def _serve_snapshot(self, query: str) -> None:
-        values = parse_qs(query)
+    def _serve_snapshot(self) -> None:
         try:
-            page = int(values.get("page", ["0"])[0])
-        except ValueError:
-            self._send_json(
-                HTTPStatus.BAD_REQUEST,
-                {"error": "page must be an integer"},
-            )
-            return
-        try:
-            snapshot = self.server.deck_service.snapshot(page)
+            snapshot = self.server.deck_service.snapshot()
         except CursorProviderError as error:
             self._send_json(
                 HTTPStatus.SERVICE_UNAVAILABLE,
