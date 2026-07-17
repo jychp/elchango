@@ -155,7 +155,7 @@ def _build_buttons(
                     icon="plus",
                     color="control",
                     selected=False,
-                    enabled=False,
+                    enabled=True,
                     confidence="observed",
                     action="new_session",
                 )
@@ -245,7 +245,7 @@ def _build_buttons(
             icon="plus",
             color="control",
             selected=False,
-            enabled=False,
+            enabled=True,
             confidence="observed",
             action="new_session",
         )

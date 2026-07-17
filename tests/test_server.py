@@ -12,6 +12,7 @@ from pathlib import Path
 from elchango.activity import ActivityStore
 from elchango.deck import DeckService
 from elchango.focus import FocusResult
+from elchango.launch import LaunchResult
 from elchango.models import AgentSession, ProviderSnapshot
 from elchango.server import DeckHTTPServer, DeckRequestHandler
 
@@ -63,6 +64,21 @@ class FakeFocusController:
         )
 
 
+class FakeLaunchController:
+    def __init__(self) -> None:
+        self.open_count = 0
+
+    def open_new(self) -> LaunchResult:
+        self.open_count += 1
+        return LaunchResult(
+            executed=True,
+            cursor_frontmost=True,
+            elapsed_ms=10,
+            verdict="NEW_AGENT_VIEW_REQUESTED",
+            message="requested",
+        )
+
+
 class DeckServerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
@@ -73,6 +89,8 @@ class DeckServerTests(unittest.TestCase):
         self.server.activity_store = ActivityStore()
         self.focus_controller = FakeFocusController()
         self.server.focus_controller = self.focus_controller
+        self.launch_controller = FakeLaunchController()
+        self.server.launch_controller = self.launch_controller
         self.server.assets = assets
         self.thread = threading.Thread(
             target=self.server.serve_forever,
@@ -238,24 +256,12 @@ class DeckServerTests(unittest.TestCase):
         self.assertEqual(next_payload["snapshot"]["page"], 2)
         self.assertEqual(previous_payload["snapshot"]["page"], 1)
 
-    def test_available_session_slot_rejects_new_until_launch_is_verified(self) -> None:
-        request = urllib.request.Request(
-            f"{self.base_url}/api/intent",
-            data=json.dumps(
-                {
-                    "button_id": "empty:1",
-                    "revision": 1,
-                }
-            ).encode(),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
+    def test_available_session_slot_requests_new_agent_view_once(self) -> None:
+        payload = self._post_intent("empty:1")
 
-        with self.assertRaises(urllib.error.HTTPError) as context:
-            urllib.request.urlopen(request, timeout=2)
-
-        self.assertEqual(context.exception.code, 409)
-        context.exception.close()
+        self.assertTrue(payload["accepted"])
+        self.assertEqual(payload["action"], "new_session")
+        self.assertEqual(self.launch_controller.open_count, 1)
 
     def test_disabled_empty_control_rejects_intent(self) -> None:
         request = urllib.request.Request(

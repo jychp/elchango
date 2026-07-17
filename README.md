@@ -5,7 +5,8 @@ elChango is a local web command deck for native AI coding agent sessions.
 The v0.1 target reproduces a Stream Deck MK.2 as a fixed 5-column by 3-row web
 surface. The first product slice reads real Cursor sessions and renders them as
 15 typed deck buttons. Session actions remain disabled until exact targeting is
-proven safe enough for the product.
+proven safe enough for the product, while New opens a blank agent view for
+manual prompt entry.
 
 ## Requirements
 
@@ -74,9 +75,10 @@ transitions. Add these fail-open user hooks to `~/.cursor/hooks.json`, replacing
 }
 ```
 
-The reporter forwards only event name, conversation ID, generation ID, and stop
-status to the loopback service. Prompt text, responses, tool data, email, and
-transcript paths are discarded. If the service is unavailable, the reporter
+The reporter forwards only event name, conversation ID, generation ID, composer
+mode, and stop status to the loopback service. Prompt text, responses, tool
+data, email, and transcript paths are discarded. If the service is unavailable,
+the reporter
 returns immediately and never blocks Cursor.
 
 ## Frontend development
@@ -108,7 +110,7 @@ npm --prefix web run build
 - Session focus uses native Cursor shortcuts and requires exact post-action
   verification.
 - Pagination intents never modify Cursor state.
-- Session launch, prompt dispatch, and agent actions remain disabled. The
-  launch POC could open a blank New Agent view but could not verify a new
-  composer ID before the first prompt.
+- New opens Cursor's blank New Agent view. It does not submit a prompt or claim
+  that a persisted composer exists before the user takes over.
+- Prompt dispatch and agent actions remain disabled.
 - Undocumented Cursor schema changes fail explicitly instead of guessing.

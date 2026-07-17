@@ -68,9 +68,7 @@ class DeckServiceTests(unittest.TestCase):
         self.assertTrue(
             all(button.kind == "empty" for button in snapshot.buttons[3:10])
         )
-        self.assertTrue(
-            all(not button.enabled for button in snapshot.buttons[3:10])
-        )
+        self.assertTrue(all(button.enabled for button in snapshot.buttons[3:10]))
         self.assertEqual(
             [button.kind for button in snapshot.buttons[10:]],
             ["control", "empty", "empty", "empty", "control"],
@@ -150,7 +148,7 @@ class DeckServiceTests(unittest.TestCase):
         self.assertEqual(snapshot.page_count, 1)
         self.assertFalse(snapshot.has_next)
         self.assertEqual(snapshot.buttons[14].action, "new_session")
-        self.assertFalse(snapshot.buttons[14].enabled)
+        self.assertTrue(snapshot.buttons[14].enabled)
 
     def test_equal_activity_dates_use_session_id_tie_breaker(self) -> None:
         provider = FakeProvider(
@@ -213,7 +211,7 @@ class DeckServiceTests(unittest.TestCase):
 
         self.assertIsNone(with_hole.buttons[1].session_id)
         self.assertEqual(with_hole.buttons[1].action, "new_session")
-        self.assertFalse(with_hole.buttons[1].enabled)
+        self.assertTrue(with_hole.buttons[1].enabled)
         self.assertEqual(
             [button.session_id for button in refreshed.buttons[:2]],
             ["session-0", "session-2"],

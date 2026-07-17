@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 from elchango.activity import ActivityStore
 from elchango.deck import DeckService
 from elchango.focus import CursorFocusController
+from elchango.launch import CursorLaunchController
 from elchango.providers.cursor import CursorProviderError
 
 
@@ -24,6 +25,7 @@ class DeckHTTPServer(ThreadingHTTPServer):
     deck_service: DeckService
     activity_store: ActivityStore
     focus_controller: CursorFocusController
+    launch_controller: CursorLaunchController
     assets: Path
 
 
@@ -40,7 +42,7 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
                 {
                     "status": "ok",
                     "focus_enabled": True,
-                    "launch_enabled": False,
+                    "launch_enabled": True,
                     "actions_enabled": False,
                 },
             )
@@ -168,6 +170,22 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
                 updated = self.server.deck_service.previous_page()
             elif target.action == "next_page":
                 updated = self.server.deck_service.next_page()
+            elif target.action == "new_session":
+                launch = self.server.launch_controller.open_new()
+                status = (
+                    HTTPStatus.OK
+                    if launch.verdict == "NEW_AGENT_VIEW_REQUESTED"
+                    else HTTPStatus.CONFLICT
+                )
+                self._send_json(
+                    status,
+                    {
+                        "accepted": status == HTTPStatus.OK,
+                        "action": target.action,
+                        "launch": launch.to_dict(),
+                    },
+                )
+                return
             else:
                 self._send_json(
                     HTTPStatus.CONFLICT,
@@ -342,6 +360,7 @@ def serve(
     service: DeckService,
     activity_store: ActivityStore,
     focus_controller: CursorFocusController,
+    launch_controller: CursorLaunchController,
     assets: Path,
     host: str,
     port: int,
@@ -352,6 +371,7 @@ def serve(
     server.deck_service = service
     server.activity_store = activity_store
     server.focus_controller = focus_controller
+    server.launch_controller = launch_controller
     server.assets = assets
     try:
         server.serve_forever(poll_interval=0.2)

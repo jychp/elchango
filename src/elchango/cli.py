@@ -11,6 +11,7 @@ from elchango.activity import ActivityStore
 from elchango.deck import DeckService
 from elchango.focus import CursorFocusController
 from elchango.hook_reporter import DEFAULT_HOOK_ENDPOINT, report_hook
+from elchango.launch import CursorLaunchController
 from elchango.providers.cursor import (
     DEFAULT_DATABASE,
     DEFAULT_WORKSPACE_STORAGE,
@@ -110,12 +111,13 @@ def main(argv: list[str] | None = None) -> int:
         database=args.database,
         workspace_storage=args.workspace_storage,
     )
+    launch_controller = CursorLaunchController()
     url = f"http://{args.host}:{args.port}/"
     print("elChango v0.1 foundation")
     print(f"Deck: {url}")
     print(f"Cursor database: {args.database}")
     print("Session focus: enabled with exact post-action verification")
-    print("Session launch: disabled until exact identity can be verified")
+    print("New Agent view: enabled; prompt submission remains manual")
     print("Agent actions: disabled")
     print("Press Ctrl-C to stop.")
     try:
@@ -123,6 +125,7 @@ def main(argv: list[str] | None = None) -> int:
             service,
             activity_store,
             focus_controller,
+            launch_controller,
             assets,
             args.host,
             args.port,
