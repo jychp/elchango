@@ -23,13 +23,13 @@ export class DeckApiClient {
     readonly clientId: string,
     private readonly endpoint = DEFAULT_ENDPOINT,
     private readonly fetcher: typeof fetch = fetch,
+    private readonly requestTimeoutMs = REQUEST_TIMEOUT_MS,
   ) {}
 
   async snapshot(): Promise<DeckSnapshot> {
     const url = new URL("/api/snapshot", this.endpoint);
     url.searchParams.set("client_id", this.clientId);
-    const response = await this.request(url, { method: "GET" });
-    return parseDeckSnapshot(await response.json());
+    return parseDeckSnapshot(await this.request(url, { method: "GET" }));
   }
 
   async activate(
@@ -37,24 +37,28 @@ export class DeckApiClient {
     revision: number,
   ): Promise<DeckActivationResponse> {
     const url = new URL("/api/activate", this.endpoint);
-    const response = await this.request(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        client_id: this.clientId,
-        button_id: buttonId,
-        revision,
+    return parseActivationResponse(
+      await this.request(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          client_id: this.clientId,
+          button_id: buttonId,
+          revision,
+        }),
       }),
-    });
-    return parseActivationResponse(await response.json());
+    );
   }
 
   private async request(
     url: URL,
     init: RequestInit,
-  ): Promise<Response> {
+  ): Promise<unknown> {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timeout = setTimeout(
+      () => controller.abort(),
+      this.requestTimeoutMs,
+    );
     try {
       const response = await this.fetcher(url, {
         ...init,
@@ -64,13 +68,14 @@ export class DeckApiClient {
         },
         signal: controller.signal,
       });
+      const body = await response.text();
       if (!response.ok) {
         throw new DeckApiError(
-          await responseError(response),
+          responseError(response.status, body),
           response.status,
         );
       }
-      return response;
+      return JSON.parse(body) as unknown;
     } catch (error) {
       if (error instanceof DeckApiError) throw error;
       if (error instanceof Error && error.name === "AbortError") {
@@ -87,9 +92,9 @@ export class DeckApiClient {
   }
 }
 
-async function responseError(response: Response): Promise<string> {
+function responseError(status: number, body: string): string {
   try {
-    const payload = (await response.json()) as unknown;
+    const payload = JSON.parse(body) as unknown;
     if (
       typeof payload === "object" &&
       payload !== null &&
@@ -101,5 +106,5 @@ async function responseError(response: Response): Promise<string> {
   } catch {
     // Fall back to the status when the response body is not JSON.
   }
-  return `elChango service returned HTTP ${response.status}`;
+  return `elChango service returned HTTP ${status}`;
 }

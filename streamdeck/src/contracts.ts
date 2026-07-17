@@ -102,6 +102,16 @@ export function parseDeckSnapshot(value: unknown): DeckSnapshot {
   if (!Array.isArray(buttons) || buttons.length !== 15) {
     throw new Error("snapshot must contain exactly 15 buttons");
   }
+  const parsedButtons = buttons.map(parseDeckButton);
+  const positions = new Set(parsedButtons.map((button) => button.position));
+  if (
+    positions.size !== 15 ||
+    parsedButtons.some((button) => button.position < 0 || button.position >= 15)
+  ) {
+    throw new Error(
+      "snapshot buttons must occupy each position from 0 through 14 exactly once",
+    );
+  }
 
   return {
     revision: integerValue(snapshot.revision, "snapshot.revision"),
@@ -122,7 +132,7 @@ export function parseDeckSnapshot(value: unknown): DeckSnapshot {
       "snapshot.has_previous",
     ),
     has_next: booleanValue(snapshot.has_next, "snapshot.has_next"),
-    buttons: buttons.map(parseDeckButton),
+    buttons: parsedButtons,
   };
 }
 

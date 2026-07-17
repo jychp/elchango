@@ -48,6 +48,24 @@ test("snapshot parser requires the full fixed deck", () => {
     () => parseDeckSnapshot({ ...snapshot(1), buttons: [] }),
     /exactly 15/,
   );
+  const duplicatePosition = snapshot(1);
+  duplicatePosition.buttons[14] = {
+    ...duplicatePosition.buttons[14]!,
+    position: 13,
+  };
+  assert.throws(
+    () => parseDeckSnapshot(duplicatePosition),
+    /each position from 0 through 14 exactly once/,
+  );
+  const outOfGridPosition = snapshot(1);
+  outOfGridPosition.buttons[14] = {
+    ...outOfGridPosition.buttons[14]!,
+    position: 15,
+  };
+  assert.throws(
+    () => parseDeckSnapshot(outOfGridPosition),
+    /each position from 0 through 14 exactly once/,
+  );
   assert.equal(parseDeckSnapshot(snapshot(1)).revision, 1);
 });
 
@@ -83,6 +101,32 @@ test("API client sends client identity and unified activation", async () => {
     button_id: "session:one",
     revision: 4,
   });
+});
+
+test("API client keeps its timeout active while reading the body", async () => {
+  const fetcher: typeof fetch = async (_input, init) => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        init?.signal?.addEventListener(
+          "abort",
+          () => controller.error(new DOMException("Aborted", "AbortError")),
+          { once: true },
+        );
+      },
+    });
+    return new Response(body, {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  const client = new DeckApiClient(
+    "streamdeck",
+    "http://127.0.0.1:8765",
+    fetcher,
+    10,
+  );
+
+  await assert.rejects(client.snapshot(), /request timed out/);
 });
 
 test("surface renders once and activates the button at its position", async () => {
