@@ -160,6 +160,71 @@ class CursorProviderTests(unittest.TestCase):
         self.assertEqual(session.state, "waiting")
         self.assertIn("plan", session.state_detail)
 
+    def test_tool_authorization_overrides_working_hook(self) -> None:
+        self._create_database()
+        self._write_composer_data(
+            {
+                "fullConversationHeadersOnly": [{"bubbleId": "bubble-1"}],
+                "hasBlockingPendingActions": True,
+                "latestChatGenerationUUID": "generation-1",
+            }
+        )
+        store = ActivityStore()
+        store.record(
+            {
+                "hook_event_name": "beforeSubmitPrompt",
+                "conversation_id": "composer-1",
+                "generation_id": "generation-1",
+            },
+            observed_at_ms=1_000,
+        )
+        provider = CursorProvider(
+            database=self.database,
+            workspace_storage=self.workspace_storage,
+            active_signal_ttl_ms=1_000,
+            clock=lambda: 1_000,
+            activity_store=store,
+        )
+
+        session = provider.snapshot().sessions[0]
+
+        self.assertEqual(session.state, "waiting")
+        self.assertEqual(session.confidence, "candidate")
+        self.assertIn("user action", session.state_detail)
+
+    def test_terminal_hook_overrides_stale_tool_authorization(self) -> None:
+        self._create_database()
+        self._write_composer_data(
+            {
+                "fullConversationHeadersOnly": [{"bubbleId": "bubble-1"}],
+                "hasBlockingPendingActions": True,
+                "latestChatGenerationUUID": "generation-1",
+            }
+        )
+        store = ActivityStore()
+        store.record(
+            {
+                "hook_event_name": "stop",
+                "conversation_id": "composer-1",
+                "generation_id": "generation-1",
+                "status": "completed",
+            },
+            observed_at_ms=1_000,
+        )
+        provider = CursorProvider(
+            database=self.database,
+            workspace_storage=self.workspace_storage,
+            active_signal_ttl_ms=1_000,
+            clock=lambda: 1_000,
+            activity_store=store,
+        )
+
+        session = provider.snapshot().sessions[0]
+
+        self.assertEqual(session.state, "done")
+        self.assertEqual(session.confidence, "observed")
+        self.assertEqual(session.state_detail, "Cursor agent completed")
+
     def test_exact_hook_conversation_id_overrides_database_state(self) -> None:
         self._create_database()
         store = ActivityStore()

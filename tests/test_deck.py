@@ -14,6 +14,14 @@ class FakeProvider:
         return self.current
 
 
+class FakeClock:
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
 def make_session(
     index: int,
     *,
@@ -65,6 +73,8 @@ class DeckServiceTests(unittest.TestCase):
         )
         self.assertTrue(snapshot.buttons[0].selected)
         self.assertTrue(snapshot.buttons[0].enabled)
+        self.assertEqual(snapshot.buttons[0].icon, "cursor")
+        self.assertEqual(snapshot.buttons[0].detail, "")
         self.assertTrue(
             all(button.kind == "empty" for button in snapshot.buttons[3:10])
         )
@@ -74,7 +84,9 @@ class DeckServiceTests(unittest.TestCase):
             ["control", "empty", "empty", "empty", "control"],
         )
         self.assertEqual(snapshot.buttons[10].action, "refresh_sessions")
+        self.assertEqual(snapshot.buttons[10].icon, "arrows-clockwise")
         self.assertEqual(snapshot.buttons[14].action, "new_session")
+        self.assertEqual(snapshot.buttons[14].icon, "plus")
 
     def test_revision_changes_only_when_provider_content_changes(self) -> None:
         provider = FakeProvider(make_snapshot(1))
@@ -250,6 +262,74 @@ class DeckServiceTests(unittest.TestCase):
         service.next_page()
         with self.assertRaisesRegex(ValueError, "last page"):
             service.next_page()
+
+    def test_clients_navigate_independent_pages_and_revisions(self) -> None:
+        service = DeckService(FakeProvider(make_snapshot(11)))
+
+        web_first = service.snapshot("web")
+        hardware_first = service.snapshot("streamdeck:serial-1")
+        hardware_second = service.next_page("streamdeck:serial-1")
+        web_second = service.snapshot("web")
+
+        self.assertEqual(web_first.page, 1)
+        self.assertEqual(web_second.page, 1)
+        self.assertEqual(hardware_first.page, 1)
+        self.assertEqual(hardware_second.page, 2)
+        self.assertEqual(web_second.revision, web_first.revision)
+        self.assertEqual(
+            hardware_second.revision,
+            hardware_first.revision + 1,
+        )
+
+    def test_client_state_expires_and_returns_to_first_page(self) -> None:
+        clock = FakeClock()
+        service = DeckService(
+            FakeProvider(make_snapshot(11)),
+            client_state_ttl_seconds=10,
+            clock=clock,
+        )
+        service.snapshot("hardware")
+        service.next_page("hardware")
+
+        clock.now = 10
+        expired = service.snapshot("hardware")
+
+        self.assertEqual(expired.page, 1)
+        self.assertEqual(expired.revision, 1)
+        self.assertEqual(service.active_client_count, 1)
+
+    def test_client_state_bound_evicts_least_recently_used_client(self) -> None:
+        clock = FakeClock()
+        service = DeckService(
+            FakeProvider(make_snapshot(11)),
+            max_client_states=2,
+            clock=clock,
+        )
+        service.snapshot("oldest")
+        service.next_page("oldest")
+        clock.now = 1
+        service.snapshot("retained")
+        clock.now = 2
+        service.snapshot("new")
+
+        recreated = service.snapshot("oldest")
+
+        self.assertEqual(recreated.page, 1)
+        self.assertEqual(recreated.revision, 1)
+        self.assertEqual(service.active_client_count, 2)
+
+    def test_client_ids_are_validated_at_every_entry_point(self) -> None:
+        service = DeckService(FakeProvider(make_snapshot(11)))
+
+        for operation in (
+            service.snapshot,
+            service.refresh,
+            service.previous_page,
+            service.next_page,
+        ):
+            with self.subTest(operation=operation.__name__):
+                with self.assertRaisesRegex(ValueError, "client_id"):
+                    operation("invalid client")
 
     def test_uncertain_and_error_states_use_four_color_model(self) -> None:
         unknown = make_session(1)

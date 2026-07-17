@@ -161,7 +161,11 @@ class CursorProvider:
                     ),
                 )
                 if hook_state is not None:
-                    state, confidence, detail = hook_state
+                    hook_session_state, hook_confidence, hook_detail = hook_state
+                    if hook_session_state in {"done", "error"} or state != "waiting":
+                        state = hook_session_state
+                        confidence = hook_confidence
+                        detail = hook_detail
             sessions.append(
                 AgentSession(
                     id=composer_id,

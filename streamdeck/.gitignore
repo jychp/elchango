@@ -1,0 +1,4 @@
+node_modules/
+*.streamDeckPlugin
+com.jychp.elchango.sdPlugin/bin/
+com.jychp.elchango.sdPlugin/logs/
