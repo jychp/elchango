@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import sqlite3
+import tempfile
 import unittest
+from pathlib import Path
 
 from elchango.focus import (
+    PINNED_COMPOSERS_KEY,
     _SidebarCandidate,
     _candidate_section,
+    _read_pinned_ids,
     _shortcut_index,
 )
+from elchango.providers.cursor import CursorProviderError
 
 
 class CursorFocusTests(unittest.TestCase):
@@ -69,6 +75,25 @@ class CursorFocusTests(unittest.TestCase):
             ),
             "workspace:workspace-1",
         )
+
+    def test_malformed_pinned_state_aborts_sidebar_targeting(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            storage = Path(temporary_directory)
+            database = storage / "empty-window" / "state.vscdb"
+            database.parent.mkdir()
+            connection = sqlite3.connect(database)
+            try:
+                connection.execute("CREATE TABLE ItemTable (key TEXT, value BLOB)")
+                connection.execute(
+                    "INSERT INTO ItemTable (key, value) VALUES (?, ?)",
+                    (PINNED_COMPOSERS_KEY, b"not-json"),
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
+            with self.assertRaisesRegex(CursorProviderError, "malformed"):
+                _read_pinned_ids(storage)
 
 
 if __name__ == "__main__":

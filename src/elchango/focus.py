@@ -407,12 +407,22 @@ def _read_pinned_ids(workspace_storage: Path) -> set[str]:
         if row is None:
             return set()
         text = _decode_text(row["value"])
-        payload = json.loads(text) if text is not None else []
-        return {
-            item for item in payload if isinstance(item, str)
-        } if isinstance(payload, list) else set()
-    except (json.JSONDecodeError, sqlite3.Error):
-        return set()
+        if text is None:
+            raise CursorProviderError("Cursor pinned-agent state is unreadable")
+        payload = json.loads(text)
+        if not isinstance(payload, list) or not all(
+            isinstance(item, str) for item in payload
+        ):
+            raise CursorProviderError("Cursor pinned-agent state is invalid")
+        return set(payload)
+    except json.JSONDecodeError as error:
+        raise CursorProviderError(
+            "Cursor pinned-agent state is malformed"
+        ) from error
+    except sqlite3.Error as error:
+        raise CursorProviderError(
+            f"Cursor pinned-agent state read failed: {error}"
+        ) from error
     finally:
         connection.close()
 

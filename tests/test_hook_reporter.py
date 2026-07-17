@@ -3,7 +3,7 @@ from __future__ import annotations
 import io
 import json
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from elchango.hook_reporter import report_hook
 
@@ -46,6 +46,14 @@ class HookReporterTests(unittest.TestCase):
         report_hook(io.StringIO("not json"), output_stream)
 
         self.assertEqual(output_stream.getvalue(), "{}\n")
+
+    def test_reporter_fails_open_when_cursor_closes_output(self) -> None:
+        output_stream = Mock()
+        output_stream.write.side_effect = BrokenPipeError
+
+        report_hook(io.StringIO("not json"), output_stream)
+
+        output_stream.write.assert_called_once_with("{}\n")
 
 
 if __name__ == "__main__":

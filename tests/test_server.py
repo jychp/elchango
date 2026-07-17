@@ -14,7 +14,7 @@ from elchango.deck import DeckService
 from elchango.focus import FocusResult
 from elchango.launch import LaunchResult
 from elchango.models import AgentSession, ProviderSnapshot
-from elchango.server import DeckHTTPServer, DeckRequestHandler
+from elchango.server import DeckHTTPServer, DeckRequestHandler, serve
 
 
 class StaticProvider:
@@ -117,6 +117,18 @@ class DeckServerTests(unittest.TestCase):
         self.assertEqual(len(payload["buttons"]), 15)
         self.assertEqual(payload["selected_session_id"], "session-1")
         self.assertEqual(response.headers["Cache-Control"], "no-store")
+
+    def test_serve_rejects_non_loopback_host(self) -> None:
+        with self.assertRaisesRegex(ValueError, "loopback"):
+            serve(
+                self.server.deck_service,
+                self.server.activity_store,
+                self.focus_controller,
+                self.launch_controller,
+                Path(self.temporary_directory.name),
+                "0.0.0.0",
+                0,
+            )
 
     def test_static_root_is_served_with_security_headers(self) -> None:
         with urllib.request.urlopen(self.base_url, timeout=2) as response:

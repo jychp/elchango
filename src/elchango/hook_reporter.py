@@ -49,4 +49,7 @@ def report_hook(
         ValueError,
     ):
         pass
-    output_stream.write("{}\n")
+    try:
+        output_stream.write("{}\n")
+    except OSError:
+        pass

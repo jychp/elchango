@@ -42,6 +42,41 @@ class CursorProviderTests(unittest.TestCase):
         self.assertEqual(session.confidence, "candidate")
         self.assertTrue(session.selected)
 
+    def test_read_connection_uses_one_snapshot_transaction(self) -> None:
+        self._create_database()
+        provider = CursorProvider(
+            database=self.database,
+            workspace_storage=self.workspace_storage,
+        )
+
+        connection = provider._connect()
+        try:
+            self.assertTrue(connection.in_transaction)
+        finally:
+            connection.close()
+
+    def test_record_purges_expired_unknown_sessions(self) -> None:
+        store = ActivityStore(ttl_ms=10)
+        store.record(
+            {
+                "hook_event_name": "beforeSubmitPrompt",
+                "conversation_id": "unknown-old",
+                "composer_mode": "plan",
+            },
+            observed_at_ms=1,
+        )
+
+        store.record(
+            {
+                "hook_event_name": "sessionStart",
+                "conversation_id": "unknown-new",
+            },
+            observed_at_ms=12,
+        )
+
+        self.assertNotIn("unknown-old", store._signals)
+        self.assertNotIn("unknown-old", store._composer_modes)
+
     def test_active_signal_expires_and_persisted_result_wins(self) -> None:
         self._create_database()
         now = [1_000]

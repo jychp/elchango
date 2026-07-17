@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import mimetypes
 import time
@@ -366,6 +367,13 @@ def serve(
     port: int,
 ) -> None:
     """Serve until interrupted."""
+
+    try:
+        loopback = host == "localhost" or ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        loopback = False
+    if not loopback:
+        raise ValueError("deck server host must be a loopback address")
 
     server = DeckHTTPServer((host, port), DeckRequestHandler)
     server.deck_service = service

@@ -103,13 +103,16 @@ def _result(
 
 
 def _activate_cursor() -> None:
-    result = subprocess.run(
-        ["open", "-a", "Cursor"],
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
+    try:
+        result = subprocess.run(
+            ["open", "-a", "Cursor"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise CursorProviderError("Cursor activation timed out") from error
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or "no output"
         raise CursorProviderError(
@@ -118,20 +121,25 @@ def _activate_cursor() -> None:
 
 
 def _frontmost_application() -> str | None:
-    result = subprocess.run(
-        [
-            "osascript",
-            "-e",
-            (
-                'tell application "System Events" to get name of first '
-                "application process whose frontmost is true"
-            ),
-        ],
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=3,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "osascript",
+                "-e",
+                (
+                    'tell application "System Events" to get name of first '
+                    "application process whose frontmost is true"
+                ),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise CursorProviderError(
+            "Cursor foreground verification timed out"
+        ) from error
     if result.returncode != 0:
         return None
     value = result.stdout.strip()

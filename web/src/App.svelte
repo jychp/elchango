@@ -47,6 +47,8 @@
       throw new Error('Snapshot response is invalid')
     }
 
+    if (snapshot && nextSnapshot.revision < snapshot.revision) return
+
     snapshot = nextSnapshot
     connectionState =
       Date.now() - nextSnapshot.observed_at_ms > STALE_AFTER_MS ? 'stale' : 'connected'

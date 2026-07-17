@@ -89,6 +89,7 @@ class CursorProvider:
         )
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA query_only=ON")
+        connection.execute("BEGIN")
         return connection
 
     @staticmethod

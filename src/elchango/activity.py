@@ -10,6 +10,7 @@ from elchango.models import SessionState, StateConfidence
 
 
 SIGNAL_TTL_MS = 60 * 60 * 1_000
+MAX_ACTIVITY_SIGNALS = 1_000
 SUPPORTED_EVENTS = {
     "sessionStart",
     "beforeSubmitPrompt",
@@ -59,6 +60,16 @@ class ActivityStore:
         if composer_mode is not None and composer_mode not in {"agent", "plan"}:
             raise ValueError(f"unsupported Cursor composer mode: {composer_mode!r}")
         with self._lock:
+            self._purge_expired_locked(observed_at_ms)
+            if (
+                session_id not in self._signals
+                and len(self._signals) >= MAX_ACTIVITY_SIGNALS
+            ):
+                oldest_session_id = min(
+                    self._signals,
+                    key=lambda candidate: self._signals[candidate].observed_at_ms,
+                )
+                self._remove_session_locked(oldest_session_id)
             if event == "beforeSubmitPrompt":
                 if isinstance(composer_mode, str):
                     self._composer_modes[session_id] = composer_mode
@@ -95,7 +106,7 @@ class ActivityStore:
             if signal is None:
                 return None
             if observed_at_ms - signal.observed_at_ms > self._ttl_ms:
-                del self._signals[session_id]
+                self._remove_session_locked(session_id)
                 return None
             if (
                 signal.state in {"done", "waiting"}
@@ -136,6 +147,20 @@ class ActivityStore:
 
         with self._lock:
             self._acknowledged_at_ms[session_id] = observed_at_ms
+
+    def _purge_expired_locked(self, observed_at_ms: int) -> None:
+        expired = [
+            session_id
+            for session_id, signal in self._signals.items()
+            if observed_at_ms - signal.observed_at_ms > self._ttl_ms
+        ]
+        for session_id in expired:
+            self._remove_session_locked(session_id)
+
+    def _remove_session_locked(self, session_id: str) -> None:
+        self._signals.pop(session_id, None)
+        self._composer_modes.pop(session_id, None)
+        self._acknowledged_at_ms.pop(session_id, None)
 
 
 def _event_state(
