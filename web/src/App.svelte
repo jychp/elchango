@@ -12,6 +12,8 @@
   let snapshot = $state.raw<DeckSnapshot | null>(null)
   let connectionState = $state<ConnectionState>('connecting')
   let errorMessage = $state('')
+  let pendingSessionId = $state<string | null>(null)
+  let focusError = $state('')
 
   const slots = $derived.by((): Array<DeckButton | null> => {
     const positionOffset = snapshot?.buttons.some((button) => button.position === 0) ? 0 : 1
@@ -32,6 +34,62 @@
           ? 'Stale'
           : 'Connection error',
   )
+
+  async function responseErrorMessage(response: Response): Promise<string> {
+    try {
+      const body = (await response.json()) as unknown
+
+      if (body && typeof body === 'object') {
+        const { error, message } = body as Record<string, unknown>
+
+        if (typeof error === 'string' && error.trim()) return error
+        if (typeof message === 'string' && message.trim()) return message
+      }
+    } catch {
+      // Use the status fallback when the response body is not JSON.
+    }
+
+    return `Focus request failed (${response.status})`
+  }
+
+  async function focusSession(button: DeckButton | null): Promise<void> {
+    const currentSnapshot = snapshot
+
+    if (
+      pendingSessionId !== null ||
+      !currentSnapshot ||
+      button?.kind !== 'session' ||
+      !button.enabled ||
+      typeof button.session_id !== 'string' ||
+      !button.session_id
+    ) {
+      return
+    }
+
+    pendingSessionId = button.session_id
+    focusError = ''
+
+    try {
+      const response = await fetch('/api/focus', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: button.session_id,
+          revision: currentSnapshot.revision,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(await responseErrorMessage(response))
+      }
+
+      focusError = ''
+    } catch (error) {
+      focusError = error instanceof Error ? error.message : 'Focus request failed'
+    } finally {
+      pendingSessionId = null
+    }
+  }
 
   onMount(() => {
     let stopped = false
@@ -109,12 +167,21 @@
 
     <div class="deck-grid" aria-label="Stream Deck keys">
       {#each slots as button, index (`slot-${index}`)}
-        <DeckKey {button} slot={index} />
+        <DeckKey
+          {button}
+          slot={index}
+          busy={pendingSessionId !== null && pendingSessionId === button?.session_id}
+          onactivate={() => void focusSession(button)}
+        />
       {/each}
     </div>
 
     {#if connectionState === 'error'}
       <p class="instrument__error" role="status">{errorMessage}</p>
+    {/if}
+
+    {#if focusError}
+      <p class="instrument__error" role="status">{focusError}</p>
     {/if}
   </section>
 </main>

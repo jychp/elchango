@@ -52,6 +52,11 @@ class CursorProvider:
         try:
             self._validate_schema(connection)
             selected_id = self._read_selected_id(connection)
+            if self.activity_store is not None:
+                self.activity_store.observe_selection(
+                    selected_id,
+                    observed_at_ms,
+                )
             workspace_paths = self._load_workspace_paths()
             memberships = self._read_item_object(connection, MEMBERSHIP_KEY)
             sessions = self._read_sessions(
@@ -214,17 +219,17 @@ class CursorProvider:
             return "idle", "persisted", "stale generation signal ignored"
         if tool == "completed":
             detail = (
-                "tool completed successfully"
+                "last tool completed successfully"
                 if result == "success"
-                else "tool completed"
+                else "last tool completed"
             )
-            return "done", "persisted", detail
+            return "idle", "persisted", detail
 
         raw_status = _string_or_none(data.get("status"))
         if raw_status in {"error", "failed"}:
             return "error", "persisted", f"composer {raw_status}"
         if raw_status == "completed":
-            return "done", "persisted", "last turn completed"
+            return "idle", "persisted", "last turn completed"
         if raw_status == "aborted":
             return "idle", "persisted", "last turn aborted"
         if raw_status in {"generating", "running", "pending"}:

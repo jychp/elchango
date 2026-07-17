@@ -5,15 +5,25 @@
   interface Props {
     button: DeckButton | null
     slot: number
+    busy?: boolean
+    onactivate?: () => void
   }
 
-  let { button, slot }: Props = $props()
+  let { button, slot, busy = false, onactivate }: Props = $props()
 
   const accessibleName = $derived(
     button
       ? [button.label, button.detail].filter(Boolean).join(', ') || `Empty key ${slot + 1}`
       : `Unavailable key ${slot + 1}`,
   )
+
+  const actionable = $derived(
+    button?.kind === 'session' && button.enabled && onactivate !== undefined,
+  )
+
+  function handleActivate(): void {
+    if (actionable) onactivate?.()
+  }
 </script>
 
 <button
@@ -24,12 +34,15 @@
     button?.selected && 'deck-key--selected',
     !button && 'deck-key--vacant',
     (!button || !button.enabled) && 'deck-key--disabled',
+    actionable && 'deck-key--actionable',
   ]}
   aria-disabled={!button || !button.enabled}
+  aria-busy={busy || undefined}
   aria-label={accessibleName}
   aria-pressed={button?.kind === 'session' ? button.selected : undefined}
   data-confidence={button?.confidence}
   data-disabled={!button || !button.enabled}
+  onclick={handleActivate}
 >
   {#if button}
     <span class="deck-key__topline">
@@ -81,6 +94,17 @@
 
   .deck-key--disabled {
     opacity: 0.54;
+  }
+
+  .deck-key--actionable {
+    cursor: pointer;
+  }
+
+  .deck-key--actionable:active {
+    transform: translateY(1px);
+    box-shadow:
+      inset 0 0 0 2px #0e1012,
+      0 1px 0 #050607;
   }
 
   .deck-key--selected {

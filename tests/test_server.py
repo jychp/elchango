@@ -11,6 +11,7 @@ from pathlib import Path
 
 from elchango.activity import ActivityStore
 from elchango.deck import DeckService
+from elchango.focus import FocusResult
 from elchango.models import AgentSession, ProviderSnapshot
 from elchango.server import DeckHTTPServer, DeckRequestHandler
 
@@ -36,6 +37,26 @@ class StaticProvider:
         )
 
 
+class FakeFocusController:
+    def __init__(self) -> None:
+        self.focused_session_id: str | None = None
+
+    def focus(self, session_id: str) -> FocusResult:
+        self.focused_session_id = session_id
+        return FocusResult(
+            session_id=session_id,
+            selected_before="other-session",
+            selected_after=session_id,
+            strategy="sidebar_shortcut",
+            shortcut_index=1,
+            executed=True,
+            cursor_frontmost=True,
+            elapsed_ms=10,
+            verdict="FOCUS_VERIFIED",
+            message="verified",
+        )
+
+
 class DeckServerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
@@ -44,6 +65,8 @@ class DeckServerTests(unittest.TestCase):
         self.server = DeckHTTPServer(("127.0.0.1", 0), DeckRequestHandler)
         self.server.deck_service = DeckService(StaticProvider())
         self.server.activity_store = ActivityStore()
+        self.focus_controller = FakeFocusController()
+        self.server.focus_controller = self.focus_controller
         self.server.assets = assets
         self.thread = threading.Thread(
             target=self.server.serve_forever,
@@ -122,6 +145,61 @@ class DeckServerTests(unittest.TestCase):
         )
         self.assertIsNotNone(state)
         self.assertEqual(state[0], "working")
+
+    def test_focus_endpoint_verifies_current_session_button(self) -> None:
+        now = time.time_ns() // 1_000_000
+        self.server.activity_store.record(
+            {
+                "hook_event_name": "stop",
+                "conversation_id": "session-1",
+                "status": "completed",
+            },
+            observed_at_ms=now,
+        )
+        request = urllib.request.Request(
+            f"{self.base_url}/api/focus",
+            data=json.dumps(
+                {
+                    "session_id": "session-1",
+                    "revision": 1,
+                }
+            ).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        with urllib.request.urlopen(request, timeout=2) as response:
+            payload = json.load(response)
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(payload["verdict"], "FOCUS_VERIFIED")
+        self.assertEqual(self.focus_controller.focused_session_id, "session-1")
+        state = self.server.activity_store.state_for(
+            "session-1",
+            observed_at_ms=now + 1,
+        )
+        self.assertIsNotNone(state)
+        self.assertEqual(state[0], "idle")
+
+    def test_focus_endpoint_accepts_stale_revision_when_session_remains(self) -> None:
+        request = urllib.request.Request(
+            f"{self.base_url}/api/focus",
+            data=json.dumps(
+                {
+                    "session_id": "session-1",
+                    "revision": 0,
+                }
+            ).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        with urllib.request.urlopen(request, timeout=2) as response:
+            payload = json.load(response)
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(payload["verdict"], "FOCUS_VERIFIED")
+        self.assertEqual(self.focus_controller.focused_session_id, "session-1")
 
 
 if __name__ == "__main__":

@@ -19,7 +19,6 @@ export type DeckButtonConfidence = 'observed' | 'candidate' | 'persisted' | 'unk
 
 export type DeckAction =
   | 'new_session'
-  | 'focus_session'
   | 'stop_session'
   | 'primary_action'
   | 'secondary_action'

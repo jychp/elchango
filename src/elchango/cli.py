@@ -9,6 +9,7 @@ from pathlib import Path
 
 from elchango.activity import ActivityStore
 from elchango.deck import DeckService
+from elchango.focus import CursorFocusController
 from elchango.hook_reporter import DEFAULT_HOOK_ENDPOINT, report_hook
 from elchango.providers.cursor import (
     DEFAULT_DATABASE,
@@ -105,14 +106,23 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     service = DeckService(provider)
+    focus_controller = CursorFocusController(database=args.database)
     url = f"http://{args.host}:{args.port}/"
     print("elChango v0.1 foundation")
     print(f"Deck: {url}")
     print(f"Cursor database: {args.database}")
-    print("Actions: disabled")
+    print("Session focus: enabled with exact post-action verification")
+    print("Agent actions: disabled")
     print("Press Ctrl-C to stop.")
     try:
-        serve(service, activity_store, assets, args.host, args.port)
+        serve(
+            service,
+            activity_store,
+            focus_controller,
+            assets,
+            args.host,
+            args.port,
+        )
     except KeyboardInterrupt:
         print("\nStopped.")
     return 0

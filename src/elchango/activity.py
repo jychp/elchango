@@ -36,6 +36,9 @@ class ActivityStore:
     def __init__(self, ttl_ms: int = SIGNAL_TTL_MS) -> None:
         self._ttl_ms = ttl_ms
         self._signals: dict[str, ActivitySignal] = {}
+        self._acknowledged_at_ms: dict[str, int] = {}
+        self._selected_session_id: str | None = None
+        self._selection_initialized = False
         self._lock = threading.Lock()
 
     def record(self, payload: dict[str, Any], observed_at_ms: int) -> ActivitySignal:
@@ -71,7 +74,38 @@ class ActivityStore:
             if observed_at_ms - signal.observed_at_ms > self._ttl_ms:
                 del self._signals[session_id]
                 return None
+            acknowledged_at_ms = self._acknowledged_at_ms.get(session_id)
+            if (
+                signal.state == "done"
+                and acknowledged_at_ms is not None
+                and acknowledged_at_ms >= signal.observed_at_ms
+            ):
+                return "idle", "observed", "completion acknowledged by focus"
         return signal.state, signal.confidence, signal.detail
+
+    def observe_selection(
+        self,
+        session_id: str | None,
+        observed_at_ms: int,
+    ) -> None:
+        """Acknowledge completion only when selection changes after startup."""
+
+        with self._lock:
+            if not self._selection_initialized:
+                self._selected_session_id = session_id
+                self._selection_initialized = True
+                return
+            if session_id == self._selected_session_id:
+                return
+            self._selected_session_id = session_id
+            if session_id is not None:
+                self._acknowledged_at_ms[session_id] = observed_at_ms
+
+    def acknowledge(self, session_id: str, observed_at_ms: int) -> None:
+        """Acknowledge one completed session after an explicit deck focus."""
+
+        with self._lock:
+            self._acknowledged_at_ms[session_id] = observed_at_ms
 
 
 def _event_state(

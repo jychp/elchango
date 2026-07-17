@@ -33,7 +33,6 @@ ButtonColor = Literal[
 ]
 DeckAction = Literal[
     "new_session",
-    "focus_session",
     "primary_action",
     "secondary_action",
     "stop_session",

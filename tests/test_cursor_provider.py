@@ -67,7 +67,7 @@ class CursorProviderTests(unittest.TestCase):
             }
         )
         completed = provider.snapshot().sessions[0]
-        self.assertEqual(completed.state, "done")
+        self.assertEqual(completed.state, "idle")
         self.assertEqual(completed.confidence, "persisted")
 
         self._write_bubble(
@@ -116,6 +116,51 @@ class CursorProviderTests(unittest.TestCase):
         done = provider.snapshot().sessions[0]
         self.assertEqual(done.state, "done")
         self.assertEqual(done.confidence, "observed")
+
+        now[0] += 100
+        store.acknowledge("composer-1", observed_at_ms=now[0])
+        acknowledged = provider.snapshot().sessions[0]
+        self.assertEqual(acknowledged.state, "idle")
+        self.assertEqual(
+            acknowledged.state_detail,
+            "completion acknowledged by focus",
+        )
+
+    def test_existing_selection_does_not_acknowledge_new_completion(self) -> None:
+        store = ActivityStore()
+        store.observe_selection("composer-1", observed_at_ms=100)
+        store.record(
+            {
+                "hook_event_name": "stop",
+                "conversation_id": "composer-1",
+                "status": "completed",
+            },
+            observed_at_ms=200,
+        )
+
+        store.observe_selection("composer-1", observed_at_ms=300)
+
+        state = store.state_for("composer-1", observed_at_ms=300)
+        self.assertIsNotNone(state)
+        self.assertEqual(state[0], "done")
+
+    def test_selection_change_after_completion_acknowledges_it(self) -> None:
+        store = ActivityStore()
+        store.observe_selection("composer-2", observed_at_ms=100)
+        store.record(
+            {
+                "hook_event_name": "stop",
+                "conversation_id": "composer-1",
+                "status": "completed",
+            },
+            observed_at_ms=200,
+        )
+
+        store.observe_selection("composer-1", observed_at_ms=300)
+
+        state = store.state_for("composer-1", observed_at_ms=300)
+        self.assertIsNotNone(state)
+        self.assertEqual(state[0], "idle")
 
     def test_snapshot_rejects_unknown_schema(self) -> None:
         sqlite3.connect(self.database).close()

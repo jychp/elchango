@@ -55,11 +55,13 @@ class DeckServiceTests(unittest.TestCase):
             ["session", "session", "session"],
         )
         self.assertTrue(snapshot.buttons[0].selected)
+        self.assertTrue(snapshot.buttons[0].enabled)
         self.assertTrue(
             all(button.kind == "empty" for button in snapshot.buttons[3:10])
         )
-        self.assertTrue(
-            all(button.kind == "control" for button in snapshot.buttons[10:])
+        self.assertEqual(
+            [button.kind for button in snapshot.buttons[10:]],
+            ["control", "empty", "control", "control", "control"],
         )
 
     def test_revision_changes_only_when_provider_content_changes(self) -> None:
@@ -112,7 +114,8 @@ class DeckServiceTests(unittest.TestCase):
             [f"session-{index}" for index in range(10)],
         )
         self.assertEqual(snapshot.buttons[10].action, "new_session")
-        self.assertEqual(snapshot.buttons[11].action, "focus_session")
+        self.assertEqual(snapshot.buttons[11].kind, "empty")
+        self.assertFalse(snapshot.buttons[11].enabled)
         self.assertEqual(snapshot.buttons[14].action, "stop_session")
 
     def test_selected_session_replaces_oldest_hidden_slot(self) -> None:
