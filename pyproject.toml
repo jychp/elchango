@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "elchango"
-version = "0.1.0.dev0"
-description = "A local web command deck for native AI coding agent sessions."
+version = "0.2.0.dev0"
+description = "Local web and Stream Deck surfaces for native AI coding agent sessions."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"

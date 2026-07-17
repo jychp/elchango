@@ -1,0 +1,55 @@
+{
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+  "UUID": "com.jychp.elchango",
+  "Name": "elChango",
+  "Version": "0.2.0.0",
+  "Author": "elChango contributors",
+  "Description": "Monitor and control local Cursor agent sessions.",
+  "Category": "elChango",
+  "CategoryIcon": "static/imgs/plugin/category-icon",
+  "Icon": "static/imgs/plugin/marketplace",
+  "CodePath": "bin/plugin.js",
+  "SDKVersion": 2,
+  "Software": {
+    "MinimumVersion": "7.1"
+  },
+  "Nodejs": {
+    "Version": "24",
+    "Debug": "enabled"
+  },
+  "OS": [
+    {
+      "Platform": "mac",
+      "MinimumVersion": "13"
+    }
+  ],
+  "Profiles": [
+    {
+      "Name": "elchango-mk2",
+      "DeviceType": 0,
+      "Readonly": false,
+      "DontAutoSwitchWhenInstalled": false,
+      "AutoInstall": true
+    }
+  ],
+  "Actions": [
+    {
+      "UUID": "com.jychp.elchango.key",
+      "Name": "Deck Key",
+      "Tooltip": "Mirrors one elChango deck position.",
+      "Icon": "static/imgs/actions/key/icon",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "static/imgs/actions/key/default",
+          "TitleAlignment": "middle",
+          "ShowTitle": false
+        }
+      ],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": false
+    }
+  ]
+}

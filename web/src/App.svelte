@@ -1,10 +1,17 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import elChangoLogo from './assets/elchango-logo.png'
   import DeckKey from './lib/DeckKey.svelte'
-  import type { DeckButton, DeckIntentResponse, DeckSnapshot } from './lib/contracts'
+  import type {
+    DeckActivateRequest,
+    DeckActivateResponse,
+    DeckButton,
+    DeckSnapshot,
+  } from './lib/contracts'
 
   type ConnectionState = 'connecting' | 'connected' | 'stale' | 'error'
 
+  const WEB_CLIENT_ID = 'web'
   const POLL_INTERVAL_MS = 1_000
   const STALE_AFTER_MS = 3_000
   const SLOT_COUNT = 15
@@ -88,40 +95,23 @@
     deckActionError = ''
 
     try {
-      let response: Response
-
-      if (button.kind === 'session') {
-        if (typeof button.session_id !== 'string' || !button.session_id) {
-          throw new Error('Session button is missing its session identifier')
-        }
-
-        response = await fetch('/api/focus', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            session_id: button.session_id,
-            revision: currentSnapshot.revision,
-          }),
-        })
-      } else {
-        response = await fetch('/api/intent', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            button_id: button.id,
-            revision: currentSnapshot.revision,
-          }),
-        })
+      const request: DeckActivateRequest = {
+        client_id: WEB_CLIENT_ID,
+        button_id: button.id,
+        revision: currentSnapshot.revision,
       }
+      const response = await fetch('/api/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      })
 
       if (!response.ok) {
         throw new Error(await responseErrorMessage(response))
       }
 
-      if (button.kind !== 'session') {
-        const intent = (await response.json()) as DeckIntentResponse
-        if (intent.snapshot !== undefined) installSnapshot(intent.snapshot)
-      }
+      const result = (await response.json()) as DeckActivateResponse
+      if (result.snapshot !== undefined) installSnapshot(result.snapshot)
 
       deckActionError = ''
     } catch (error) {
@@ -140,10 +130,13 @@
       activeRequest = new AbortController()
 
       try {
-        const response = await fetch('/api/snapshot', {
-          headers: { Accept: 'application/json' },
-          signal: activeRequest.signal,
-        })
+        const response = await fetch(
+          `/api/snapshot?client_id=${encodeURIComponent(WEB_CLIENT_ID)}`,
+          {
+            headers: { Accept: 'application/json' },
+            signal: activeRequest.signal,
+          },
+        )
 
         if (!response.ok) {
           throw new Error(`Snapshot request failed (${response.status})`)
@@ -185,12 +178,11 @@
 </svelte:head>
 
 <main>
+  <img class="project-logo" src={elChangoLogo} alt="elChango monkey logo" />
+
   <section class="instrument" aria-labelledby="deck-title">
     <header class="instrument__header">
-      <div>
-        <p class="eyebrow">Local agent surface</p>
-        <h1 id="deck-title">elChango</h1>
-      </div>
+      <h1 id="deck-title"><span aria-hidden="true">🐒</span> elChango</h1>
 
       <div class="connection" aria-live="polite">
         <span class={['connection__light', `connection__light--${connectionState}`]}></span>
@@ -223,8 +215,16 @@
   main {
     display: grid;
     min-height: 100svh;
-    place-items: center;
+    align-content: center;
+    justify-items: center;
     padding: clamp(1rem, 4vw, 3rem);
+  }
+
+  .project-logo {
+    display: block;
+    width: clamp(8rem, 20vw, 13rem);
+    height: auto;
+    margin-bottom: clamp(1.25rem, 3vw, 2.25rem);
   }
 
   .instrument {
@@ -245,15 +245,6 @@
     justify-content: space-between;
     gap: 1rem;
     margin-bottom: clamp(0.8rem, 2vw, 1.3rem);
-  }
-
-  .eyebrow {
-    margin: 0 0 0.15rem;
-    color: #78818a;
-    font-family: var(--font-mono);
-    font-size: 0.65rem;
-    letter-spacing: 0.13em;
-    text-transform: uppercase;
   }
 
   h1 {

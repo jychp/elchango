@@ -1,12 +1,16 @@
 # elChango
 
-elChango is a local web command deck for native AI coding agent sessions.
+<p align="center">
+  <img src="docs/assets/elchango-logo.png" alt="elChango cybernetic monkey logo" width="320">
+</p>
 
-The v0.1 target reproduces a Stream Deck MK.2 as a fixed 5-column by 3-row web
-surface. The first product slice reads real Cursor sessions and renders them as
-15 typed deck buttons. Session actions remain disabled until exact targeting is
-proven safe enough for the product, while New opens a blank agent view for
-manual prompt entry.
+elChango is a local web and Stream Deck command surface for native AI coding
+agent sessions.
+
+The v0.2 product reads real Cursor sessions and renders the same fixed 5-column
+by 3-row deck in a browser and on Stream Deck MK.2 hardware. Both surfaces show
+live state, focus sessions with exact post-action verification, paginate
+independently, and open a blank New Agent view for manual prompt entry.
 
 ## Requirements
 
@@ -14,6 +18,7 @@ manual prompt entry.
 - Python 3.11 or newer
 - Node.js and npm
 - Cursor with at least one local agent session
+- Stream Deck 7.1 or newer for the hardware surface
 
 ## Build and run
 
@@ -31,6 +36,30 @@ Open <http://127.0.0.1:8765/>.
 The production command serves both the compiled Svelte application and the
 Cursor-backed loopback API from one process. All SQLite access remains
 read-only.
+
+## Stream Deck MK.2
+
+Build, validate, and package the official Elgato plugin:
+
+```bash
+npm --prefix streamdeck install
+npm --prefix streamdeck run check
+npm --prefix streamdeck run pack
+```
+
+Double-click `streamdeck/com.jychp.elchango.streamDeckPlugin` and accept the
+bundled `elChango` MK.2 profile. Start `chango serve` normally, or use
+`chango serve --api-only` when only the hardware surface is needed.
+
+For plugin development:
+
+```bash
+npm --prefix streamdeck run link
+npm --prefix streamdeck run watch
+```
+
+See [streamdeck/README.md](streamdeck/README.md) for runtime and uninstall
+details.
 
 ## Live Cursor activity
 
@@ -99,6 +128,8 @@ Vite proxies `/api` to the local service.
 PYTHONPATH=src python -m unittest discover -s tests
 npm --prefix web run check
 npm --prefix web run build
+npm --prefix streamdeck run check
+npm --prefix streamdeck run validate
 ```
 
 ## Current safety boundary

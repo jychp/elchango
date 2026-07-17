@@ -10,10 +10,10 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from elchango.activity import ActivityStore
-from elchango.deck import DeckService
+from elchango.deck import DEFAULT_CLIENT_ID, DeckService, validate_client_id
 from elchango.focus import CursorFocusController
 from elchango.launch import CursorLaunchController
 from elchango.providers.cursor import CursorProviderError
@@ -28,6 +28,7 @@ class DeckHTTPServer(ThreadingHTTPServer):
     focus_controller: CursorFocusController
     launch_controller: CursorLaunchController
     assets: Path
+    api_only: bool = False
 
 
 class DeckRequestHandler(BaseHTTPRequestHandler):
@@ -49,7 +50,7 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
             )
             return
         if parsed.path == "/api/snapshot":
-            self._serve_snapshot()
+            self._serve_snapshot(parsed.query)
             return
         if parsed.path.startswith("/api/"):
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
@@ -65,6 +66,9 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
             return
         if urlparse(self.path).path == "/api/intent":
             self._activate_intent()
+            return
+        if urlparse(self.path).path == "/api/activate":
+            self._activate_button()
             return
         self._send_json(
             HTTPStatus.METHOD_NOT_ALLOWED,
@@ -92,7 +96,7 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
             )
             return
         try:
-            snapshot = self.server.deck_service.snapshot()
+            snapshot = self.server.deck_service.snapshot(DEFAULT_CLIENT_ID)
             target = next(
                 (
                     button
@@ -132,6 +136,18 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
         payload = self._read_json_payload(max_bytes=4_096)
         if payload is None:
             return
+        self._activate_control(payload, DEFAULT_CLIENT_ID)
+
+    def _activate_button(self) -> None:
+        payload = self._read_json_payload(max_bytes=4_096)
+        if payload is None:
+            return
+        client_id = payload.get("client_id")
+        try:
+            client_id = validate_client_id(client_id)
+        except ValueError as error:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+            return
         button_id = payload.get("button_id")
         revision = payload.get("revision")
         if not isinstance(button_id, str) or not button_id:
@@ -147,7 +163,80 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
             )
             return
         try:
-            snapshot = self.server.deck_service.snapshot()
+            snapshot = self.server.deck_service.snapshot(client_id)
+            target = next(
+                (
+                    button
+                    for button in snapshot.buttons
+                    if button.id == button_id and button.enabled
+                ),
+                None,
+            )
+            if target is None:
+                self._send_json(
+                    HTTPStatus.CONFLICT,
+                    {"error": "button is not actionable in the current snapshot"},
+                )
+                return
+            if target.kind == "session" and target.session_id is not None:
+                result = self.server.focus_controller.focus(target.session_id)
+                if result.verdict == "FOCUS_VERIFIED":
+                    self.server.activity_store.acknowledge(
+                        target.session_id,
+                        time.time_ns() // 1_000_000,
+                    )
+                status = (
+                    HTTPStatus.OK
+                    if result.verdict == "FOCUS_VERIFIED"
+                    else HTTPStatus.CONFLICT
+                )
+                self._send_json(
+                    status,
+                    {
+                        "accepted": status == HTTPStatus.OK,
+                        "action": "focus_session",
+                        "focus": result.to_dict(),
+                    },
+                )
+                return
+            if (
+                target.kind not in {"control", "empty"}
+                or target.action is None
+            ):
+                self._send_json(
+                    HTTPStatus.CONFLICT,
+                    {"error": "button is not actionable in the current snapshot"},
+                )
+                return
+            self._dispatch_control(target.action, client_id)
+        except (CursorProviderError, RuntimeError) as error:
+            self._send_json(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                {"error": str(error), "retryable": True},
+            )
+            return
+
+    def _activate_control(
+        self,
+        payload: dict[str, Any],
+        client_id: str,
+    ) -> None:
+        button_id = payload.get("button_id")
+        revision = payload.get("revision")
+        if not isinstance(button_id, str) or not button_id:
+            self._send_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "button_id must be a non-empty string"},
+            )
+            return
+        if isinstance(revision, bool) or not isinstance(revision, int):
+            self._send_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "revision must be an integer"},
+            )
+            return
+        try:
+            snapshot = self.server.deck_service.snapshot(client_id)
             target = next(
                 (
                     button
@@ -165,13 +254,23 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
                     {"error": "button is not actionable in the current snapshot"},
                 )
                 return
-            if target.action == "refresh_sessions":
-                updated = self.server.deck_service.refresh()
-            elif target.action == "previous_page":
-                updated = self.server.deck_service.previous_page()
-            elif target.action == "next_page":
-                updated = self.server.deck_service.next_page()
-            elif target.action == "new_session":
+            self._dispatch_control(target.action, client_id)
+        except (CursorProviderError, RuntimeError) as error:
+            self._send_json(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                {"error": str(error), "retryable": True},
+            )
+            return
+
+    def _dispatch_control(self, action: str, client_id: str) -> None:
+        try:
+            if action == "refresh_sessions":
+                updated = self.server.deck_service.refresh(client_id)
+            elif action == "previous_page":
+                updated = self.server.deck_service.previous_page(client_id)
+            elif action == "next_page":
+                updated = self.server.deck_service.next_page(client_id)
+            elif action == "new_session":
                 launch = self.server.launch_controller.open_new()
                 status = (
                     HTTPStatus.OK
@@ -182,7 +281,7 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
                     status,
                     {
                         "accepted": status == HTTPStatus.OK,
-                        "action": target.action,
+                        "action": action,
                         "launch": launch.to_dict(),
                     },
                 )
@@ -190,7 +289,7 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
             else:
                 self._send_json(
                     HTTPStatus.CONFLICT,
-                    {"error": f"unsupported deck action: {target.action}"},
+                    {"error": f"unsupported deck action: {action}"},
                 )
                 return
         except (CursorProviderError, RuntimeError) as error:
@@ -206,7 +305,7 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
             HTTPStatus.OK,
             {
                 "accepted": True,
-                "action": target.action,
+                "action": action,
                 "snapshot": updated.to_dict(),
             },
         )
@@ -264,9 +363,21 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
             {"accepted": True, "session_id": signal.session_id},
         )
 
-    def _serve_snapshot(self) -> None:
+    def _serve_snapshot(self, query: str) -> None:
+        parameters = parse_qs(query, keep_blank_values=True)
+        client_ids = parameters.get("client_id", [DEFAULT_CLIENT_ID])
+        if len(client_ids) != 1:
+            self._send_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "client_id must be specified at most once"},
+            )
+            return
         try:
-            snapshot = self.server.deck_service.snapshot()
+            client_id = validate_client_id(client_ids[0])
+            snapshot = self.server.deck_service.snapshot(client_id)
+        except ValueError as error:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+            return
         except CursorProviderError as error:
             self._send_json(
                 HTTPStatus.SERVICE_UNAVAILABLE,
@@ -282,6 +393,12 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
         self._send_json(HTTPStatus.OK, snapshot.to_dict())
 
     def _serve_asset(self, request_path: str) -> None:
+        if self.server.api_only:
+            self._send_json(
+                HTTPStatus.NOT_FOUND,
+                {"error": "web assets are disabled in API-only mode"},
+            )
+            return
         relative_path = request_path.lstrip("/") or "index.html"
         assets = self.server.assets.resolve()
         candidate = (assets / relative_path).resolve()
@@ -365,6 +482,7 @@ def serve(
     assets: Path,
     host: str,
     port: int,
+    api_only: bool = False,
 ) -> None:
     """Serve until interrupted."""
 
@@ -381,6 +499,7 @@ def serve(
     server.focus_controller = focus_controller
     server.launch_controller = launch_controller
     server.assets = assets
+    server.api_only = api_only
     try:
         server.serve_forever(poll_interval=0.2)
     finally:

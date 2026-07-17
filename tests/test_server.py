@@ -6,6 +6,7 @@ import threading
 import time
 import unittest
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -92,6 +93,7 @@ class DeckServerTests(unittest.TestCase):
         self.launch_controller = FakeLaunchController()
         self.server.launch_controller = self.launch_controller
         self.server.assets = assets
+        self.server.api_only = False
         self.thread = threading.Thread(
             target=self.server.serve_forever,
             kwargs={"poll_interval": 0.01},
@@ -117,6 +119,37 @@ class DeckServerTests(unittest.TestCase):
         self.assertEqual(len(payload["buttons"]), 15)
         self.assertEqual(payload["selected_session_id"], "session-1")
         self.assertEqual(response.headers["Cache-Control"], "no-store")
+
+    def test_snapshot_clients_keep_independent_pages(self) -> None:
+        self.server.deck_service = DeckService(StaticProvider(count=11))
+
+        activated = self._post_activate(
+            "streamdeck:serial-1",
+            "control:next",
+        )
+        hardware = self._get_snapshot("streamdeck:serial-1")
+        web = self._get_snapshot("web")
+
+        self.assertEqual(activated["snapshot"]["page"], 2)
+        self.assertEqual(hardware["page"], 2)
+        self.assertEqual(web["page"], 1)
+        previous = self._post_activate(
+            "streamdeck:serial-1",
+            "control:previous",
+        )
+        self.assertEqual(previous["snapshot"]["page"], 1)
+
+    def test_snapshot_rejects_invalid_client_ids(self) -> None:
+        for client_id in ("", "has space", "é", "x" * 129):
+            with self.subTest(client_id=client_id):
+                encoded = urllib.parse.urlencode({"client_id": client_id})
+                with self.assertRaises(urllib.error.HTTPError) as context:
+                    urllib.request.urlopen(
+                        f"{self.base_url}/api/snapshot?{encoded}",
+                        timeout=2,
+                    )
+                self.assertEqual(context.exception.code, 400)
+                context.exception.close()
 
     def test_serve_rejects_non_loopback_host(self) -> None:
         with self.assertRaisesRegex(ValueError, "loopback"):
@@ -275,6 +308,82 @@ class DeckServerTests(unittest.TestCase):
         self.assertEqual(payload["action"], "new_session")
         self.assertEqual(self.launch_controller.open_count, 1)
 
+    def test_unified_activate_focuses_session_and_acknowledges_completion(
+        self,
+    ) -> None:
+        now = time.time_ns() // 1_000_000
+        self.server.activity_store.record(
+            {
+                "hook_event_name": "stop",
+                "conversation_id": "session-1",
+                "status": "completed",
+            },
+            observed_at_ms=now,
+        )
+
+        payload = self._post_activate("hardware", "session:session-1")
+
+        self.assertTrue(payload["accepted"])
+        self.assertEqual(payload["action"], "focus_session")
+        self.assertEqual(payload["focus"]["verdict"], "FOCUS_VERIFIED")
+        self.assertEqual(self.focus_controller.focused_session_id, "session-1")
+        state = self.server.activity_store.state_for(
+            "session-1",
+            observed_at_ms=now + 1,
+        )
+        self.assertIsNotNone(state)
+        self.assertEqual(state[0], "idle")
+
+    def test_unified_activate_dispatches_refresh_and_new_controls(self) -> None:
+        refreshed = self._post_activate("hardware", "control:refresh")
+        launched = self._post_activate("hardware", "control:new")
+        launched_from_empty = self._post_activate("hardware", "empty:1")
+
+        self.assertTrue(refreshed["accepted"])
+        self.assertEqual(refreshed["action"], "refresh_sessions")
+        self.assertEqual(refreshed["snapshot"]["page"], 1)
+        self.assertTrue(launched["accepted"])
+        self.assertEqual(launched["action"], "new_session")
+        self.assertEqual(launched["launch"]["verdict"], "NEW_AGENT_VIEW_REQUESTED")
+        self.assertTrue(launched_from_empty["accepted"])
+        self.assertEqual(launched_from_empty["action"], "new_session")
+        self.assertEqual(self.launch_controller.open_count, 2)
+
+    def test_unified_activate_rejects_invalid_client_id(self) -> None:
+        request = urllib.request.Request(
+            f"{self.base_url}/api/activate",
+            data=json.dumps(
+                {
+                    "client_id": "invalid client",
+                    "button_id": "control:refresh",
+                    "revision": 1,
+                }
+            ).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        with self.assertRaises(urllib.error.HTTPError) as context:
+            urllib.request.urlopen(request, timeout=2)
+
+        self.assertEqual(context.exception.code, 400)
+        context.exception.close()
+
+    def test_api_only_mode_serves_api_and_rejects_web_assets(self) -> None:
+        self.server.api_only = True
+
+        snapshot = self._get_snapshot("web")
+        self.assertEqual(len(snapshot["buttons"]), 15)
+        with self.assertRaises(urllib.error.HTTPError) as context:
+            urllib.request.urlopen(self.base_url, timeout=2)
+        error = context.exception
+        self.assertEqual(error.code, 404)
+        try:
+            payload = json.loads(error.read())
+        finally:
+            error.close()
+        self.assertIn("API-only", payload["error"])
+
     def test_disabled_empty_control_rejects_intent(self) -> None:
         request = urllib.request.Request(
             f"{self.base_url}/api/intent",
@@ -307,6 +416,34 @@ class DeckServerTests(unittest.TestCase):
             method="POST",
         )
         with urllib.request.urlopen(request, timeout=2) as response:
+            return json.load(response)
+
+    def _post_activate(
+        self,
+        client_id: str,
+        button_id: str,
+    ) -> dict[str, object]:
+        request = urllib.request.Request(
+            f"{self.base_url}/api/activate",
+            data=json.dumps(
+                {
+                    "client_id": client_id,
+                    "button_id": button_id,
+                    "revision": 0,
+                }
+            ).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=2) as response:
+            return json.load(response)
+
+    def _get_snapshot(self, client_id: str) -> dict[str, object]:
+        encoded = urllib.parse.urlencode({"client_id": client_id})
+        with urllib.request.urlopen(
+            f"{self.base_url}/api/snapshot?{encoded}",
+            timeout=2,
+        ) as response:
             return json.load(response)
 
 

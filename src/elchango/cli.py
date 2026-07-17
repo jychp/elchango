@@ -49,6 +49,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Compiled web asset directory (default: web/dist).",
     )
     serve_parser.add_argument(
+        "--api-only",
+        action="store_true",
+        help="Serve APIs without requiring or serving compiled web assets.",
+    )
+    serve_parser.add_argument(
         "--database",
         type=Path,
         default=DEFAULT_DATABASE,
@@ -86,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--port must be between 1 and 65535")
 
     assets = args.assets.resolve()
-    if not (assets / "index.html").is_file():
+    if not args.api_only and not (assets / "index.html").is_file():
         print(
             f"ERROR: compiled web assets not found at {assets}. "
             "Run `npm --prefix web run build` first.",
@@ -113,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     launch_controller = CursorLaunchController()
     url = f"http://{args.host}:{args.port}/"
-    print("elChango v0.1 foundation")
+    print("elChango v0.2")
     print(f"Deck: {url}")
     print(f"Cursor database: {args.database}")
     print("Session focus: enabled with exact post-action verification")
@@ -129,6 +134,7 @@ def main(argv: list[str] | None = None) -> int:
             assets,
             args.host,
             args.port,
+            args.api_only,
         )
     except KeyboardInterrupt:
         print("\nStopped.")

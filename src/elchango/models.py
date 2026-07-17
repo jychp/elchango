@@ -17,10 +17,11 @@ SessionState = Literal[
 StateConfidence = Literal["observed", "candidate", "persisted", "unknown"]
 ButtonKind = Literal["session", "control", "empty"]
 ButtonIcon = Literal[
-    "repo",
-    "terminal",
+    "cursor",
     "plus",
-    "action",
+    "arrow-left",
+    "arrow-right",
+    "arrows-clockwise",
 ]
 ButtonColor = Literal[
     "idle",

@@ -1,10 +1,11 @@
 export type DeckButtonKind = 'session' | 'control' | 'empty'
 
 export type DeckIconName =
-  | 'repo'
-  | 'terminal'
+  | 'cursor'
   | 'plus'
-  | 'action'
+  | 'arrow-left'
+  | 'arrow-right'
+  | 'arrows-clockwise'
 
 export type DeckButtonColor =
   | 'idle'
@@ -51,8 +52,16 @@ export interface DeckSnapshot {
   buttons: DeckButton[]
 }
 
-export interface DeckIntentResponse {
+export interface DeckActivateRequest {
+  client_id: 'web'
+  button_id: string
+  revision: number
+}
+
+export interface DeckActivateResponse {
   accepted: boolean
-  action: DeckAction
+  action?: DeckAction | 'focus_session'
   snapshot?: DeckSnapshot
+  focus?: Record<string, unknown>
+  launch?: Record<string, unknown>
 }
