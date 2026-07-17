@@ -160,7 +160,7 @@ class CursorProvider:
                         or data.get("chatGenerationUUID")
                     ),
                 )
-                if hook_state is not None:
+                if hook_state is not None and state != "waiting":
                     state, confidence, detail = hook_state
             sessions.append(
                 AgentSession(
