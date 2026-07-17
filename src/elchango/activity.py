@@ -23,6 +23,7 @@ class ActivitySignal:
     """One sanitized lifecycle observation for a Cursor conversation."""
 
     session_id: str
+    generation_id: str | None
     event: str
     observed_at_ms: int
     state: SessionState
@@ -36,6 +37,7 @@ class ActivityStore:
     def __init__(self, ttl_ms: int = SIGNAL_TTL_MS) -> None:
         self._ttl_ms = ttl_ms
         self._signals: dict[str, ActivitySignal] = {}
+        self._composer_modes: dict[str, str] = {}
         self._acknowledged_at_ms: dict[str, int] = {}
         self._selected_session_id: str | None = None
         self._selection_initialized = False
@@ -48,24 +50,45 @@ class ActivityStore:
             raise ValueError(f"unsupported Cursor hook event: {event!r}")
         if not isinstance(session_id, str) or not session_id:
             raise ValueError("Cursor hook event is missing conversation_id")
-
-        state, confidence, detail = _event_state(event, payload.get("status"))
-        signal = ActivitySignal(
-            session_id=session_id,
-            event=event,
-            observed_at_ms=observed_at_ms,
-            state=state,
-            confidence=confidence,
-            detail=detail,
-        )
+        generation_id = payload.get("generation_id")
+        if generation_id is not None and (
+            not isinstance(generation_id, str) or not generation_id
+        ):
+            raise ValueError("Cursor hook generation_id must be a non-empty string")
+        composer_mode = payload.get("composer_mode")
+        if composer_mode is not None and composer_mode not in {"agent", "plan"}:
+            raise ValueError(f"unsupported Cursor composer mode: {composer_mode!r}")
         with self._lock:
+            if event == "beforeSubmitPrompt":
+                if isinstance(composer_mode, str):
+                    self._composer_modes[session_id] = composer_mode
+                else:
+                    self._composer_modes.pop(session_id, None)
+            turn_mode = self._composer_modes.get(session_id)
+            state, confidence, detail = _event_state(
+                event,
+                payload.get("status"),
+                turn_mode,
+            )
+            signal = ActivitySignal(
+                session_id=session_id,
+                generation_id=generation_id,
+                event=event,
+                observed_at_ms=observed_at_ms,
+                state=state,
+                confidence=confidence,
+                detail=detail,
+            )
             self._signals[session_id] = signal
+            if event == "sessionEnd":
+                self._composer_modes.pop(session_id, None)
         return signal
 
     def state_for(
         self,
         session_id: str,
         observed_at_ms: int,
+        current_generation_id: str | None = None,
     ) -> tuple[SessionState, StateConfidence, str] | None:
         with self._lock:
             signal = self._signals.get(session_id)
@@ -73,6 +96,13 @@ class ActivityStore:
                 return None
             if observed_at_ms - signal.observed_at_ms > self._ttl_ms:
                 del self._signals[session_id]
+                return None
+            if (
+                signal.state in {"done", "waiting"}
+                and signal.generation_id is not None
+                and current_generation_id is not None
+                and signal.generation_id != current_generation_id
+            ):
                 return None
             acknowledged_at_ms = self._acknowledged_at_ms.get(session_id)
             if (
@@ -111,6 +141,7 @@ class ActivityStore:
 def _event_state(
     event: str,
     status: object,
+    composer_mode: str | None,
 ) -> tuple[SessionState, StateConfidence, str]:
     if event == "beforeSubmitPrompt":
         return "working", "observed", "Cursor prompt submitted"
@@ -118,6 +149,8 @@ def _event_state(
         if status == "error":
             return "waiting", "observed", "Cursor agent stopped with error"
         if status == "completed":
+            if composer_mode == "plan":
+                return "waiting", "observed", "Cursor plan awaiting approval"
             return "done", "observed", "Cursor agent completed"
         if status == "aborted":
             return "idle", "observed", "Cursor agent aborted"

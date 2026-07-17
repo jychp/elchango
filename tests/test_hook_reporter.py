@@ -16,6 +16,7 @@ class HookReporterTests(unittest.TestCase):
                     "hook_event_name": "beforeSubmitPrompt",
                     "conversation_id": "composer-1",
                     "generation_id": "generation-1",
+                    "composer_mode": "plan",
                     "prompt": "private prompt",
                     "user_email": "private@example.com",
                 }
@@ -34,6 +35,7 @@ class HookReporterTests(unittest.TestCase):
                 "hook_event_name": "beforeSubmitPrompt",
                 "conversation_id": "composer-1",
                 "generation_id": "generation-1",
+                "composer_mode": "plan",
             },
         )
         self.assertEqual(output_stream.getvalue(), "{}\n")

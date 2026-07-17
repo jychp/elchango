@@ -138,10 +138,15 @@ class CursorProvider:
                 continue
 
             workspace_id = str(row["workspaceId"] or "")
+            data = self._read_disk_object(
+                connection,
+                f"composerData:{composer_id}",
+            )
             state, confidence, detail = self._infer_state(
                 connection,
                 composer_id,
                 header,
+                data,
                 last_activity_at_ms,
                 observed_at_ms,
             )
@@ -149,6 +154,10 @@ class CursorProvider:
                 hook_state = self.activity_store.state_for(
                     composer_id,
                     observed_at_ms,
+                    _string_or_none(
+                        data.get("latestChatGenerationUUID")
+                        or data.get("chatGenerationUUID")
+                    ),
                 )
                 if hook_state is not None:
                     state, confidence, detail = hook_state
@@ -179,10 +188,10 @@ class CursorProvider:
         connection: sqlite3.Connection,
         composer_id: str,
         header: dict[str, Any],
+        data: dict[str, Any],
         last_activity_at_ms: int,
         observed_at_ms: int,
     ) -> tuple[SessionState, StateConfidence, str]:
-        data = self._read_disk_object(connection, f"composerData:{composer_id}")
         if not data:
             return "idle", "unknown", "composer data unavailable"
 

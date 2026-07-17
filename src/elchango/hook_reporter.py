@@ -13,6 +13,7 @@ FORWARDED_FIELDS = {
     "hook_event_name",
     "conversation_id",
     "generation_id",
+    "composer_mode",
     "status",
 }
 

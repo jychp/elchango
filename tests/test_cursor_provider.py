@@ -221,6 +221,94 @@ class CursorProviderTests(unittest.TestCase):
         self.assertIsNotNone(state)
         self.assertEqual(state[0], "waiting")
 
+    def test_completed_plan_waits_for_approval(self) -> None:
+        store = ActivityStore()
+        store.record(
+            {
+                "hook_event_name": "beforeSubmitPrompt",
+                "conversation_id": "composer-1",
+                "generation_id": "generation-plan",
+                "composer_mode": "plan",
+            },
+            observed_at_ms=100,
+        )
+        store.record(
+            {
+                "hook_event_name": "stop",
+                "conversation_id": "composer-1",
+                "generation_id": "generation-plan",
+                "status": "completed",
+            },
+            observed_at_ms=200,
+        )
+
+        state = store.state_for("composer-1", observed_at_ms=200)
+
+        self.assertIsNotNone(state)
+        self.assertEqual(state[0], "waiting")
+        self.assertIn("plan", state[2])
+
+    def test_new_generation_invalidates_old_plan_waiting(self) -> None:
+        store = ActivityStore()
+        store.record(
+            {
+                "hook_event_name": "beforeSubmitPrompt",
+                "conversation_id": "composer-1",
+                "generation_id": "generation-plan",
+                "composer_mode": "plan",
+            },
+            observed_at_ms=100,
+        )
+        store.record(
+            {
+                "hook_event_name": "stop",
+                "conversation_id": "composer-1",
+                "generation_id": "generation-plan",
+                "status": "completed",
+            },
+            observed_at_ms=200,
+        )
+
+        state = store.state_for(
+            "composer-1",
+            observed_at_ms=300,
+            current_generation_id="generation-next",
+        )
+
+        self.assertIsNone(state)
+
+    def test_agent_prompt_replaces_plan_waiting_state(self) -> None:
+        store = ActivityStore()
+        store.record(
+            {
+                "hook_event_name": "beforeSubmitPrompt",
+                "conversation_id": "composer-1",
+                "composer_mode": "plan",
+            },
+            observed_at_ms=100,
+        )
+        store.record(
+            {
+                "hook_event_name": "stop",
+                "conversation_id": "composer-1",
+                "status": "completed",
+            },
+            observed_at_ms=200,
+        )
+        store.record(
+            {
+                "hook_event_name": "beforeSubmitPrompt",
+                "conversation_id": "composer-1",
+                "composer_mode": "agent",
+            },
+            observed_at_ms=300,
+        )
+
+        state = store.state_for("composer-1", observed_at_ms=300)
+
+        self.assertIsNotNone(state)
+        self.assertEqual(state[0], "working")
+
     def test_snapshot_rejects_unknown_schema(self) -> None:
         sqlite3.connect(self.database).close()
         provider = CursorProvider(
