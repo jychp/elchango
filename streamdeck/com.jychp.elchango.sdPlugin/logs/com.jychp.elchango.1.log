@@ -1,4 +1,0 @@
-2026-07-17T22:42:49.523Z DEBUG RegistrationParameters: port=28196
-2026-07-17T22:42:49.523Z DEBUG RegistrationParameters: pluginUUID=8cd52199406ce8745980562d0bd1fc76
-2026-07-17T22:42:49.523Z DEBUG RegistrationParameters: registerEvent=registerPlugin
-2026-07-17T22:42:49.524Z DEBUG RegistrationParameters: info={"application":{"font":".AppleSystemUIFont","language":"en","platform":"mac","platformVersion":"26.5.2","version":"7.5.0.22885"},"colors":{"buttonPressedBackgroundColor":"#303030FF","buttonPressedBorderColor":"#646464FF","buttonPressedTextColor":"#969696FF","disabledColor":"#007AFF7F","highlightColor":"#007AFFFF","mouseDownColor":"#2EA8FFFF"},"devicePixelRatio":2,"devices":[{"id":"8cd0a8de352552c8ea235e37667bbc6e","name":"Stream Deck","size":{"columns":5,"rows":3},"type":0}],"plugin":{"uuid":"com.jychp.elchango","version":"0.2.0.0"}}
