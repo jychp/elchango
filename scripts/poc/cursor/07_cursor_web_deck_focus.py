@@ -39,9 +39,9 @@ the brief incorrect focus. No subsequent agent action is dispatched.
 
 Examples
 ========
-    python scripts/poc/07_cursor_web_deck_focus.py
-    python scripts/poc/07_cursor_web_deck_focus.py --open
-    python scripts/poc/07_cursor_web_deck_focus.py --port 8878
+    python scripts/poc/cursor/07_cursor_web_deck_focus.py
+    python scripts/poc/cursor/07_cursor_web_deck_focus.py --open
+    python scripts/poc/cursor/07_cursor_web_deck_focus.py --port 8878
 
 Interpretation
 ==============

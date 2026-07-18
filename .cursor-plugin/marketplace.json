@@ -1,0 +1,17 @@
+{
+  "name": "elchango",
+  "owner": {
+    "name": "jychp"
+  },
+  "metadata": {
+    "description": "Official elChango provider plugins",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "elchango",
+      "source": "./plugins/cursor",
+      "description": "Reports Cursor agent lifecycle events to the local elChango app."
+    }
+  ]
+}

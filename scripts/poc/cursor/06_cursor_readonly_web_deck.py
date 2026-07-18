@@ -35,10 +35,10 @@ anything to an agent. ``--open`` is the only optional UI side effect.
 
 Examples
 ========
-    python scripts/poc/06_cursor_readonly_web_deck.py
-    python scripts/poc/06_cursor_readonly_web_deck.py --open
-    python scripts/poc/06_cursor_readonly_web_deck.py --port 8877
-    python scripts/poc/06_cursor_readonly_web_deck.py --json
+    python scripts/poc/cursor/06_cursor_readonly_web_deck.py
+    python scripts/poc/cursor/06_cursor_readonly_web_deck.py --open
+    python scripts/poc/cursor/06_cursor_readonly_web_deck.py --port 8877
+    python scripts/poc/cursor/06_cursor_readonly_web_deck.py --json
 
 Interpretation
 ==============

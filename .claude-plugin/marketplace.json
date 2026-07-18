@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "elchango",
+  "owner": {
+    "name": "jychp"
+  },
+  "description": "Official elChango provider plugins",
+  "version": "1.0.0",
+  "plugins": [
+    {
+      "name": "elchango",
+      "source": "./plugins/claude",
+      "description": "Reports Claude Code lifecycle events to the local elChango app.",
+      "version": "1.0.0"
+    }
+  ]
+}

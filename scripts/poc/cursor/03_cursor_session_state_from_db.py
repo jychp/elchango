@@ -24,11 +24,11 @@ does not install hooks, and does not modify Cursor.
 
 Examples
 ========
-    python scripts/poc/03_cursor_session_state_from_db.py
-    python scripts/poc/03_cursor_session_state_from_db.py --json
-    python scripts/poc/03_cursor_session_state_from_db.py --watch 90
-    python scripts/poc/03_cursor_session_state_from_db.py --watch 90 --interval 0.1
-    python scripts/poc/03_cursor_session_state_from_db.py --composer-id <uuid>
+    python scripts/poc/cursor/03_cursor_session_state_from_db.py
+    python scripts/poc/cursor/03_cursor_session_state_from_db.py --json
+    python scripts/poc/cursor/03_cursor_session_state_from_db.py --watch 90
+    python scripts/poc/cursor/03_cursor_session_state_from_db.py --watch 90 --interval 0.1
+    python scripts/poc/cursor/03_cursor_session_state_from_db.py --composer-id <uuid>
 
 Test protocol
 =============

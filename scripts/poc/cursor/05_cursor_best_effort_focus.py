@@ -36,10 +36,10 @@ snapshot. Success requires post-action verification of the exact composer ID.
 
 Examples
 ========
-    python scripts/poc/05_cursor_best_effort_focus.py
-    python scripts/poc/05_cursor_best_effort_focus.py --target <composer-id>
-    python scripts/poc/05_cursor_best_effort_focus.py --target <id> --execute
-    python scripts/poc/05_cursor_best_effort_focus.py --target <id> --json
+    python scripts/poc/cursor/05_cursor_best_effort_focus.py
+    python scripts/poc/cursor/05_cursor_best_effort_focus.py --target <composer-id>
+    python scripts/poc/cursor/05_cursor_best_effort_focus.py --target <id> --execute
+    python scripts/poc/cursor/05_cursor_best_effort_focus.py --target <id> --json
 
 Interpretation
 ==============

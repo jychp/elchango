@@ -6,7 +6,7 @@ Purpose
 Establish whether official Claude Code hooks provide enough evidence for the
 deck's blue, orange, green, and gray state model. This POC deliberately keeps
 hook evidence separate from the undocumented local session inventory tested by
-``09_claude_code_session_inventory.py``.
+``01_claude_code_session_inventory.py``.
 
 Method
 ======
@@ -41,12 +41,12 @@ diagnostic hook cannot intentionally block Claude Code.
 
 Examples
 ========
-    python scripts/poc/10_claude_code_hook_probe.py config \\
+    python scripts/poc/claude/02_claude_code_hook_probe.py config \\
       --log /tmp/elchango-claude-hooks.jsonl
     printf '%s' '{"session_id":"s1","cwd":"/tmp","transcript_path":"/tmp/s1.jsonl","hook_event_name":"Stop","stop_hook_active":false}' \\
-      | python scripts/poc/10_claude_code_hook_probe.py record \\
+      | python scripts/poc/claude/02_claude_code_hook_probe.py record \\
           --log /tmp/elchango-claude-hooks.jsonl
-    python scripts/poc/10_claude_code_hook_probe.py analyze \\
+    python scripts/poc/claude/02_claude_code_hook_probe.py analyze \\
       --log /tmp/elchango-claude-hooks.jsonl
 
 Interpretation

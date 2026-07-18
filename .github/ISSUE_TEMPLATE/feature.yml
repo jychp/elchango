@@ -1,0 +1,61 @@
+name: Feature request
+description: Propose a capability or surface improvement
+title: "feat: "
+labels:
+  - feature
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the user need and observable behavior. Do not include sensitive prompt or session content.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What user outcome is difficult or impossible today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the smallest useful behavior without prescribing an unvalidated abstraction.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Relevant surface
+      multiple: true
+      options:
+        - macOS app
+        - Web deck
+        - Stream Deck
+        - Provider integration
+        - Shared service
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Link sanitized experiments, POCs, provider documentation, or examples that support the need.
+  - type: textarea
+    id: safety
+    attributes:
+      label: Safety and target identity
+      description: Could this act on a session? If so, explain how the intended target can be freshly verified and how failures should degrade.
+    validations:
+      required: true
+  - type: textarea
+    id: parity
+    attributes:
+      label: Web and Stream Deck parity
+      description: Explain expected parity or why one surface is intentionally excluded.
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: This request contains no sensitive prompts, secrets, private code, or personal session data.
+          required: true
