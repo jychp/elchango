@@ -122,6 +122,37 @@ struct DeckServiceTests {
         #expect(await reloaded.snapshot().actionSlots[0] == .compact)
     }
 
+    @Test("icon picker exposes incident, investigation, test, and review icons")
+    func workflowIconPicker() async throws {
+        let context = try TestContext()
+        defer { context.remove() }
+        let provider = MutableProvider(snapshot: makeSnapshot(count: 1))
+        let service = try DeckService(
+            providers: [provider],
+            preferences: context.preferences
+        )
+
+        let first = try await service.chooseSessionIcon(
+            clientID: "web",
+            sessionID: "test:session-0"
+        )
+        let second = try await service.nextPickerPage(clientID: "web")
+        let third = try await service.nextPickerPage(clientID: "web")
+        let optionIDs = Set(
+            (first.buttons + second.buttons + third.buttons)
+                .compactMap(\.optionID)
+        )
+
+        #expect(
+            optionIDs
+                == Set(DeckIcon.personalizationOptions.map(\.rawValue))
+        )
+        #expect(optionIDs.contains("fire-extinguisher"))
+        #expect(optionIDs.contains("magnifying-glass"))
+        #expect(optionIDs.contains("test-tube"))
+        #expect(optionIDs.contains("shield-check"))
+    }
+
     @Test("only one frontmost selected target enables commands")
     func commandTarget() async throws {
         let context = try TestContext()
@@ -156,10 +187,14 @@ struct DeckServiceTests {
 
         let snapshot = try await service.snapshot()
         let errors = await service.latestProviderErrors()
+        let picker = try await service.chooseNewProvider(
+            clientID: DeckService.defaultClientID
+        )
 
         #expect(snapshot.buttons[0].sessionID == "test:session-0")
         #expect(snapshot.source.contains("failing=unavailable"))
         #expect(errors["failing"] == "inventory unavailable")
+        #expect(!picker.buttons.contains { $0.id == "provider:failing" })
     }
 
     @Test("removed sessions leave holes until refresh")
@@ -282,7 +317,7 @@ private struct FailingProvider: AgentProvider {
         id: "failing",
         displayName: "Failing",
         icon: .bug,
-        capabilities: []
+        capabilities: [.newSession]
     )
 
     func snapshot() async throws -> ProviderSnapshot {

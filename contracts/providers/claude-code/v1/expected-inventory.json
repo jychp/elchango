@@ -1,0 +1,29 @@
+{
+  "provider_id": "claude-code",
+  "read_only": true,
+  "selected_session_id": "claude-code:local_alpha",
+  "sessions": [
+    {
+      "confidence": "persisted",
+      "id": "claude-code:local_beta",
+      "last_activity_at_ms": 300,
+      "selected": false,
+      "state": "idle",
+      "state_detail": "Persistent Claude Desktop session; no fresh hook signal",
+      "title": "Untitled Claude session",
+      "workspace_id": "/tmp/elchango",
+      "workspace_path": "/tmp/elchango-beta"
+    },
+    {
+      "confidence": "persisted",
+      "id": "claude-code:local_alpha",
+      "last_activity_at_ms": 200,
+      "selected": true,
+      "state": "idle",
+      "state_detail": "Persistent Claude Desktop session; no fresh hook signal",
+      "title": "Claude Alpha",
+      "workspace_id": "/tmp/elchango",
+      "workspace_path": "/tmp/elchango-alpha"
+    }
+  ]
+}

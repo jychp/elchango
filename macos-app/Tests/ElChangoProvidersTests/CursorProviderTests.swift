@@ -1,3 +1,4 @@
+@preconcurrency import ApplicationServices
 import ElChangoCore
 import ElChangoProviders
 import Foundation
@@ -32,9 +33,14 @@ struct CursorProviderTests {
         let actual = ExpectedInventory(snapshot: snapshot)
 
         #expect(actual == expected)
-        #expect(snapshot.capabilities.isEmpty)
+        #expect(snapshot.capabilities == [
+            .focusSession, .newSession, .executeCommand,
+        ])
         #expect(
-            snapshot.sessions.allSatisfy { $0.capabilities.isEmpty }
+            snapshot.sessions.allSatisfy {
+                $0.capabilities == snapshot.capabilities
+                    && $0.commands == CursorProvider.commands
+            }
         )
         #expect(try Data(contentsOf: databaseURL) == originalDatabase)
         #expect(
@@ -182,6 +188,61 @@ struct CursorProviderTests {
         }
         #expect(!FileManager.default.fileExists(atPath: databaseURL.path))
     }
+
+    @Test("commands require and preserve the exact selected target")
+    func verifiedCommandDispatch() async throws {
+        let fixture = try Fixture()
+        let automation = FakeNativeAutomation(
+            frontmostBundleID: CursorProvider.bundleID
+        )
+        let provider = CursorProvider(
+            databaseURL: try fixture.makeDatabase(),
+            workspaceStorageURL: fixture.root.appendingPathComponent(
+                "workspaceStorage"
+            ),
+            activeSignalTTLMilliseconds: 1_000,
+            activityStore: CursorActivityStore(),
+            automation: automation,
+            clock: { 1_000 }
+        )
+
+        let result = try await provider.executeCommand(
+            nativeSessionID: "composer-1",
+            commandID: .createPR
+        )
+
+        #expect(result.accepted)
+        #expect(result.verdict == "DISPATCH_VERIFIED")
+        #expect(await automation.dispatchedTexts() == [
+            "Open a pull request for the current branch.",
+        ])
+    }
+
+    @Test("already-selected focus verifies without a shortcut")
+    func selectedFocus() async throws {
+        let fixture = try Fixture()
+        let automation = FakeNativeAutomation(
+            frontmostBundleID: CursorProvider.bundleID
+        )
+        let provider = CursorProvider(
+            databaseURL: try fixture.makeDatabase(),
+            workspaceStorageURL: fixture.root.appendingPathComponent(
+                "workspaceStorage"
+            ),
+            activeSignalTTLMilliseconds: 1_000,
+            activityStore: CursorActivityStore(),
+            automation: automation,
+            clock: { 1_000 }
+        )
+
+        let result = try await provider.focus(
+            nativeSessionID: "composer-1"
+        )
+
+        #expect(result.accepted)
+        #expect(result.verdict == "FOCUS_VERIFIED")
+        #expect(await automation.shortcutCount() == 0)
+    }
 }
 
 private struct Fixture {
@@ -317,5 +378,76 @@ private struct ExpectedSession: Codable, Equatable {
         case title
         case workspaceID = "workspace_id"
         case workspacePath = "workspace_path"
+    }
+}
+
+private actor FakeNativeAutomation: NativeAutomating {
+    private var currentBundleID: String?
+    private var texts: [String] = []
+    private var shortcuts = 0
+
+    init(frontmostBundleID: String?) {
+        currentBundleID = frontmostBundleID
+    }
+
+    func frontmostBundleID() async -> String? {
+        currentBundleID
+    }
+
+    func activate(bundleID: String) async throws {
+        currentBundleID = bundleID
+    }
+
+    func open(url: URL) async throws {}
+
+    func postShortcut(
+        keyCode: CGKeyCode,
+        flags: CGEventFlags,
+        bundleID: String
+    ) async throws {
+        shortcuts += 1
+    }
+
+    func dispatchText(
+        _ text: String,
+        bundleID: String,
+        inputMarker: String,
+        focusKeyCode: CGKeyCode?,
+        submitCount: Int,
+        targetVerifier: @escaping @Sendable () async throws -> Bool
+    ) async throws -> ProviderActionResult {
+        guard try await targetVerifier() else {
+            throw ProviderOperationError.targetUnverified("fixture target")
+        }
+        texts.append(text)
+        return ProviderActionResult(
+            accepted: true,
+            verdict: "DISPATCH_VERIFIED",
+            details: ["executed": .boolean(true)]
+        )
+    }
+
+    func dispatchCommandEnter(
+        bundleID: String,
+        inputMarker: String?,
+        focusKeyCode: CGKeyCode?,
+        targetVerifier: @escaping @Sendable () async throws -> Bool
+    ) async throws -> ProviderActionResult {
+        guard try await targetVerifier() else {
+            throw ProviderOperationError.targetUnverified("fixture target")
+        }
+        return ProviderActionResult(
+            accepted: true,
+            verdict: "DISPATCH_VERIFIED",
+            details: ["executed": .boolean(true)]
+        )
+    }
+
+    func dispatchedTexts() -> [String] {
+        texts
+    }
+
+    func shortcutCount() -> Int {
+        shortcuts
     }
 }

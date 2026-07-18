@@ -23,6 +23,15 @@ export type DeckIconName =
   | 'git-pull-request'
   | 'git-commit'
   | 'article'
+  | 'fire'
+  | 'fire-extinguisher'
+  | 'fire-truck'
+  | 'magnifying-glass'
+  | 'bell'
+  | 'test-tube'
+  | 'checks'
+  | 'eye'
+  | 'shield-check'
 
 export type DeckButtonColor =
   | 'idle'

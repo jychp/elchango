@@ -22,7 +22,7 @@ struct FoundationHTTPHandlerTests {
         #expect(health.status == "ok")
         #expect(health.providers.isEmpty)
         #expect(
-            health.unavailableProviders.keys.sorted() == ["claude-code"]
+            health.unavailableProviders.isEmpty
         )
         #expect(!health.accessibilityTrusted)
         #expect(response.headers[HTTPHeader("Cache-Control")] == "no-store")
@@ -45,14 +45,10 @@ struct FoundationHTTPHandlerTests {
         )
 
         #expect(response.statusCode == .ok)
-        #expect(health.providers["cursor"] == [])
+        #expect(health.providers["cursor"] == nil)
         #expect(
             health.unavailableProviders["cursor"]
                 == "fixture unavailable"
-        )
-        #expect(
-            health.unavailableProviders["claude-code"]
-                == "provider not migrated to native host"
         )
     }
 
@@ -98,7 +94,7 @@ struct FoundationHTTPHandlerTests {
         #expect(response.statusCode == .badRequest)
     }
 
-    @Test("provider actions fail closed")
+    @Test("provider actions reject malformed requests")
     func actionRejected() async throws {
         let handler = try makeHandler(
             assetRoot: nil,
@@ -121,8 +117,8 @@ struct FoundationHTTPHandlerTests {
             from: body
         )
 
-        #expect(response.statusCode == .serviceUnavailable)
-        #expect(error.retryable == false)
+        #expect(response.statusCode == .badRequest)
+        #expect(error.retryable == nil)
     }
 
     @Test("oversized action bodies are rejected before dispatch")
@@ -232,6 +228,126 @@ struct FoundationHTTPHandlerTests {
         #expect(select.statusCode == .ok)
         #expect(updated.snapshot.buttons[11].label == "Compact")
         #expect(shared.buttons[11].label == "Compact")
+    }
+
+    @Test("native focus, command, launch, and hook routes dispatch")
+    func providerActionRoutes() async throws {
+        let handler = try makeHandler(
+            assetRoot: nil,
+            accessibility: StubAccessibility(isTrusted: true),
+            providers: [ActionProvider()]
+        )
+        let initial = try await deckSnapshot(
+            from: handler,
+            clientID: "web"
+        )
+        let session = try #require(
+            initial.buttons.first { $0.kind == .session }
+        )
+        let focus = try await handler.handleRequest(
+            try actionRequest(
+                path: "/api/activate",
+                clientID: "web",
+                buttonID: session.id,
+                revision: initial.revision
+            )
+        )
+        let command = try #require(
+            initial.buttons.first {
+                $0.action == .executeCommand && $0.enabled
+            }
+        )
+        let commandResponse = try await handler.handleRequest(
+            try actionRequest(
+                path: "/api/activate",
+                clientID: "web",
+                buttonID: command.id,
+                revision: initial.revision
+            )
+        )
+        let newButton = try #require(
+            initial.buttons.first { $0.id == "control:new" }
+        )
+        let chooseProvider = try await handler.handleRequest(
+            try actionRequest(
+                path: "/api/activate",
+                clientID: "web",
+                buttonID: newButton.id,
+                revision: initial.revision
+            )
+        )
+        let picker = try JSONDecoder().decode(
+            DeckActivationResponse.self,
+            from: await responseBody(chooseProvider)
+        )
+        let providerButton = try #require(
+            picker.snapshot.buttons.first {
+                $0.action == .newSession
+            }
+        )
+        let launch = try await handler.handleRequest(
+            try actionRequest(
+                path: "/api/activate",
+                clientID: "web",
+                buttonID: providerButton.id,
+                revision: picker.snapshot.revision
+            )
+        )
+        let hookBody = try JSONEncoder().encode(
+            ProviderHookPayload(
+                hookEventName: "stop",
+                conversationID: "target",
+                status: "completed"
+            )
+        )
+        let hook = try await handler.handleRequest(
+            request(
+                method: .POST,
+                path: "/api/hooks/test",
+                headers: [
+                    .contentType: "application/json",
+                    .contentLength: String(hookBody.count),
+                ],
+                body: hookBody
+            )
+        )
+
+        #expect(focus.statusCode == .ok)
+        #expect(commandResponse.statusCode == .ok)
+        #expect(launch.statusCode == .ok)
+        #expect(hook.statusCode == .accepted)
+    }
+
+    @Test("stale command revisions cannot retarget another session")
+    func staleCommandTarget() async throws {
+        let provider = ActionProvider()
+        let handler = try makeHandler(
+            assetRoot: nil,
+            accessibility: StubAccessibility(isTrusted: true),
+            providers: [provider]
+        )
+        let initial = try await deckSnapshot(
+            from: handler,
+            clientID: "web"
+        )
+        let command = try #require(
+            initial.buttons.first {
+                $0.action == .executeCommand && $0.enabled
+            }
+        )
+        await provider.select("other")
+
+        let response = try await handler.handleRequest(
+            try actionRequest(
+                path: "/api/activate",
+                clientID: "web",
+                buttonID: command.id,
+                revision: initial.revision
+            )
+        )
+
+        #expect(response.statusCode == .conflict)
+        #expect(await provider.commandCount() == 0)
     }
 
     @Test("assets use SPA fallback and reject traversal")
@@ -388,5 +504,103 @@ private enum FailingCursorError: LocalizedError {
 
     var errorDescription: String? {
         "fixture unavailable"
+    }
+}
+
+private actor ActionProvider: AgentProvider {
+    nonisolated let descriptor = ProviderDescriptor(
+        id: "test",
+        displayName: "Test",
+        icon: .robot,
+        capabilities: [.focusSession, .newSession, .executeCommand]
+    )
+
+    private var selectedID = "target"
+    private var commandsExecuted = 0
+
+    func snapshot() async throws -> ProviderSnapshot {
+        ProviderSnapshot(
+            providerID: "test",
+            capabilities: descriptor.capabilities,
+            observedAtMilliseconds: 100,
+            selectedNativeSessionID: selectedID,
+            sessions: ["target", "other"].map { sessionID in
+                AgentSession(
+                    providerID: "test",
+                    nativeID: sessionID,
+                    capabilities: descriptor.capabilities,
+                    icon: .robot,
+                    title: sessionID.capitalized,
+                    workspaceID: "workspace",
+                    workspacePath: "/tmp/workspace",
+                    state: .idle,
+                    confidence: .persisted,
+                    stateDetail: "fixture",
+                    selected: sessionID == selectedID,
+                    lastActivityAtMilliseconds: 100,
+                    commands: [
+                        .accept, .commitPush, .createPR, .compact,
+                    ]
+                )
+            },
+            source: "fixture"
+        )
+    }
+
+    func isFrontmost() async throws -> Bool {
+        true
+    }
+
+    func focus(
+        nativeSessionID: String
+    ) async throws -> ProviderActionResult {
+        acceptedResult("FOCUS_VERIFIED")
+    }
+
+    func openNew() async throws -> ProviderActionResult {
+        acceptedResult("NEW_SESSION_REQUESTED")
+    }
+
+    func executeCommand(
+        nativeSessionID: String,
+        commandID: CommandID
+    ) async throws -> ProviderActionResult {
+        commandsExecuted += 1
+        return acceptedResult("DISPATCH_VERIFIED")
+    }
+
+    func recordHook(
+        _ payload: ProviderHookPayload,
+        observedAtMilliseconds: Int64
+    ) async throws -> ActivityObservation {
+        ActivityObservation(
+            sessionID: payload.conversationID ?? "",
+            event: payload.hookEventName ?? "",
+            observedAtMilliseconds: observedAtMilliseconds,
+            state: .done,
+            confidence: .observed,
+            detail: "fixture"
+        )
+    }
+
+    func select(_ sessionID: String) {
+        selectedID = sessionID
+    }
+
+    func commandCount() -> Int {
+        commandsExecuted
+    }
+
+    private nonisolated func acceptedResult(
+        _ verdict: String
+    ) -> ProviderActionResult {
+        ProviderActionResult(
+            accepted: true,
+            verdict: verdict,
+            details: [
+                "verdict": .string(verdict),
+                "executed": .boolean(true),
+            ]
+        )
     }
 }

@@ -239,6 +239,7 @@ public actor DeckService {
         clientID: String
     ) async throws -> DeckSnapshot {
         try Self.validateClientID(clientID)
+        _ = await combinedSnapshot()
         guard !newSessionProviders.isEmpty else {
             throw DeckServiceError.invalidAction(
                 "no provider supports new sessions"
@@ -259,6 +260,14 @@ public actor DeckService {
             )
         }
         state.picker = nil
+        return try await snapshot(clientID: clientID)
+    }
+
+    public func completeNewSession(
+        clientID: String
+    ) async throws -> DeckSnapshot {
+        try Self.validateClientID(clientID)
+        clientState(for: clientID).picker = nil
         return try await snapshot(clientID: clientID)
     }
 
@@ -391,6 +400,9 @@ public actor DeckService {
         _ = await combinedSnapshot()
         let entries: [(String, [String])] = providerOrder.compactMap {
             providerID in
+                guard providerErrors[providerID] == nil else {
+                    return nil
+                }
                 guard let descriptor = providers[providerID]?.descriptor else {
                     return nil
                 }
@@ -405,6 +417,78 @@ public actor DeckService {
         return ProviderDiagnostics(
             providers: capabilities,
             unavailableProviders: providerErrors
+        )
+    }
+
+    public func focusSession(
+        sessionID: String
+    ) async throws -> ProviderActionResult {
+        let combined = await combinedSnapshot()
+        let matches = combined.sessions.filter {
+            $0.id == sessionID
+                && $0.capabilities.contains(.focusSession)
+        }
+        guard matches.count == 1,
+            let target = matches.first,
+            let provider = providers[target.providerID]
+        else {
+            throw DeckServiceError.invalidAction(
+                "session is not focusable in the current snapshot"
+            )
+        }
+        return try await provider.focus(
+            nativeSessionID: target.nativeID
+        )
+    }
+
+    public func openNew(
+        providerID: String
+    ) async throws -> ProviderActionResult {
+        _ = await combinedSnapshot()
+        guard let provider = providers[providerID],
+            providerErrors[providerID] == nil,
+            provider.descriptor.capabilities.contains(.newSession)
+        else {
+            throw DeckServiceError.invalidAction(
+                "provider does not support new sessions"
+            )
+        }
+        return try await provider.openNew()
+    }
+
+    public func executeCommand(
+        sessionID: String,
+        commandID: CommandID
+    ) async throws -> ProviderActionResult {
+        let combined = await combinedSnapshot()
+        guard let target = combined.commandTarget,
+            target.id == sessionID,
+            target.commands.contains(commandID),
+            let provider = providers[target.providerID]
+        else {
+            throw DeckServiceError.invalidAction(
+                "command has no verified foreground target"
+            )
+        }
+        return try await provider.executeCommand(
+            nativeSessionID: target.nativeID,
+            commandID: commandID
+        )
+    }
+
+    public func recordHook(
+        providerID: String,
+        payload: ProviderHookPayload,
+        observedAtMilliseconds: Int64
+    ) async throws -> ActivityObservation {
+        guard let provider = providers[providerID] else {
+            throw ProviderOperationError.unsupported(
+                "provider does not accept hooks: \(providerID)"
+            )
+        }
+        return try await provider.recordHook(
+            payload,
+            observedAtMilliseconds: observedAtMilliseconds
         )
     }
 
@@ -501,6 +585,7 @@ public actor DeckService {
 
     private var newSessionProviders: [ProviderDescriptor] {
         providerOrder
+            .filter { providerErrors[$0] == nil }
             .compactMap { providers[$0]?.descriptor }
             .filter { $0.capabilities.contains(.newSession) }
     }

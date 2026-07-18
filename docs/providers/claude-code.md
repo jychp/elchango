@@ -8,6 +8,20 @@ the numbered POCs under `scripts/poc/`.
 The target is Claude Code sessions opened by Claude Desktop on macOS. Claude
 Cowork and ordinary Claude chats are outside this provider's scope.
 
+## Native migration status
+
+The Swift provider ports bounded metadata inventory, exact transcript
+correlation, unique `lastFocusedAt` selection, official hook state, verified
+sidebar focus, the `claude://code/new` launch, and all four semantic commands.
+Malformed Claude records degrade only this provider.
+
+The Python and Swift implementations share fixtures under
+`contracts/providers/claude-code/v1/`. Native HTTP hooks post directly to the
+loopback service. Privileged actions are serialized with Cursor and recheck the
+exact selected session and foreground bundle immediately before dispatch.
+Composer text additionally requires the observed enabled, empty
+provider-specific Accessibility target.
+
 ## V3.2 reconnaissance
 
 ### Observations

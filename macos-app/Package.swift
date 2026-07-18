@@ -11,6 +11,10 @@ let package = Package(
         .library(name: "ElChangoCore", targets: ["ElChangoCore"]),
         .library(name: "ElChangoProviders", targets: ["ElChangoProviders"]),
         .executable(name: "ElChangoApp", targets: ["ElChangoApp"]),
+        .executable(
+            name: "ElChangoHookReporter",
+            targets: ["ElChangoHookReporter"]
+        ),
     ],
     dependencies: [
         .package(
@@ -42,6 +46,12 @@ let package = Package(
         .executableTarget(
             name: "ElChangoApp",
             dependencies: ["ElChangoCore", "ElChangoProviders"],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency"),
+            ]
+        ),
+        .executableTarget(
+            name: "ElChangoHookReporter",
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency"),
             ]

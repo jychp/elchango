@@ -23,9 +23,11 @@ produce no selected session. This is intentionally stricter than exposing
 Cursor's raw persisted key.
 
 The Python and Swift implementations are checked against the same versioned
-fixture under `contracts/providers/cursor/v1/`. The native provider advertises
-no privileged capabilities yet, so focus, launch, hooks, and commands remain
-fail-closed until each boundary is ported and verified separately.
+fixture under `contracts/providers/cursor/v1/`. The native provider now owns
+focus, blank New Agent launch, sanitized hook state, and semantic command
+dispatch. One shared native automation actor serializes provider actions, and
+each action repeats exact selected-session, foreground, and focused-composer
+verification before dispatch.
 
 ## M0.1: session inventory
 

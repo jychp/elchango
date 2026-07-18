@@ -1,0 +1,12 @@
+{
+  "sessionId": "local_archived",
+  "cliSessionId": "cli-archived",
+  "cwd": "/tmp/elchango-archived",
+  "originCwd": "/tmp/elchango",
+  "createdAt": 90,
+  "lastActivityAt": 900,
+  "lastFocusedAt": 900,
+  "isArchived": true,
+  "title": "Archived Claude session",
+  "messages": []
+}

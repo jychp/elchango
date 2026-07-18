@@ -66,6 +66,36 @@ public struct DeckActionRequest: Codable, Equatable, Sendable {
     }
 }
 
+public struct DeckIntentRequest: Codable, Equatable, Sendable {
+    public let buttonID: String
+    public let revision: Int
+
+    public init(buttonID: String, revision: Int) {
+        self.buttonID = buttonID
+        self.revision = revision
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case buttonID = "button_id"
+        case revision
+    }
+}
+
+public struct FocusRequest: Codable, Equatable, Sendable {
+    public let sessionID: String
+    public let revision: Int
+
+    public init(sessionID: String, revision: Int) {
+        self.sessionID = sessionID
+        self.revision = revision
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case sessionID = "session_id"
+        case revision
+    }
+}
+
 public struct DeckActivationResponse: Codable, Equatable, Sendable {
     public let accepted: Bool
     public let action: DeckAction

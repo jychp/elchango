@@ -31,14 +31,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         configureStatusItem()
-        refreshTimer = Timer.scheduledTimer(
-            withTimeInterval: 1,
+        let timer = Timer(
+            timeInterval: 1,
             repeats: true
         ) { [weak self] _ in
             Task { @MainActor in
                 self?.rebuildMenu()
             }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        refreshTimer = timer
         startService()
     }
 
@@ -60,6 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             accessibilityDescription: "elChango"
         )
         item.button?.image?.isTemplate = true
+        item.button?.imagePosition = .imageOnly
         statusItem = item
         rebuildMenu()
     }
@@ -118,15 +121,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         endpointItem.isEnabled = false
         menu.addItem(endpointItem)
-
-        let permission = accessibility.isTrusted ? "Granted" : "Required"
-        let permissionItem = NSMenuItem(
-            title: "Accessibility: \(permission)",
-            action: nil,
-            keyEquivalent: ""
-        )
-        permissionItem.isEnabled = false
-        menu.addItem(permissionItem)
 
         menu.addItem(.separator())
         menu.addItem(
@@ -204,8 +198,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Endpoint: http://127.0.0.1:\(LoopbackService.defaultPort)
         Accessibility: \(accessibility.isTrusted ? "granted" : "not granted")
         Web assets: \(Self.webAssetRoot?.path ?? "not found")
-        Cursor: inventory enabled; actions disabled
-        Claude Code: migration pending
+        Cursor: native inventory and actions enabled
+        Claude Code: native inventory and actions enabled
         """
     }
 

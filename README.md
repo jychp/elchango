@@ -7,30 +7,28 @@
 elChango is a local web and Stream Deck command surface for native AI coding
 agent sessions.
 
-The v0.2 product reads real Cursor sessions and renders the same fixed 5-column
-by 3-row deck in a browser and on Stream Deck MK.2 hardware. Both surfaces show
-live state, focus sessions with exact post-action verification, paginate
-independently, and open a blank New Agent view for manual prompt entry.
+The native macOS app reads real Cursor and Claude Desktop sessions and renders
+the same fixed 5-column by 3-row deck in a browser and on Stream Deck MK.2
+hardware. Both surfaces show live state, focus sessions with exact post-action
+verification, paginate independently, launch sessions, and dispatch bounded
+provider-owned commands.
 
 ## Requirements
 
 - macOS
 - Xcode 26 or newer for the native host
-- Python 3.11 or newer
 - Node.js and npm
 - Cursor and/or Claude Desktop; unavailable harnesses are skipped independently
 - Stream Deck 7.1 or newer for the hardware surface
+- Python 3.11 or newer only when running reconnaissance POCs
 
 ## Build and run
 
-### Native foundation
+### Native macOS app
 
-The native migration starts with a menu bar host under `macos-app/`. It serves
-the existing web deck with the shared layout, client-scoped pagination and
-pickers, byte-compatible persisted personalization, and native read-only Cursor
-session inventory. Cursor focus, launch, and command actions remain disabled,
-and Claude inventory is not yet native. The Python backend remains the
-functional provider host for those capabilities during this transition.
+The menu bar app under `macos-app/` is the production host. It owns both native
+providers, shared deck state, hooks, Accessibility actions, persisted
+personalization, bundled web assets, and the loopback HTTP service.
 
 ```bash
 npm --prefix web install
@@ -38,31 +36,17 @@ ELCHANGO_SIGN_MODE=adhoc macos-app/Scripts/package-app.sh
 open macos-app/dist/elChango.app
 ```
 
-The menu bar shows service and Accessibility status, opens the web deck, and
-offers an explicit Accessibility permission request. Ad-hoc signing supports
-build and HTTP smoke testing only. Use
+The menu bar shows service status, opens the web deck, and offers an explicit
+Accessibility permission request only when authorization is absent. Ad-hoc
+signing supports build and HTTP smoke testing only. Use
 `ELCHANGO_SIGN_MODE=identity ELCHANGO_CODESIGN_IDENTITY="..."` with a stable
 Apple Development or local development identity when testing TCC persistence.
-The native host binds only to <http://127.0.0.1:8765/>.
+Keep the signed app at a stable path such as `/Applications/elChango.app` so
+Accessibility authorization survives normal upgrades. The native host binds
+only to <http://127.0.0.1:8765/>.
 
-### Python provider host
-
-```bash
-npm --prefix web install
-npm --prefix web run build
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install -e .
-chango serve
-```
-
-Open <http://127.0.0.1:8765/>.
-
-The production command serves both the compiled Svelte application and the
-provider-neutral loopback API from one process. A missing or incompatible
-harness does not block other providers or prevent elChango from starting.
-Unavailable providers are reported by `/api/health`. All SQLite access remains
-read-only.
+A missing or incompatible harness does not block the other provider or prevent
+elChango from starting. Unavailable providers are reported by `/api/health`.
 
 Long-press a session key to choose a persisted icon from the curated Phosphor
 set. Long-press any of the three center action keys to assign Accept, Open PR,
@@ -88,9 +72,10 @@ npm --prefix plugins/streamdeck run check
 npm --prefix plugins/streamdeck run pack
 ```
 
-Double-click `plugins/streamdeck/com.jychp.elchango.streamDeckPlugin` and accept the
-bundled `elChango` MK.2 profile. Start `chango serve` normally, or use
-`chango serve --api-only` when only the hardware surface is needed.
+Double-click `plugins/streamdeck/com.jychp.elchango.streamDeckPlugin`. The
+installer includes an automatically installed `elChango` MK.2 profile with all
+15 keys populated. Start the native elChango menu bar app; it serves the same
+loopback contract used by the web deck.
 
 The plugin uses the sleeping monkey while the local service is offline and the
 knocked-out monkey for failed actions. To use the sleeping monkey on the locked
@@ -113,7 +98,7 @@ details.
 SQLite provides session inventory, selection, and persisted results. Cursor
 lifecycle hooks provide the low-latency `working`, `done`, and `error`
 transitions. Add these fail-open user hooks to `~/.cursor/hooks.json`, replacing
-`/absolute/path/to/chango` with the output of `command -v chango`:
+the application path if elChango is installed elsewhere:
 
 ```json
 {
@@ -121,28 +106,28 @@ transitions. Add these fail-open user hooks to `~/.cursor/hooks.json`, replacing
   "hooks": {
     "sessionStart": [
       {
-        "command": "/absolute/path/to/chango report-hook",
+        "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider cursor",
         "timeout": 1,
         "failClosed": false
       }
     ],
     "beforeSubmitPrompt": [
       {
-        "command": "/absolute/path/to/chango report-hook",
+        "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider cursor",
         "timeout": 1,
         "failClosed": false
       }
     ],
     "stop": [
       {
-        "command": "/absolute/path/to/chango report-hook",
+        "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider cursor",
         "timeout": 1,
         "failClosed": false
       }
     ],
     "sessionEnd": [
       {
-        "command": "/absolute/path/to/chango report-hook",
+        "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider cursor",
         "timeout": 1,
         "failClosed": false
       }
@@ -157,13 +142,42 @@ data, email, and transcript paths are discarded. If the service is unavailable,
 the reporter
 returns immediately and never blocks Cursor.
 
+## Live Claude Code activity
+
+Claude Code can post its official hooks directly to the native loopback
+service. Add HTTP handlers in `~/.claude/settings.json` for `SessionStart`,
+`UserPromptSubmit`, `PermissionRequest`, `Notification`, `Elicitation`,
+`ElicitationResult`, `Stop`, `StopFailure`, and `SessionEnd` using:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:8765/api/hooks/claude-code",
+            "timeout": 1
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Add the same handler under `PreToolUse` and `PostToolUse` with matcher
+`AskUserQuestion|ExitPlanMode`. The native provider accepts hook evidence only
+when `session_id` exactly matches a current persistent Claude Code session.
+
 ## Frontend development
 
 Build the web application once, then run the service and Vite in separate
 terminals:
 
 ```bash
-PYTHONPATH=src python -m elchango serve
+swift run --package-path macos-app ElChangoApp
 npm --prefix web run dev
 ```
 
@@ -172,7 +186,6 @@ Vite proxies `/api` to the local service.
 ## Verification
 
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests
 npm --prefix web run check
 npm --prefix web run build
 npm --prefix plugins/streamdeck run check
@@ -194,4 +207,7 @@ macos-app/Scripts/package-app.sh
   that a persisted composer exists before the user takes over.
 - Provider text dispatch verifies the exact selected session, foreground
   application, and composer input before sending one bounded recipe.
+- Privileged actions are serialized across providers. Keyboard events target
+  the verified process ID, and stale command revisions cannot retarget a newly
+  selected session.
 - Undocumented Cursor schema changes fail explicitly instead of guessing.

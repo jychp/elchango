@@ -1,0 +1,16 @@
+{
+  "sessionId": "local_alpha",
+  "cliSessionId": "cli-alpha",
+  "cwd": "/tmp/elchango-alpha",
+  "originCwd": "/tmp/elchango",
+  "createdAt": 100,
+  "lastActivityAt": 200,
+  "isArchived": false,
+  "title": "Claude Alpha",
+  "lastFocusedAt": 500,
+  "messages": [
+    {
+      "sensitive": "inventory readers must not inspect transcript content"
+    }
+  ]
+}

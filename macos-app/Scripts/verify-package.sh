@@ -10,6 +10,8 @@ fi
 
 PLIST="${APP_DIR}/Contents/Info.plist"
 EXECUTABLE="${APP_DIR}/Contents/MacOS/elChango"
+HOOK_REPORTER="${APP_DIR}/Contents/MacOS/elChangoHookReporter"
+APP_ICON="${APP_DIR}/Contents/Resources/elChango.icns"
 WEB_INDEX="${APP_DIR}/Contents/Resources/Web/index.html"
 
 [[ -f "${PLIST}" ]] || {
@@ -18,6 +20,14 @@ WEB_INDEX="${APP_DIR}/Contents/Resources/Web/index.html"
 }
 [[ -x "${EXECUTABLE}" ]] || {
   echo "ERROR: missing executable." >&2
+  exit 1
+}
+[[ -x "${HOOK_REPORTER}" ]] || {
+  echo "ERROR: missing native hook reporter." >&2
+  exit 1
+}
+[[ -f "${APP_ICON}" ]] || {
+  echo "ERROR: missing application icon." >&2
   exit 1
 }
 [[ -f "${WEB_INDEX}" ]] || {
@@ -37,6 +47,11 @@ plutil -lint "${PLIST}" >/dev/null
   echo "ERROR: unexpected executable name." >&2
   exit 1
 }
+[[ "$(plutil -extract CFBundleIconFile raw -o - "${PLIST}")" == \
+  "elChango" ]] || {
+  echo "ERROR: unexpected application icon." >&2
+  exit 1
+}
 [[ "$(plutil -extract LSUIElement raw -o - "${PLIST}")" == "true" ]] || {
   echo "ERROR: LSUIElement must be true." >&2
   exit 1
@@ -48,4 +63,5 @@ plutil -lint "${PLIST}" >/dev/null
 }
 
 codesign --verify --strict --verbose=2 "${APP_DIR}"
+codesign --verify --strict --verbose=2 "${HOOK_REPORTER}"
 echo "Verified ${APP_DIR}"

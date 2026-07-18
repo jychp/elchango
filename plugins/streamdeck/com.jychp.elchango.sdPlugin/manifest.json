@@ -4,7 +4,7 @@
   "Name": "elChango",
   "Version": "0.2.0.0",
   "Author": "elChango contributors",
-  "Description": "Monitor and control local Cursor agent sessions.",
+  "Description": "Monitor and control local Cursor and Claude Code sessions.",
   "Category": "elChango",
   "CategoryIcon": "static/imgs/plugin/category-icon",
   "Icon": "static/imgs/plugin/marketplace",

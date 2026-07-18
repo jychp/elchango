@@ -1,7 +1,7 @@
 # elChango Stream Deck plugin
 
 This package is the official Elgato Stream Deck surface for elChango v0.2. It
-mirrors the fixed 5 by 3 web deck on a Stream Deck MK.2. The Python service
+mirrors the fixed 5 by 3 web deck on a Stream Deck MK.2. The native macOS app
 remains the source of truth for session ordering, state, pagination, focus, and
 New Agent behavior.
 
@@ -40,7 +40,8 @@ bundled `elChango` MK.2 profile.
 
 The profile assigns the same elChango action to every key. Runtime key
 coordinates determine which position from the 15-button snapshot is rendered,
-so no session identity is persisted in the profile.
+so no session identity is persisted in the profile. The plugin manifest marks
+this MK.2 profile for automatic installation with all 15 keys populated.
 
 ## Runtime behavior
 
@@ -49,7 +50,7 @@ so no session identity is persisted in the profile.
 - Each key receives an SVG image containing its current color, icon, label,
   detail, enabled state, and selected state.
 - Key presses send the current button ID and revision to the unified activation
-  endpoint. The Python service resolves the button again before acting.
+endpoint. The native service resolves the button again before acting.
 - If the service is unavailable, all visible keys show `Offline` and reconnect
   with bounded backoff.
 - `New` and `Available` only open Cursor's blank New Agent view. They never

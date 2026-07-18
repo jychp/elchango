@@ -14,9 +14,7 @@ public actor LoopbackService {
         assetRoot: URL?,
         accessibility: any AccessibilityChecking,
         deckService: DeckService,
-        unavailableProviders: [String: String] = [
-            "claude-code": "provider not migrated to native host",
-        ]
+        unavailableProviders: [String: String] = [:]
     ) throws {
         let address = try sockaddr_in.inet(ip4: "127.0.0.1", port: port)
         let configuration = HTTPServer.Configuration(

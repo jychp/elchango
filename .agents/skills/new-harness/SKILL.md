@@ -56,30 +56,32 @@ automatically qualified as `<provider_id>:<native_id>`.
 
 Add provider presentation metadata:
 
-```python
-provider_id: ClassVar[str] = "example"
-display_name: ClassVar[str] = "Example"
-icon: ClassVar[ButtonIcon] = "example"
-capabilities: ClassVar[frozenset[ProviderCapability]] = frozenset(
-    {"focus_session", "new_session"}
+```swift
+let descriptor = ProviderDescriptor(
+    id: "example",
+    displayName: "Example",
+    icon: .example,
+    capabilities: [.focusSession, .newSession]
 )
 ```
 
 Declare only capabilities proven by evidence. The new-session picker discovers
-providers dynamically from `"new_session"` capability declarations.
+providers dynamically from `.newSession` capability declarations.
 
 ## 4. Implement the provider boundary
 
-Implement `AgentProvider` from `src/elchango/providers/base.py` in a dedicated
-module under `src/elchango/providers/`.
+Implement `AgentProvider` from
+`macos-app/Sources/ElChangoCore/Models/ProviderModels.swift` in a dedicated
+module under `macos-app/Sources/ElChangoProviders/`.
 
 Required methods:
 
-- `snapshot() -> ProviderSnapshot`
-- `focus(native_session_id) -> ProviderActionResult`
-- `open_new() -> ProviderActionResult`
+- `snapshot() async throws -> ProviderSnapshot`
+- `isFrontmost() async throws -> Bool`
+- `focus(nativeSessionID:) async throws -> ProviderActionResult`
+- `openNew() async throws -> ProviderActionResult`
 
-Use a provider-specific `ProviderError` subclass. Fail explicitly when local
+Use a provider-specific `Error` type. Fail explicitly when local
 files, schemas, identifiers, or mappings differ from observed evidence.
 
 For every `AgentSession`:
@@ -98,9 +100,8 @@ file modification time plus size.
 If the harness has lifecycle hooks, create a provider-specific activity store
 and expose a loopback hook recorder through:
 
-```python
-hook_recorders[provider.provider_id] = activity_store.record
-```
+Implement `recordHook(_:observedAtMilliseconds:)` on the provider and route it
+through the existing provider registry.
 
 Map signals conservatively to:
 
@@ -150,15 +151,14 @@ shortcut, command, or script strings.
 
 ## 7. Register the provider
 
-Update `src/elchango/cli.py` to:
+Update `macos-app/Sources/ElChangoProviders/ProviderRegistry.swift` to:
 
-1. add provider-specific path or launch arguments;
-2. instantiate the activity store and provider;
-3. run one startup snapshot to fail clearly on schema drift;
-4. add the provider to the `providers` registry;
-5. add its hook recorder when applicable.
+1. instantiate the activity store and provider;
+2. inject the shared `NativeAutomation` and `PrivilegedActionGate` when needed;
+3. add the provider to the registry without coupling its availability to other
+   providers.
 
-Export the implementation from `src/elchango/providers/__init__.py`.
+Add the implementation to the `ElChangoProviders` SwiftPM target.
 
 Do not add provider-specific branches to `DeckService`, the HTTP surfaces, web,
 or Stream Deck. Routing must use provider metadata and capabilities.
@@ -167,7 +167,8 @@ or Stream Deck. Routing must use provider metadata and capabilities.
 
 If the provider needs a new icon:
 
-1. extend `ButtonIcon` in `src/elchango/models.py`;
+1. extend `DeckIcon` in
+   `macos-app/Sources/ElChangoCore/Contracts/DeckContracts.swift`;
 2. extend `DeckIconName` in `web/src/lib/contracts.ts`;
 3. render it in `web/src/lib/DeckIcon.svelte`;
 4. extend `DeckIconName` and parser validation in
@@ -208,7 +209,7 @@ If adding an icon or action contract, update web and Stream Deck tests too.
 Run:
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests
+swift test --package-path macos-app
 npm --prefix web run check
 npm --prefix web run build
 npm --prefix plugins/streamdeck run check
