@@ -36,7 +36,22 @@ export class DeckApiClient {
     buttonId: string,
     revision: number,
   ): Promise<DeckActivationResponse> {
-    const url = new URL("/api/activate", this.endpoint);
+    return this.postButtonAction("/api/activate", buttonId, revision);
+  }
+
+  async longPress(
+    buttonId: string,
+    revision: number,
+  ): Promise<DeckActivationResponse> {
+    return this.postButtonAction("/api/long-press", buttonId, revision);
+  }
+
+  private async postButtonAction(
+    path: string,
+    buttonId: string,
+    revision: number,
+  ): Promise<DeckActivationResponse> {
+    const url = new URL(path, this.endpoint);
     return parseActivationResponse(
       await this.request(url, {
         method: "POST",

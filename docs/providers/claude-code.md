@@ -187,6 +187,40 @@ folder parameter, so Claude Desktop opens its neutral new Code session screen.
 Launch selection is exposed through the same client-scoped provider chooser on
 web and Stream Deck.
 
+## V4.2 personalized command dispatch
+
+POC: `scripts/poc/13_claude_command_dispatch.py`
+
+Current verdict: `UNPROVEN_REQUIRES_FOCUSED_INPUT_OBSERVATION`.
+
+### Observations
+
+- A non-archived Desktop session with the unique newest `lastFocusedAt` can be
+  treated as the selected Code target, subject to the schema limitations
+  already documented for focus.
+- Unique target selection and Claude foreground status do not prove that the
+  Code prompt owns keyboard input. Another Claude text field could be focused.
+- macOS Accessibility can expose the focused element's role and metadata. The
+  POC requires an explicit metadata marker from a focused local observation,
+  and refuses dispatch unless the target, frontmost bundle, enabled text-input
+  role, and marker all match twice.
+- The POC reads bounded metadata prefixes, defaults to dry-run, submits at most
+  one explicitly supplied recipe in execute mode, and never retries.
+
+### Unproven command mappings
+
+No official Claude Code evidence collected for this project maps elChango's
+stable semantic IDs `accept`, `create_pr`, `commit_push`, or `compact` to a
+native command, shortcut, slash command, or prompt. The POC therefore requires
+either `--recipe-text` or `--recipe-command`; it does not infer defaults from a
+semantic ID.
+
+`DISPATCH_SENT` proves only that one supplied recipe was injected while the
+exact Desktop target remained uniquely selected immediately afterward. It does
+not prove Claude understood, accepted, or completed the semantic operation. No
+product command capability should be declared until focused-input evidence and
+per-command behavior are observed directly.
+
 ## References
 
 - [Claude Code hooks reference](https://docs.anthropic.com/en/docs/claude-code/hooks)

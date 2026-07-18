@@ -6,8 +6,13 @@ import {
   parseDeckSnapshot,
   type DeckActivationResponse,
   type DeckButton,
+  type DeckIconName,
   type DeckSnapshot,
 } from "../src/contracts.js";
+import {
+  KeyPressController,
+  LONG_PRESS_DURATION_MS,
+} from "../src/key-press.js";
 import { positionFromCoordinates, renderButton } from "../src/render.js";
 import {
   StreamDeckSurface,
@@ -51,6 +56,34 @@ test("button rendering supports Claude Code session icons", () => {
   assert.match(image, /m19\.6 66\.5 19\.7-11/);
 });
 
+test("button rendering supports every command icon", () => {
+  const icons: DeckIconName[] = [
+    "robot",
+    "terminal",
+    "code",
+    "bug",
+    "wrench",
+    "rocket",
+    "shield",
+    "database",
+    "globe",
+    "package",
+    "git-branch",
+    "flask",
+    "check",
+    "git-pull-request",
+    "git-commit",
+    "article",
+  ];
+
+  for (const icon of icons) {
+    const image = decodeSvg(renderButton({ ...buttonAt(0), icon }));
+    assert.match(image, /<path d="M/);
+    assert.match(image, /scale\(0\.28125\)/);
+    assert.match(image, /stroke-width="6"/);
+  }
+});
+
 test("button rendering leaves disabled empty keys visually blank", () => {
   const image = decodeSvg(renderButton({
     ...buttonAt(10),
@@ -90,7 +123,20 @@ test("snapshot parser requires the full fixed deck", () => {
   assert.equal(parseDeckSnapshot(snapshot(1)).revision, 1);
 });
 
-test("API client sends client identity and unified activation", async () => {
+test("snapshot parser accepts picker contracts", () => {
+  const value = snapshot(1);
+  value.buttons[10] = {
+    ...value.buttons[10]!,
+    icon: "article",
+    action: "execute_command",
+  };
+
+  const parsed = parseDeckSnapshot(value);
+  assert.equal(parsed.buttons[10]!.icon, "article");
+  assert.equal(parsed.buttons[10]!.action, "execute_command");
+});
+
+test("API client sends client identity and button actions", async () => {
   const requests: Array<{
     url: string;
     init: RequestInit | undefined;
@@ -114,6 +160,7 @@ test("API client sends client identity and unified activation", async () => {
 
   await client.snapshot();
   await client.activate("session:one", 4);
+  await client.longPress("session:one", 4);
 
   assert.match(requests[0]!.url, /client_id=streamdeck/);
   assert.equal(requests[1]!.url, "http://127.0.0.1:8765/api/activate");
@@ -122,6 +169,51 @@ test("API client sends client identity and unified activation", async () => {
     button_id: "session:one",
     revision: 4,
   });
+  assert.equal(
+    requests[2]!.url,
+    "http://127.0.0.1:8765/api/long-press",
+  );
+  assert.deepEqual(
+    JSON.parse(requests[2]!.init!.body as string),
+    JSON.parse(requests[1]!.init!.body as string),
+  );
+});
+
+test("short press activates only when the key is released", async () => {
+  const events: string[] = [];
+  const presses = new KeyPressController(
+    (keyId) => {
+      events.push(`short:${keyId}`);
+    },
+    (keyId) => {
+      events.push(`long:${keyId}`);
+    },
+    20,
+  );
+
+  assert.equal(LONG_PRESS_DURATION_MS, 650);
+  presses.keyDown("key-1");
+  assert.deepEqual(events, []);
+  await presses.keyUp("key-1");
+  assert.deepEqual(events, ["short:key-1"]);
+});
+
+test("long press suppresses activation on key release", async () => {
+  const events: string[] = [];
+  const presses = new KeyPressController(
+    (keyId) => {
+      events.push(`short:${keyId}`);
+    },
+    (keyId) => {
+      events.push(`long:${keyId}`);
+    },
+    5,
+  );
+
+  presses.keyDown("key-1");
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  await presses.keyUp("key-1");
+  assert.deepEqual(events, ["long:key-1"]);
 });
 
 test("API client keeps its timeout active while reading the body", async () => {
@@ -167,6 +259,9 @@ test("surface renders once and activates the button at its position", async () =
         snapshot: snapshot(3),
       };
     },
+    async longPress() {
+      throw new Error("not used");
+    },
   };
   const images: string[] = [];
   const feedback: string[] = [];
@@ -209,6 +304,51 @@ test("surface renders once and activates the button at its position", async () =
   surface.unregister("key-1");
 });
 
+test("surface allows long press customization on a disabled action slot", async () => {
+  const customized = snapshot(1);
+  customized.buttons[11] = {
+    ...customized.buttons[11]!,
+    id: "command:11:accept",
+    label: "Accept",
+    icon: "check",
+    enabled: false,
+    action: "execute_command",
+  };
+  const longPresses: string[] = [];
+  const surface = new StreamDeckSurface(
+    {
+      async snapshot() {
+        return customized;
+      },
+      async activate() {
+        throw new Error("not used");
+      },
+      async longPress(buttonId) {
+        longPresses.push(buttonId);
+        return {
+          accepted: true,
+          action: "choose_slot_command",
+          snapshot: customized,
+        };
+      },
+    },
+    { error: assert.fail },
+    0,
+  );
+  const key: KeyPort = {
+    ...recordingKey([], []),
+    row: 2,
+    column: 1,
+  };
+
+  surface.register(key);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  await surface.longPress(key.id);
+
+  assert.deepEqual(longPresses, ["command:11:accept"]);
+  surface.unregister(key.id);
+});
+
 test("surface replaces native warning feedback with the KO logo", async () => {
   const images: string[] = [];
   const feedback: string[] = [];
@@ -219,6 +359,9 @@ test("surface replaces native warning feedback with the KO logo", async () => {
       },
       async activate() {
         throw new Error("focus failed");
+      },
+      async longPress() {
+        throw new Error("not used");
       },
     },
     { error() {} },
@@ -248,6 +391,9 @@ test("surface preserves KO feedback while polling", async () => {
       },
       async activate() {
         throw new Error("focus failed");
+      },
+      async longPress() {
+        throw new Error("not used");
       },
     },
     { error() {} },
@@ -284,6 +430,9 @@ test("surface rejects stale responses but accepts a newer service epoch", async 
       async activate() {
         throw new Error("not used");
       },
+      async longPress() {
+        throw new Error("not used");
+      },
     },
     { error: assert.fail },
     0,
@@ -311,6 +460,9 @@ test("surface renders offline and recovers after service failure", async () => {
         return snapshot(1);
       },
       async activate() {
+        throw new Error("not used");
+      },
+      async longPress() {
         throw new Error("not used");
       },
     },
@@ -349,6 +501,9 @@ test("surface serializes key activations", async () => {
         activations += 1;
         await pending;
         return { accepted: true, action: "focus_session" };
+      },
+      async longPress() {
+        throw new Error("not used");
       },
     },
     { error: assert.fail },

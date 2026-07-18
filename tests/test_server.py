@@ -16,7 +16,7 @@ from elchango.deck import DeckService
 from elchango.focus import FocusResult
 from elchango.launch import LaunchResult
 from elchango.models import AgentSession, ProviderSnapshot
-from elchango.providers.base import ProviderError
+from elchango.providers.base import ProviderActionResult, ProviderError
 from elchango.providers.cursor_adapter import CursorAdapter
 from elchango.server import DeckHTTPServer, DeckRequestHandler, serve
 
@@ -55,6 +55,59 @@ class StaticProvider:
             selected_native_session_id="session-1",
             sessions=sessions,
             source="test",
+        )
+
+
+class StaticCommandProvider(StaticProvider):
+    provider_id = "command"
+    capabilities = frozenset({"focus_session", "new_session", "execute_command"})
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.executed: tuple[str, str] | None = None
+
+    def snapshot(self) -> ProviderSnapshot:
+        snapshot = super().snapshot()
+        sessions = tuple(
+            AgentSession(
+                provider_id=self.provider_id,
+                native_id=session.native_id,
+                capabilities=self.capabilities,
+                icon=session.icon,
+                title=session.title,
+                workspace_id=session.workspace_id,
+                workspace_path=session.workspace_path,
+                state=session.state,
+                confidence=session.confidence,
+                state_detail=session.state_detail,
+                selected=session.selected,
+                last_activity_at_ms=session.last_activity_at_ms,
+                commands=frozenset({"create_pr", "commit_push", "compact"}),
+            )
+            for session in snapshot.sessions
+        )
+        return ProviderSnapshot(
+            provider_id=self.provider_id,
+            capabilities=self.capabilities,
+            observed_at_ms=snapshot.observed_at_ms,
+            selected_native_session_id=snapshot.selected_native_session_id,
+            sessions=sessions,
+            source=snapshot.source,
+        )
+
+    def is_frontmost(self) -> bool:
+        return True
+
+    def execute_command(
+        self,
+        native_session_id: str,
+        command_id: str,
+    ) -> ProviderActionResult:
+        self.executed = (native_session_id, command_id)
+        return ProviderActionResult(
+            accepted=True,
+            verdict="DISPATCH_VERIFIED",
+            details={"verdict": "DISPATCH_VERIFIED"},
         )
 
 
@@ -161,6 +214,7 @@ class DeckServerTests(unittest.TestCase):
             payload["providers"]["cursor"],
             ["focus_session", "new_session"],
         )
+        self.assertFalse(payload["actions_enabled"])
         self.assertEqual(
             payload["unavailable_providers"],
             {"claude-code": "Claude Desktop application is not installed"},
@@ -207,6 +261,69 @@ class DeckServerTests(unittest.TestCase):
             "control:previous",
         )
         self.assertEqual(previous["snapshot"]["page"], 1)
+
+    def test_long_press_opens_client_scoped_customization_pickers(self) -> None:
+        snapshot = self._get_snapshot("web")
+        session_button = snapshot["buttons"][0]
+        request = urllib.request.Request(
+            f"{self.base_url}/api/long-press",
+            data=json.dumps(
+                {
+                    "client_id": "web",
+                    "button_id": session_button["id"],
+                    "revision": snapshot["revision"],
+                }
+            ).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=2) as response:
+            icon_picker = json.load(response)
+
+        self.assertEqual(icon_picker["action"], "choose_session_icon")
+        self.assertEqual(
+            icon_picker["snapshot"]["buttons"][0]["action"],
+            "set_session_icon",
+        )
+        self.assertEqual(self._get_snapshot("streamdeck")["buttons"][0]["kind"], "session")
+
+        self._post_activate("web", "picker:cancel")
+        restored = self._get_snapshot("web")
+        action_button = restored["buttons"][11]
+        request = urllib.request.Request(
+            f"{self.base_url}/api/long-press",
+            data=json.dumps(
+                {
+                    "client_id": "web",
+                    "button_id": action_button["id"],
+                    "revision": restored["revision"],
+                }
+            ).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=2) as response:
+            command_picker = json.load(response)
+        self.assertEqual(command_picker["action"], "choose_slot_command")
+        self.assertTrue(
+            any(
+                button.get("action") == "set_slot_command"
+                for button in command_picker["snapshot"]["buttons"]
+            )
+        )
+
+    def test_command_button_dispatches_to_fresh_frontmost_target(self) -> None:
+        provider = StaticCommandProvider()
+        self.server.providers = {provider.provider_id: provider}
+        self.server.deck_service = DeckService(provider)
+        snapshot = self._get_snapshot("web")
+        command_button = snapshot["buttons"][12]
+
+        response = self._post_activate("web", command_button["id"])
+
+        self.assertTrue(response["accepted"])
+        self.assertEqual(response["action"], "execute_command")
+        self.assertEqual(provider.executed, ("session-1", "create_pr"))
 
     def test_snapshot_rejects_invalid_client_ids(self) -> None:
         for client_id in ("", "has space", "é", "x" * 129):

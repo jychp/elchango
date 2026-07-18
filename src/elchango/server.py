@@ -55,7 +55,10 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
                         "new_session" in provider.capabilities
                         for provider in providers.values()
                     ),
-                    "actions_enabled": False,
+                    "actions_enabled": any(
+                        "execute_command" in provider.capabilities
+                        for provider in providers.values()
+                    ),
                     "providers": {
                         provider_id: sorted(provider.capabilities)
                         for provider_id, provider in providers.items()
@@ -85,6 +88,9 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/activate":
             self._activate_button()
+            return
+        if path == "/api/long-press":
+            self._long_press_button()
             return
         self._send_json(
             HTTPStatus.METHOD_NOT_ALLOWED,
@@ -216,6 +222,9 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
                 target.action,
                 client_id,
                 target.provider_id,
+                target.native_session_id,
+                target.command_id,
+                target.option_id,
             )
         except (KeyError, ProviderError, RuntimeError) as error:
             self._send_json(
@@ -266,6 +275,9 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
                 target.action,
                 client_id,
                 target.provider_id,
+                target.native_session_id,
+                target.command_id,
+                target.option_id,
             )
         except (KeyError, ProviderError, RuntimeError) as error:
             self._send_json(
@@ -279,6 +291,9 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
         action: str,
         client_id: str,
         provider_id: str | None,
+        native_session_id: str | None = None,
+        command_id: object = None,
+        option_id: str | None = None,
     ) -> None:
         try:
             if action == "refresh_sessions":
@@ -315,6 +330,47 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
                     },
                 )
                 return
+            elif action == "set_session_icon":
+                if option_id is None:
+                    raise ValueError("icon option is missing")
+                updated = self.server.deck_service.select_session_icon(
+                    client_id,
+                    option_id,  # type: ignore[arg-type]
+                )
+            elif action == "set_slot_command":
+                if command_id is None:
+                    raise ValueError("command option is missing")
+                updated = self.server.deck_service.select_slot_command(
+                    client_id,
+                    command_id,  # type: ignore[arg-type]
+                )
+            elif action == "cancel_picker":
+                updated = self.server.deck_service.cancel_picker(client_id)
+            elif action == "previous_picker_page":
+                updated = self.server.deck_service.previous_picker_page(client_id)
+            elif action == "next_picker_page":
+                updated = self.server.deck_service.next_picker_page(client_id)
+            elif action == "execute_command":
+                if (
+                    provider_id is None
+                    or native_session_id is None
+                    or command_id is None
+                ):
+                    raise ValueError("command button has no verified target")
+                result = self.server.providers[provider_id].execute_command(
+                    native_session_id,
+                    command_id,  # type: ignore[arg-type]
+                )
+                status = HTTPStatus.OK if result.accepted else HTTPStatus.CONFLICT
+                self._send_json(
+                    status,
+                    {
+                        "accepted": result.accepted,
+                        "action": action,
+                        "command": result.details,
+                    },
+                )
+                return
             else:
                 self._send_json(
                     HTTPStatus.CONFLICT,
@@ -327,6 +383,63 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
                 {"error": str(error), "retryable": True},
             )
             return
+        except ValueError as error:
+            self._send_json(HTTPStatus.CONFLICT, {"error": str(error)})
+            return
+        self._send_json(
+            HTTPStatus.OK,
+            {
+                "accepted": True,
+                "action": action,
+                "snapshot": updated.to_dict(),
+            },
+        )
+
+    def _long_press_button(self) -> None:
+        payload = self._read_json_payload(max_bytes=4_096)
+        if payload is None:
+            return
+        try:
+            client_id = validate_client_id(payload.get("client_id"))
+        except ValueError as error:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+            return
+        button_id = payload.get("button_id")
+        revision = payload.get("revision")
+        if not isinstance(button_id, str) or not button_id:
+            self._send_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "button_id must be a non-empty string"},
+            )
+            return
+        if isinstance(revision, bool) or not isinstance(revision, int):
+            self._send_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "revision must be an integer"},
+            )
+            return
+        try:
+            snapshot = self.server.deck_service.snapshot(client_id)
+            target = next(
+                (button for button in snapshot.buttons if button.id == button_id),
+                None,
+            )
+            if target is None:
+                raise ValueError("button is absent from the current snapshot")
+            if target.kind == "session" and target.session_id is not None:
+                updated = self.server.deck_service.choose_session_icon(
+                    client_id,
+                    target.session_id,
+                )
+                action = "choose_session_icon"
+            elif target.position in range(11, 14) and target.action == "execute_command":
+                updated = self.server.deck_service.choose_slot_command(
+                    client_id,
+                    target.position - 11,
+                )
+                action = "choose_slot_command"
+            else:
+                raise ValueError("button does not support long press")
         except ValueError as error:
             self._send_json(HTTPStatus.CONFLICT, {"error": str(error)})
             return

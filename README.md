@@ -39,6 +39,18 @@ harness does not block other providers or prevent elChango from starting.
 Unavailable providers are reported by `/api/health`. All SQLite access remains
 read-only.
 
+Long-press a session key to choose a persisted icon from the curated Phosphor
+set. Long-press any of the three center action keys to assign Accept, Create PR,
+Commit Push, or Compact. Preferences are shared by the web and Stream Deck
+surfaces and stored in
+`~/Library/Application Support/elChango/preferences.json`.
+
+Session commands remain disabled until a provider recipe and focused-input
+identity have been proven by its command-dispatch POC. Once enabled, a command
+is sent only to the uniquely selected session of the frontmost harness after
+target and text-input verification. Create PR and Commit Push instruct the
+native agent; elChango does not run host-side Git operations for these buttons.
+
 ## Stream Deck MK.2
 
 Build, validate, and package the official Elgato plugin:

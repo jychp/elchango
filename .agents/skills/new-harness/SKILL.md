@@ -13,7 +13,8 @@ barrier to make an integration appear complete.
 Before editing product code, agree on:
 
 - the exact product and session type to support;
-- which capabilities are in scope: inventory, state, focus, and launch;
+- which capabilities are in scope: inventory, state, focus, launch, and
+  personalized commands;
 - which real-session experiments can run safely now;
 - the expected local data roots and supported operating systems.
 
@@ -33,10 +34,20 @@ Establish evidence for each capability separately:
 4. Find authoritative activity signals, preferably official hooks.
 5. Determine whether exact focus can be verified after acting.
 6. Determine whether an official new-session mechanism exists.
+7. Determine whether exact prompt-input focus can be verified before dispatch.
+8. Search official evidence for each command mapping; record absent evidence
+   rather than inferring a slash command, shortcut, or prompt.
 
 Keep observations, conclusions, and hypotheses distinct. Do not infer current
 state from transcript text. Do not enable focus from a shortcut or deep link
 unless exact post-action identity can be verified.
+
+For command reconnaissance, use only stable semantic IDs already validated for
+the shared contract. Keep provider recipes outside surfaces. A POC must require
+an explicit recipe when no official mapping is available, default to dry-run,
+require `--execute`, recheck target, frontmost application, and input focus
+immediately before one dispatch, and never retry an ambiguous result. Use the
+`new-command` skill for the full workflow.
 
 ## 3. Define the provider identity
 
@@ -122,6 +133,21 @@ Prefer an official deep link or documented API. Opening a composer is allowed;
 submitting a prompt remains manual. Return structured evidence describing what
 was requested and what still requires user confirmation.
 
+### Personalized commands
+
+Do not declare a command capability from focus evidence alone. Establish:
+
+1. a fresh public-button to provider-native target resolution;
+2. exact selected-session and frontmost-application evidence;
+3. exact agent prompt-input focus evidence, distinct from generic text focus;
+4. an official provider recipe or an explicitly configured local recipe;
+5. one dispatch with no fallback or automatic retry;
+6. a conservative post-dispatch verdict that does not claim semantic completion
+   without provider evidence.
+
+Surfaces emit stable semantic IDs only. They must never supply arbitrary prompt,
+shortcut, command, or script strings.
+
 ## 7. Register the provider
 
 Update `src/elchango/cli.py` to:
@@ -162,6 +188,8 @@ Add provider tests covering:
 - every state transition and stale-signal degradation;
 - focus success, rejection, and exact verification;
 - official new-session launch and encoded parameters.
+- command recipe resolution, exact input-focus refusal, stale preflight refusal,
+  one-shot dispatch, and ambiguous-result handling when commands are in scope.
 
 Extend deck and server tests to prove:
 

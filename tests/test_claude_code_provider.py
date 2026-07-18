@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest import mock
 
 from elchango.claude_activity import ClaudeActivityStore
+from elchango.command_dispatch import CommandDispatchResult
 from elchango.providers.base import ProviderActionResult
 from elchango.providers.claude_code import (
     ClaudeCodeProvider,
@@ -210,6 +211,49 @@ class ClaudeCodeProviderTests(unittest.TestCase):
                 "cannot open Claude Desktop new session link",
             ):
                 provider.open_new()
+
+    def test_execute_command_requires_selected_frontmost_target(self) -> None:
+        self._write_session(
+            "local_target",
+            "cli-target",
+            activity=200,
+            last_focused_at=500,
+        )
+        provider = self._provider()
+        provider.command_recipes = {"compact": "/compact"}
+        dispatched = CommandDispatchResult(
+            executed=True,
+            elapsed_ms=5,
+            verdict="DISPATCH_VERIFIED",
+            message="submitted",
+        )
+
+        with (
+            mock.patch(
+                "elchango.providers.claude_code.frontmost_bundle_id",
+                return_value="com.anthropic.claudefordesktop",
+            ),
+            mock.patch(
+                "elchango.providers.claude_code.dispatch_text",
+                return_value=dispatched,
+            ) as dispatch,
+        ):
+            result = provider.execute_command("local_target", "compact")
+
+        self.assertTrue(result.accepted)
+        self.assertEqual(result.verdict, "DISPATCH_VERIFIED")
+        dispatch.assert_called_once_with(
+            "/compact",
+            "com.anthropic.claudefordesktop",
+        )
+
+    def test_accept_command_stays_disabled_without_official_recipe(self) -> None:
+        provider = self._provider()
+
+        result = provider.execute_command("local_target", "accept")
+
+        self.assertFalse(result.accepted)
+        self.assertEqual(result.verdict, "COMMAND_UNSUPPORTED")
 
     def test_record_hook_rejects_unknown_session_ids(self) -> None:
         self._write_session("local_a", "cli-a", activity=200)

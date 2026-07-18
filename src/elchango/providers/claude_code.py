@@ -12,9 +12,11 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from elchango.claude_activity import ClaudeActivityStore
+from elchango.command_dispatch import dispatch_text, frontmost_bundle_id
 from elchango.models import (
     AgentSession,
     ButtonIcon,
+    CommandId,
     ProviderCapability,
     ProviderSnapshot,
 )
@@ -75,6 +77,7 @@ class ClaudeCodeProvider:
     capabilities: ClassVar[frozenset[ProviderCapability]] = frozenset(
         {"focus_session", "new_session"}
     )
+    command_recipes: ClassVar[dict[CommandId, str]] = {}
 
     def __init__(
         self,
@@ -123,6 +126,8 @@ class ClaudeCodeProvider:
             if len(selected) == 1:
                 selected_native_session_id = selected[0].desktop_session_id
         sessions: list[AgentSession] = []
+        commands = frozenset(self.command_recipes)
+        command_capability = {"execute_command"} if commands else set()
         for record in records:
             if record.archived:
                 continue
@@ -147,10 +152,11 @@ class ClaudeCodeProvider:
                     provider_id=self.provider_id,
                     native_id=record.desktop_session_id,
                     capabilities=(
-                        self.capabilities
+                        self.capabilities | command_capability
                         if record.desktop_session_id in focusable_ids
-                        else frozenset()
+                        else frozenset(command_capability)
                     ),
+                    commands=commands,
                     icon="claude",
                     title=record.title or "Untitled Claude session",
                     workspace_id=record.origin_cwd,
@@ -167,7 +173,7 @@ class ClaudeCodeProvider:
         sessions.sort(key=lambda session: (-session.last_activity_at_ms, session.id))
         return ProviderSnapshot(
             provider_id=self.provider_id,
-            capabilities=self.capabilities,
+            capabilities=self.capabilities | command_capability,
             observed_at_ms=observed_at_ms,
             selected_native_session_id=selected_native_session_id,
             sessions=tuple(sessions),
@@ -326,6 +332,50 @@ class ClaudeCodeProvider:
                     "message": "Claude Desktop new Code session requested.",
                 },
             )
+
+    def is_frontmost(self) -> bool:
+        return frontmost_bundle_id() == CLAUDE_BUNDLE_ID
+
+    def execute_command(
+        self,
+        native_session_id: str,
+        command_id: CommandId,
+    ) -> ProviderActionResult:
+        recipe = self.command_recipes.get(command_id)
+        if recipe is None:
+            return ProviderActionResult(
+                accepted=False,
+                verdict="COMMAND_UNSUPPORTED",
+                details={"message": f"Claude does not support {command_id}."},
+            )
+        before = self.snapshot()
+        if (
+            before.selected_native_session_id != native_session_id
+            or not self.is_frontmost()
+        ):
+            return ProviderActionResult(
+                accepted=False,
+                verdict="TARGET_UNVERIFIED",
+                details={
+                    "message": "Claude target is not uniquely selected and frontmost."
+                },
+            )
+        result = dispatch_text(recipe, CLAUDE_BUNDLE_ID)
+        after = self.snapshot()
+        accepted = (
+            result.verdict == "DISPATCH_VERIFIED"
+            and after.selected_native_session_id == native_session_id
+            and self.is_frontmost()
+        )
+        return ProviderActionResult(
+            accepted=accepted,
+            verdict=result.verdict if accepted else "DISPATCH_UNVERIFIED",
+            details={
+                **result.to_dict(),
+                "session_id": native_session_id,
+                "command_id": command_id,
+            },
+        )
 
     def record_hook(
         self,

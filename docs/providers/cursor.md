@@ -211,6 +211,39 @@ composer ID exists before a prompt, elChango cannot verify the launched target
 or add it to the deck. Product launch remains disabled, and the POC must not
 retry automatically after an ambiguous result.
 
+## V4.1: personalized command dispatch
+
+POC: `scripts/poc/12_cursor_command_dispatch.py`
+
+Current verdict: `UNPROVEN_REQUIRES_FOCUSED_INPUT_OBSERVATION`.
+
+### Observations
+
+- Cursor's selected composer ID and frontmost application can be checked again
+  immediately before input injection.
+- Application focus and selected-composer evidence do not prove that keyboard
+  input is in the agent prompt. The focused control could instead be an editor,
+  terminal, search field, or another text input.
+- macOS Accessibility can expose the focused element's role and metadata. The
+  POC requires an explicit metadata marker from a focused local observation,
+  and refuses dispatch when that marker, an enabled text-input role, the exact
+  composer ID, or Cursor foreground status is absent.
+- The POC is dry-run by default. Execute mode submits one explicitly supplied
+  recipe after two matching preflights and never retries.
+
+### Unproven command mappings
+
+No official Cursor evidence currently maps elChango's stable semantic IDs
+`accept`, `create_pr`, `commit_push`, or `compact` to a native command,
+shortcut, slash command, or prompt. The POC therefore requires either
+`--recipe-text` or `--recipe-command`; it does not provide defaults.
+
+`DISPATCH_SENT` proves only that one supplied recipe was injected while the
+exact target remained selected immediately afterward. It does not prove Cursor
+understood, accepted, or completed the semantic operation. No product command
+capability should be declared until focused-input evidence and per-command
+behavior are observed directly.
+
 ## Open questions
 
 - Do composer IDs survive Cursor restarts?
@@ -223,6 +256,9 @@ retry automatically after an ambiguous result.
   and mixed local/cloud session sets?
 - Can keyboard focus inside the target agent input be verified before
   dispatching a privileged action?
+- Which accessibility marker, if any, uniquely identifies Cursor's agent prompt
+  across supported versions?
+- Does Cursor document any stable mapping for the four semantic command IDs?
 
 ## Safety constraints
 
