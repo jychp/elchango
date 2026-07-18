@@ -1,7 +1,9 @@
 # elChango
 
 <p align="center">
-  <img src="docs/assets/elchango-logo.png" alt="elChango cybernetic monkey logo" width="320">
+  <img src="docs/assets/elchango-logo.png" alt="elChango ready" width="220">
+  <img src="docs/assets/elchango-off.png" alt="elChango asleep" width="220">
+  <img src="docs/assets/elchango-ko.png" alt="elChango knocked out" width="220">
 </p>
 
 elChango is a local web and Stream Deck command surface for native AI coding
@@ -50,6 +52,12 @@ npm --prefix streamdeck run pack
 Double-click `streamdeck/com.jychp.elchango.streamDeckPlugin` and accept the
 bundled `elChango` MK.2 profile. Start `chango serve` normally, or use
 `chango serve --api-only` when only the hardware surface is needed.
+
+The plugin uses the sleeping monkey while the local service is offline and the
+knocked-out monkey for failed actions. To use the sleeping monkey on the locked
+or idle device screen, select
+`docs/assets/elchango-screensaver.png` in Stream Deck Settings, Devices, Set
+Screensaver. Stream Deck manages this setting outside the plugin SDK.
 
 For plugin development:
 

@@ -55,14 +55,6 @@ export function renderButton(
 </svg>`);
 }
 
-export function renderOffline(): string {
-  return svgDataUri(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <rect x="3" y="3" width="138" height="138" rx="15" fill="#111315" stroke="#3a3e44" stroke-width="2"/>
-  <path d="M46 52l52 40M98 52L46 92" fill="none" stroke="#de5c58" stroke-width="7" stroke-linecap="round"/>
-  <text x="72" y="116" text-anchor="middle" fill="#d8dadd" font-family="-apple-system,system-ui,sans-serif" font-size="14" font-weight="650">Offline</text>
-</svg>`);
-}
-
 export function positionFromCoordinates(row: number, column: number): number {
   if (
     !Number.isInteger(row) ||
