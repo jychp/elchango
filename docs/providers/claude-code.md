@@ -130,9 +130,45 @@ becomes unknown with explicit degraded detail. This timeout is conservative and
 will be revisited with live hook evidence. The provider retains no prompt,
 assistant, notification message, or transcript content.
 
-Claude session buttons remain disabled because exact existing-session focus is
-not verified. Empty and New buttons continue to target Cursor until V3.4 adds
-explicit provider selection.
+Claude session buttons are enabled after the V3.4 focus probe established an
+exactly verifiable sidebar shortcut strategy. Empty and New buttons continue to
+target Cursor until V3.4 adds explicit provider selection.
+
+## V3.4 existing-session focus probe
+
+`11_claude_desktop_focus.py` tested deep links and native sidebar shortcuts with
+exact post-action verification based on `lastFocusedAt` and the frontmost
+application.
+
+On July 17, 2026, both known identities were tested against a non-archived
+session:
+
+- Desktop `sessionId` (`local_<uuid>`): Claude became frontmost, but the target
+  did not become selected and its `lastFocusedAt` did not change;
+- Claude Code `cliSessionId` (`<uuid>`): same result.
+
+The deep-link verdict is `FOCUS_NOT_VERIFIED`. The current Claude Desktop
+documentation explicitly documents `claude://code/new`, but does not document
+opening an existing Desktop Code session.
+
+The native keyboard probe then established that:
+
+- `Cmd+1` through `Cmd+9` select the corresponding persisted sidebar session;
+- shortcut order comes from `claude_desktop_config.json`, with ungrouped
+  `starred-local-code-sessions` displayed in reverse persisted order, followed
+  by sessions in `customGroupOrder`, then non-starred sessions ordered by
+  descending `lastActivityAt`;
+- sessions after position 9 are reachable with `Cmd+9`, then one `Ctrl+Tab` per
+  additional position;
+- positions 3 and 10 were independently exercised and returned
+  `FOCUS_VERIFIED`.
+
+Production focus now derives the exact shortcut index from this persisted
+order, emits native macOS keyboard events, and accepts success only when the
+target has a strictly newer and uniquely maximal `lastFocusedAt` while Claude
+Desktop is frontmost. Any absent order entry or failed verification keeps the
+action rejected. The probe and production action do not submit prompts or alter
+conversation content.
 
 ## References
 

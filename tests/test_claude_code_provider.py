@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest import mock
 
 from elchango.claude_activity import ClaudeActivityStore
+from elchango.providers.base import ProviderActionResult
 from elchango.providers.claude_code import (
     ClaudeCodeProvider,
     ClaudeCodeProviderError,
@@ -20,8 +21,10 @@ class ClaudeCodeProviderTests(unittest.TestCase):
         self.desktop_root = root / "desktop"
         self.projects_root = root / "projects"
         self.records = self.desktop_root / "account" / "workspace"
+        self.desktop_config = root / "claude_desktop_config.json"
         self.records.mkdir(parents=True)
         self.projects_root.mkdir()
+        self._write_shortcut_config([])
         self.activity = ClaudeActivityStore(
             terminal_deadline_ms=100,
             ttl_ms=1_000,
@@ -43,16 +46,57 @@ class ClaudeCodeProviderTests(unittest.TestCase):
         snapshot = provider.snapshot()
 
         self.assertEqual(snapshot.provider_id, "claude-code")
-        self.assertEqual(snapshot.capabilities, frozenset())
+        self.assertEqual(snapshot.capabilities, frozenset({"focus_session"}))
         self.assertEqual(len(snapshot.sessions), 1)
         session = snapshot.sessions[0]
         self.assertEqual(session.id, "claude-code:local_a")
+        self.assertEqual(session.capabilities, frozenset({"focus_session"}))
         self.assertEqual(session.icon, "claude")
         self.assertEqual(session.title, "Claude A")
         self.assertEqual(session.workspace_path, "/tmp/worktree-local_a")
         self.assertEqual(session.state, "idle")
         self.assertEqual(session.confidence, "persisted")
         self.assertFalse(session.selected)
+
+    def test_focus_uses_persisted_shortcut_order_and_exact_verification(self) -> None:
+        self._write_session(
+            "local_target",
+            "cli-target",
+            activity=200,
+            last_focused_at=100,
+        )
+        self._write_shortcut_config(["local_target"])
+        provider = self._provider()
+        self.assertEqual(
+            provider.snapshot().sessions[0].capabilities,
+            frozenset({"focus_session"}),
+        )
+
+        def focus_target(index: int) -> None:
+            self.assertEqual(index, 1)
+            self._write_session(
+                "local_target",
+                "cli-target",
+                activity=200,
+                last_focused_at=500,
+            )
+
+        with (
+            mock.patch(
+                "elchango.providers.claude_code._send_focus_shortcut",
+                side_effect=focus_target,
+            ),
+            mock.patch(
+                "elchango.providers.claude_code._claude_is_frontmost",
+                return_value=True,
+            ),
+        ):
+            result = provider.focus("local_target")
+
+        self.assertIsInstance(result, ProviderActionResult)
+        self.assertTrue(result.accepted)
+        self.assertEqual(result.verdict, "FOCUS_VERIFIED")
+        self.assertEqual(result.details["shortcut_index"], 1)
 
     def test_fresh_hook_state_overlays_persistent_inventory(self) -> None:
         self._write_session("local_a", "cli-a", activity=200)
@@ -120,6 +164,7 @@ class ClaudeCodeProviderTests(unittest.TestCase):
         return ClaudeCodeProvider(
             desktop_sessions_root=self.desktop_root,
             projects_root=self.projects_root,
+            desktop_config=self.desktop_config,
             activity_store=self.activity,
         )
 
@@ -132,6 +177,7 @@ class ClaudeCodeProviderTests(unittest.TestCase):
         title: str | None = "Claude session",
         archived: bool = False,
         create_transcript: bool = True,
+        last_focused_at: int | None = None,
     ) -> Path:
         cwd = f"/tmp/worktree-{desktop_id}"
         value = {
@@ -141,6 +187,11 @@ class ClaudeCodeProviderTests(unittest.TestCase):
             "originCwd": "/tmp/repository",
             "createdAt": 100,
             "lastActivityAt": activity,
+            **(
+                {}
+                if last_focused_at is None
+                else {"lastFocusedAt": last_focused_at}
+            ),
             "isArchived": archived,
             "title": title,
             "messages": [{"sensitive": "not parsed"}],
@@ -152,6 +203,20 @@ class ClaudeCodeProviderTests(unittest.TestCase):
             project.mkdir(exist_ok=True)
             (project / f"{cli_id}.jsonl").write_text("{}\n", encoding="utf-8")
         return path
+
+    def _write_shortcut_config(self, starred: list[str]) -> None:
+        value = {
+            "preferences": {
+                "epitaxyPrefs": {
+                    "starred-local-code-sessions": starred,
+                    "dframe-local-slice": {
+                        "customGroupAssignments": {},
+                        "customGroupOrder": {},
+                    },
+                }
+            }
+        }
+        self.desktop_config.write_text(json.dumps(value), encoding="utf-8")
 
 
 class ClaudeActivityStoreTests(unittest.TestCase):

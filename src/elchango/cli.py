@@ -21,6 +21,7 @@ from elchango.providers.cursor import (
 )
 from elchango.providers.cursor_adapter import CursorAdapter
 from elchango.providers.claude_code import (
+    DEFAULT_CLAUDE_DESKTOP_CONFIG,
     DEFAULT_CLAUDE_PROJECTS,
     DEFAULT_DESKTOP_SESSIONS_ROOT,
     ClaudeCodeProvider,
@@ -88,6 +89,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_CLAUDE_PROJECTS,
         help=f"Claude Code transcript root (default: {DEFAULT_CLAUDE_PROJECTS}).",
     )
+    serve_parser.add_argument(
+        "--claude-desktop-config",
+        type=Path,
+        default=DEFAULT_CLAUDE_DESKTOP_CONFIG,
+        help=f"Claude Desktop config (default: {DEFAULT_CLAUDE_DESKTOP_CONFIG}).",
+    )
     hook_parser = subparsers.add_parser(
         "report-hook",
         help="Forward one Cursor lifecycle hook to a running deck.",
@@ -149,6 +156,7 @@ def main(argv: list[str] | None = None) -> int:
     claude = ClaudeCodeProvider(
         desktop_sessions_root=args.claude_desktop_sessions,
         projects_root=args.claude_projects,
+        desktop_config=args.claude_desktop_config,
         activity_store=claude_activity_store,
     )
     try:
