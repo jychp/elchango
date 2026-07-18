@@ -781,7 +781,7 @@ public actor ClaudeCodeProvider: AgentProvider {
                 "cannot read record: \(error.localizedDescription)"
             )
         }
-        guard let prefix = String(data: data, encoding: .utf8) else {
+        guard let prefix = completeUTF8Prefix(data) else {
             throw ClaudeCodeProviderError.invalidRecord(
                 url,
                 "record must be valid UTF-8"
@@ -796,6 +796,16 @@ public actor ClaudeCodeProvider: AgentProvider {
                 error.description
             )
         }
+    }
+
+    private static func completeUTF8Prefix(_ data: Data) -> String? {
+        for trailingByteCount in 0...min(3, data.count) {
+            let completeData = data.dropLast(trailingByteCount)
+            if let value = String(data: completeData, encoding: .utf8) {
+                return value
+            }
+        }
+        return nil
     }
 
     private static func requiredString(

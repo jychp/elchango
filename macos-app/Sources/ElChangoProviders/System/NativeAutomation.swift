@@ -68,8 +68,16 @@ public actor NativeAutomation: NativeAutomating {
                 "cannot activate application \(bundleID)"
             )
         }
-        try await sleep(milliseconds: 200)
-        _ = try await requireFrontmost(bundleID: bundleID)
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        repeat {
+            if (try? await requireFrontmost(bundleID: bundleID)) != nil {
+                return
+            }
+            try await sleep(milliseconds: 100)
+        } while ContinuousClock.now < deadline
+        throw ProviderOperationError.targetUnverified(
+            "application did not become frontmost after activation"
+        )
     }
 
     public func open(url: URL) async throws {
@@ -88,11 +96,7 @@ public actor NativeAutomation: NativeAutomating {
         flags: CGEventFlags,
         bundleID: String
     ) async throws {
-        guard AXIsProcessTrusted() else {
-            throw ProviderOperationError.system(
-                "Accessibility permission is required for keyboard dispatch"
-            )
-        }
+        try requireAccessibilityPermission()
         let identity = try await requireFrontmost(bundleID: bundleID)
         try postKey(
             keyCode,
@@ -127,6 +131,7 @@ public actor NativeAutomation: NativeAutomating {
                 "command text and submit count must be valid"
             )
         }
+        try requireAccessibilityPermission()
         let started = ContinuousClock.now
         let identity = try await requireFrontmost(bundleID: bundleID)
         prepareAccessibility(processIdentifier: identity.processIdentifier)
@@ -210,6 +215,7 @@ public actor NativeAutomation: NativeAutomating {
         focusKeyCode: CGKeyCode?,
         targetVerifier: @escaping @Sendable () async throws -> Bool
     ) async throws -> ProviderActionResult {
+        try requireAccessibilityPermission()
         let started = ContinuousClock.now
         let identity = try await requireFrontmost(bundleID: bundleID)
         prepareAccessibility(processIdentifier: identity.processIdentifier)
@@ -297,6 +303,14 @@ public actor NativeAutomation: NativeAutomating {
             "AXManualAccessibility" as CFString,
             kCFBooleanTrue
         )
+    }
+
+    private func requireAccessibilityPermission() throws {
+        guard AXIsProcessTrusted() else {
+            throw ProviderOperationError.system(
+                "Accessibility permission is required for keyboard dispatch"
+            )
+        }
     }
 
     private func verifiedFocusedInput(

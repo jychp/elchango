@@ -259,6 +259,14 @@ public struct FoundationHTTPHandler: HTTPHandler {
                 status,
                 APIErrorResponse(error: error.localizedDescription)
             )
+        } catch {
+            return try jsonResponse(
+                .serviceUnavailable,
+                APIErrorResponse(
+                    error: error.localizedDescription,
+                    retryable: false
+                )
+            )
         }
     }
 

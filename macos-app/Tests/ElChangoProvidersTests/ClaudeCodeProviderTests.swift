@@ -281,17 +281,22 @@ struct ClaudeCodeProviderTests {
     @Test("reads metadata without parsing large message content")
     func boundedMetadataPrefix() async throws {
         let fixture = try ClaudeTemporaryFixture()
-        let messages = String(repeating: "x", count: 80_000)
+        let metadata = """
+        {"sessionId":"local_large","cliSessionId":"cli-large",\
+        "cwd":"/tmp/large","originCwd":"/tmp/repository",\
+        "createdAt":1,"lastActivityAt":2,"isArchived":false,\
+        "title":"Large","lastFocusedAt":3,\
+        "messages":[{"content":"
+        """
+        let paddingCount =
+            ClaudeCodeProvider.maximumMetadataPrefixBytes
+            - metadata.utf8.count
+            - 1
+        let record = metadata
+            + String(repeating: "x", count: paddingCount)
+            + "é\"}]}"
         try fixture.writeRawRecord(
-            """
-            {
-              "sessionId":"local_large","cliSessionId":"cli-large",
-              "cwd":"/tmp/large","originCwd":"/tmp/repository",
-              "createdAt":1,"lastActivityAt":2,"isArchived":false,
-              "title":"Large","lastFocusedAt":3,
-              "messages":[{"content":"\(messages)"}]
-            }
-            """,
+            record,
             named: "local_large.json"
         )
         try fixture.writeTranscript(cliID: "cli-large")

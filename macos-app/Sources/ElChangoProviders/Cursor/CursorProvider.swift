@@ -1035,6 +1035,25 @@ public actor CursorProvider: AgentProvider {
                 "Unsupported Cursor sidebar sort"
             )
         }
+        let createdAtExpression: String
+        if sortBy == "created" {
+            let columns = Set(
+                try connection.withRows(
+                    "PRAGMA table_info(\"composerHeaders\")"
+                ) { row in
+                    try row.text(1)
+                }
+            )
+            guard columns.contains("createdAt") else {
+                throw CursorProviderError.unsupportedTableSchema(
+                    table: "composerHeaders",
+                    missingColumns: ["createdAt"]
+                )
+            }
+            createdAtExpression = "createdAt"
+        } else {
+            createdAtExpression = "0"
+        }
         guard let sectionOrders =
             settings["sectionOrderByGroupBy"] as? JSONObject,
             let sectionOrder = sectionOrders["repository"] as? [String]
@@ -1049,13 +1068,16 @@ public actor CursorProvider: AgentProvider {
         )
         let candidates: [SidebarCandidate] = try connection.withRows(
             """
-            SELECT composerId, createdAt, lastUpdatedAt,
+            SELECT composerId, \(createdAtExpression), lastUpdatedAt,
                    isArchived, isSubagent, value
             FROM composerHeaders
             """
         ) { row in
             guard let sessionID = try row.text(0),
-                memberships[sessionID] != nil,
+                Self.membershipIncludes(
+                    sessionID: sessionID,
+                    memberships: memberships
+                ),
                 try !row.boolean(3),
                 try !row.boolean(4)
             else {
@@ -1107,6 +1129,13 @@ public actor CursorProvider: AgentProvider {
             )
         }
         return ordered.map(\.sessionID)
+    }
+
+    static func membershipIncludes(
+        sessionID: String,
+        memberships: [String: Any]
+    ) -> Bool {
+        memberships.isEmpty || memberships[sessionID] != nil
     }
 
     private func pinnedSessionIDs() throws -> Set<String> {

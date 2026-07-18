@@ -1,6 +1,6 @@
 @preconcurrency import ApplicationServices
 import ElChangoCore
-import ElChangoProviders
+@testable import ElChangoProviders
 import Foundation
 import SQLite3
 import Testing
@@ -242,6 +242,22 @@ struct CursorProviderTests {
         #expect(result.accepted)
         #expect(result.verdict == "FOCUS_VERIFIED")
         #expect(await automation.shortcutCount() == 0)
+    }
+
+    @Test("empty project membership does not hide focus candidates")
+    func emptyMembershipFocus() {
+        #expect(
+            CursorProvider.membershipIncludes(
+                sessionID: "composer-1",
+                memberships: [:]
+            )
+        )
+        #expect(
+            !CursorProvider.membershipIncludes(
+                sessionID: "composer-1",
+                memberships: ["composer-2": [:]]
+            )
+        )
     }
 }
 

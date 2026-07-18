@@ -10,7 +10,8 @@
   "lastFocusedAt": 500,
   "messages": [
     {
-      "sensitive": "inventory readers must not inspect transcript content"
+      "role": "user",
+      "content": "Fixture message content must remain unread by inventory."
     }
   ]
 }

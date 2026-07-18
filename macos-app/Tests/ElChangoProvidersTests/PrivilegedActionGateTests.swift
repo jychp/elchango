@@ -69,6 +69,28 @@ struct PrivilegedActionGateTests {
 
         #expect(await recorder.entries() == ["first", "third"])
     }
+
+    @Test("a task canceled before acquisition leaves no gate state behind")
+    func cancellationBeforeAcquisition() async throws {
+        let gate = PrivilegedActionGate()
+        let recorder = GateRecorder()
+        let canceled = Task {
+            try await Task.sleep(for: .milliseconds(10))
+            try await gate.perform {
+                await recorder.append("canceled")
+            }
+        }
+        canceled.cancel()
+
+        await #expect(throws: CancellationError.self) {
+            try await canceled.value
+        }
+        try await gate.perform {
+            await recorder.append("next")
+        }
+
+        #expect(await recorder.entries() == ["next"])
+    }
 }
 
 private actor GateRecorder {

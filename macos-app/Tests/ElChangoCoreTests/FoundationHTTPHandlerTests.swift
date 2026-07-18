@@ -172,6 +172,41 @@ struct FoundationHTTPHandlerTests {
         #expect(unknown.statusCode == .methodNotAllowed)
     }
 
+    @Test("hook inventory failures return a structured unavailable response")
+    func hookInventoryFailure() async throws {
+        let handler = try makeHandler(
+            assetRoot: nil,
+            accessibility: StubAccessibility(isTrusted: true),
+            providers: [ActionProvider(hookFails: true)]
+        )
+        let hookBody = try JSONEncoder().encode(
+            ProviderHookPayload(
+                hookEventName: "stop",
+                conversationID: "target",
+                status: "completed"
+            )
+        )
+
+        let response = try await handler.handleRequest(
+            request(
+                method: .POST,
+                path: "/api/hooks/test",
+                headers: [
+                    .contentType: "application/json",
+                    .contentLength: String(hookBody.count),
+                ],
+                body: hookBody
+            )
+        )
+        let error = try JSONDecoder().decode(
+            APIErrorResponse.self,
+            from: await responseBody(response)
+        )
+
+        #expect(response.statusCode == .serviceUnavailable)
+        #expect(error.retryable == false)
+    }
+
     @Test("long press customization is client-scoped and persists")
     func customizationFlow() async throws {
         let handler = try makeHandler(
@@ -517,6 +552,11 @@ private actor ActionProvider: AgentProvider {
 
     private var selectedID = "target"
     private var commandsExecuted = 0
+    private let hookFails: Bool
+
+    init(hookFails: Bool = false) {
+        self.hookFails = hookFails
+    }
 
     func snapshot() async throws -> ProviderSnapshot {
         ProviderSnapshot(
@@ -573,7 +613,10 @@ private actor ActionProvider: AgentProvider {
         _ payload: ProviderHookPayload,
         observedAtMilliseconds: Int64
     ) async throws -> ActivityObservation {
-        ActivityObservation(
+        if hookFails {
+            throw FailingHookError.unavailable
+        }
+        return ActivityObservation(
             sessionID: payload.conversationID ?? "",
             event: payload.hookEventName ?? "",
             observedAtMilliseconds: observedAtMilliseconds,
@@ -602,5 +645,13 @@ private actor ActionProvider: AgentProvider {
                 "executed": .boolean(true),
             ]
         )
+    }
+}
+
+private enum FailingHookError: LocalizedError {
+    case unavailable
+
+    var errorDescription: String? {
+        "fixture hook inventory unavailable"
     }
 }
