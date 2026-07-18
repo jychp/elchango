@@ -5,10 +5,19 @@ import Testing
 @Suite("Public HTTP contracts")
 struct ContractTests {
     @Test("foundation snapshot matches the versioned fixture")
-    func snapshotFixture() throws {
-        let snapshot = FoundationDeck.snapshot(
-            observedAt: Date(timeIntervalSince1970: 1_700_000_000)
+    func snapshotFixture() async throws {
+        let preferences = try PreferencesStore(
+            url: FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathComponent("preferences.json")
         )
+        let service = try DeckService(
+            preferences: preferences,
+            wallClockNow: {
+                Date(timeIntervalSince1970: 1_700_000_000)
+            }
+        )
+        let snapshot = try await service.snapshot()
         let encoded = try sortedJSON(snapshot)
         let fixture = try Data(
             contentsOf: fixtureURL("snapshot-empty.json")

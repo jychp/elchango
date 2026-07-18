@@ -68,9 +68,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         rebuildMenu()
 
         do {
+            let preferences = try PreferencesStore()
+            let deckService = try DeckService(preferences: preferences)
             let service = try LoopbackService(
                 assetRoot: Self.webAssetRoot,
-                accessibility: accessibility
+                accessibility: accessibility,
+                deckService: deckService
             )
             self.service = service
             Task {

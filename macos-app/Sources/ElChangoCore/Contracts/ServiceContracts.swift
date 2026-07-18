@@ -47,3 +47,37 @@ public struct APIErrorResponse: Codable, Equatable, Sendable {
         self.retryable = retryable
     }
 }
+
+public struct DeckActionRequest: Codable, Equatable, Sendable {
+    public let clientID: String
+    public let buttonID: String
+    public let revision: Int
+
+    public init(clientID: String, buttonID: String, revision: Int) {
+        self.clientID = clientID
+        self.buttonID = buttonID
+        self.revision = revision
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case clientID = "client_id"
+        case buttonID = "button_id"
+        case revision
+    }
+}
+
+public struct DeckActivationResponse: Codable, Equatable, Sendable {
+    public let accepted: Bool
+    public let action: DeckAction
+    public let snapshot: DeckSnapshot
+
+    public init(
+        accepted: Bool,
+        action: DeckAction,
+        snapshot: DeckSnapshot
+    ) {
+        self.accepted = accepted
+        self.action = action
+        self.snapshot = snapshot
+    }
+}

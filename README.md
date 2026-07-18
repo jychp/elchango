@@ -26,9 +26,11 @@ independently, and open a blank New Agent view for manual prompt entry.
 ### Native foundation
 
 The native migration starts with a menu bar host under `macos-app/`. It serves
-the existing web deck and a contract-compatible disabled snapshot while Cursor
-and Claude providers are ported. The Python backend remains the functional
-provider host during this transition.
+the existing web deck with the shared layout, client-scoped pagination and
+pickers, and byte-compatible persisted personalization. Cursor and Claude
+inventory and privileged actions are still disabled until their native
+providers are ported. The Python backend remains the functional provider host
+during this transition.
 
 ```bash
 npm --prefix web install

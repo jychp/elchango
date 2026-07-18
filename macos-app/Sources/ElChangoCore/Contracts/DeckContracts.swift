@@ -7,31 +7,86 @@ public enum DeckButtonKind: String, Codable, Sendable {
 }
 
 public enum DeckIcon: String, Codable, Sendable {
+    case cursor
+    case claude
     case plus
+    case arrowLeft = "arrow-left"
+    case arrowRight = "arrow-right"
     case arrowsClockwise = "arrows-clockwise"
+    case robot
+    case terminal
+    case code
+    case bug
+    case wrench
+    case rocket
+    case shield
+    case database
+    case globe
+    case package
+    case gitBranch = "git-branch"
+    case flask
     case check
     case gitCommit = "git-commit"
     case gitPullRequest = "git-pull-request"
+    case article
+
+    public static let personalizationOptions: [DeckIcon] = [
+        .cursor,
+        .claude,
+        .robot,
+        .terminal,
+        .code,
+        .bug,
+        .wrench,
+        .rocket,
+        .shield,
+        .database,
+        .globe,
+        .package,
+        .gitBranch,
+        .flask,
+    ]
 }
 
 public enum DeckColor: String, Codable, Sendable {
+    case idle
+    case working
+    case waiting
+    case done
+    case error
+    case unknown
     case control
 }
 
 public enum DeckConfidence: String, Codable, Sendable {
     case observed
+    case candidate
+    case persisted
+    case unknown
 }
 
 public enum DeckAction: String, Codable, Sendable {
     case chooseNewProvider = "choose_new_provider"
+    case cancelNewSession = "cancel_new_session"
+    case newSession = "new_session"
     case refreshSessions = "refresh_sessions"
+    case previousPage = "previous_page"
+    case nextPage = "next_page"
+    case chooseSessionIcon = "choose_session_icon"
+    case setSessionIcon = "set_session_icon"
+    case chooseSlotCommand = "choose_slot_command"
+    case setSlotCommand = "set_slot_command"
+    case cancelPicker = "cancel_picker"
+    case previousPickerPage = "previous_picker_page"
+    case nextPickerPage = "next_picker_page"
     case executeCommand = "execute_command"
 }
 
-public enum CommandID: String, Codable, Sendable {
+public enum CommandID: String, Codable, Hashable, Sendable {
     case accept
     case commitPush = "commit_push"
     case createPR = "create_pr"
+    case compact
 }
 
 public struct DeckButton: Codable, Equatable, Sendable {

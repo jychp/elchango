@@ -1,0 +1,11 @@
+{
+  "action_slots": [
+    "accept",
+    "accept",
+    "compact"
+  ],
+  "session_icons": {
+    "cursor:\u00e9\ud83d\ude00\n\"\\/": "robot"
+  },
+  "version": 1
+}

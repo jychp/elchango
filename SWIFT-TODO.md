@@ -156,3 +156,14 @@ Bind only to loopback and preserve the existing API security constraints.
 - The first native milestone serves health, a disabled 15-key snapshot, and
   bundled web assets. Provider actions remain fail-closed until their native
   adapters are ported and verified.
+
+## Migration progress
+
+- Complete: signed menu bar foundation, explicit Accessibility onboarding,
+  loopback HTTP service, bundled web assets, and contract fixtures.
+- Complete: shared deck layout, stable pagination, client-scoped picker state,
+  conservative revisions, provider failure isolation, and version 1 preference
+  compatibility with atomic persistence.
+- Next: port Cursor inventory and exact selected-session detection behind the
+  native provider contract. Claude remains independently unavailable until its
+  adapter is ported.

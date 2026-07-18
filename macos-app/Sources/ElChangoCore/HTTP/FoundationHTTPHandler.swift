@@ -7,17 +7,22 @@ public struct FoundationHTTPHandler: HTTPHandler {
 
     private let assetRoot: URL?
     private let accessibility: any AccessibilityChecking
+    private let deckService: DeckService
     private let encoder: JSONEncoder
+    private let decoder: JSONDecoder
 
     public init(
         assetRoot: URL?,
-        accessibility: any AccessibilityChecking
+        accessibility: any AccessibilityChecking,
+        deckService: DeckService
     ) {
         self.assetRoot = assetRoot?.standardizedFileURL
         self.accessibility = accessibility
+        self.deckService = deckService
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         self.encoder = encoder
+        self.decoder = JSONDecoder()
     }
 
     public func handleRequest(_ request: HTTPRequest) async throws -> HTTPResponse {
@@ -40,13 +45,19 @@ public struct FoundationHTTPHandler: HTTPHandler {
                 )
             case "/api/snapshot":
                 let clientID = request.query["client_id"] ?? "web"
-                guard Self.isValidClientID(clientID) else {
+                do {
+                    return try jsonResponse(
+                        .ok,
+                        await deckService.snapshot(clientID: clientID)
+                    )
+                } catch let error as DeckServiceError {
                     return try jsonResponse(
                         .badRequest,
-                        APIErrorResponse(error: "invalid client_id")
+                        APIErrorResponse(
+                            error: error.localizedDescription
+                        )
                     )
                 }
-                return try jsonResponse(.ok, FoundationDeck.snapshot())
             default:
                 if request.path.hasPrefix("/api/") {
                     return try jsonResponse(
@@ -59,7 +70,7 @@ public struct FoundationHTTPHandler: HTTPHandler {
         }
 
         if request.method == .POST {
-            return try await rejectUnavailableAction(request)
+            return try await handlePost(request)
         }
 
         return try jsonResponse(
@@ -68,16 +79,12 @@ public struct FoundationHTTPHandler: HTTPHandler {
         )
     }
 
-    private func rejectUnavailableAction(
+    private func handlePost(
         _ request: HTTPRequest
     ) async throws -> HTTPResponse {
-        let limit: Int
         let isHook = request.path.hasPrefix("/api/hooks/")
-        if isHook {
-            limit = Self.hookBodyLimit
-        } else if Self.actionPaths.contains(request.path) {
-            limit = Self.actionBodyLimit
-        } else {
+        let limit = isHook ? Self.hookBodyLimit : Self.actionBodyLimit
+        guard isHook || Self.actionPaths.contains(request.path) else {
             return try jsonResponse(
                 .methodNotAllowed,
                 APIErrorResponse(
@@ -85,7 +92,6 @@ public struct FoundationHTTPHandler: HTTPHandler {
                 )
             )
         }
-
         guard request.headers[.contentType]?.lowercased()
             .hasPrefix("application/json") == true
         else {
@@ -94,7 +100,6 @@ public struct FoundationHTTPHandler: HTTPHandler {
                 APIErrorResponse(error: "Content-Type must be application/json")
             )
         }
-
         if let length = request.headers[.contentLength].flatMap(Int.init),
            length > limit
         {
@@ -103,27 +108,206 @@ public struct FoundationHTTPHandler: HTTPHandler {
                 APIErrorResponse(error: "request body is too large")
             )
         }
-
         let body = try await request.bodyData
-        guard body.count <= limit else {
+        if body.count > limit {
             return try jsonResponse(
                 .payloadTooLarge,
                 APIErrorResponse(error: "request body is too large")
             )
         }
-
+        guard !body.isEmpty else {
+            return try jsonResponse(
+                .badRequest,
+                APIErrorResponse(error: "invalid payload size")
+            )
+        }
         if isHook {
             return try jsonResponse(
                 .notFound,
                 APIErrorResponse(error: "unknown hook provider")
             )
         }
+        guard request.path == "/api/activate"
+                || request.path == "/api/long-press"
+        else {
+            return try jsonResponse(
+                .serviceUnavailable,
+                APIErrorResponse(
+                    error: "native provider actions are not available yet",
+                    retryable: false
+                )
+            )
+        }
 
+        let payload: DeckActionRequest
+        do {
+            payload = try decoder.decode(DeckActionRequest.self, from: body)
+            try DeckService.validateClientID(payload.clientID)
+            guard !payload.buttonID.isEmpty else {
+                throw DeckServiceError.invalidAction(
+                    "button_id must be a non-empty string"
+                )
+            }
+        } catch {
+            return try jsonResponse(
+                .badRequest,
+                APIErrorResponse(error: error.localizedDescription)
+            )
+        }
+
+        do {
+            if request.path == "/api/long-press" {
+                return try await longPress(payload)
+            }
+            return try await activate(payload)
+        } catch let error as DeckServiceError {
+            return try jsonResponse(
+                .conflict,
+                APIErrorResponse(error: error.localizedDescription)
+            )
+        } catch let error as PreferencesStoreError {
+            return try jsonResponse(
+                .serviceUnavailable,
+                APIErrorResponse(
+                    error: error.localizedDescription,
+                    retryable: true
+                )
+            )
+        }
+    }
+
+    private func activate(
+        _ request: DeckActionRequest
+    ) async throws -> HTTPResponse {
+        let snapshot = try await deckService.snapshot(
+            clientID: request.clientID
+        )
+        guard let button = snapshot.buttons.first(
+            where: { $0.id == request.buttonID && $0.enabled }
+        ), let action = button.action else {
+            throw DeckServiceError.invalidAction(
+                "button is not actionable in the current snapshot"
+            )
+        }
+
+        let updated: DeckSnapshot
+        switch action {
+        case .refreshSessions:
+            updated = try await deckService.refresh(clientID: request.clientID)
+        case .previousPage:
+            updated = try await deckService.previousPage(
+                clientID: request.clientID
+            )
+        case .nextPage:
+            updated = try await deckService.nextPage(
+                clientID: request.clientID
+            )
+        case .chooseNewProvider:
+            updated = try await deckService.chooseNewProvider(
+                clientID: request.clientID
+            )
+        case .cancelNewSession:
+            updated = try await deckService.cancelNewSession(
+                clientID: request.clientID
+            )
+        case .setSessionIcon:
+            guard let optionID = button.optionID,
+                  let icon = DeckIcon(rawValue: optionID)
+            else {
+                throw DeckServiceError.invalidAction(
+                    "icon option is missing"
+                )
+            }
+            updated = try await deckService.selectSessionIcon(
+                clientID: request.clientID,
+                icon: icon
+            )
+        case .setSlotCommand:
+            guard let commandID = button.commandID else {
+                throw DeckServiceError.invalidAction(
+                    "command option is missing"
+                )
+            }
+            updated = try await deckService.selectSlotCommand(
+                clientID: request.clientID,
+                commandID: commandID
+            )
+        case .cancelPicker:
+            updated = try await deckService.cancelPicker(
+                clientID: request.clientID
+            )
+        case .previousPickerPage:
+            updated = try await deckService.previousPickerPage(
+                clientID: request.clientID
+            )
+        case .nextPickerPage:
+            updated = try await deckService.nextPickerPage(
+                clientID: request.clientID
+            )
+        case .newSession, .executeCommand:
+            return try jsonResponse(
+                .serviceUnavailable,
+                APIErrorResponse(
+                    error: "native provider actions are not available yet",
+                    retryable: false
+                )
+            )
+        case .chooseSessionIcon, .chooseSlotCommand:
+            throw DeckServiceError.invalidAction(
+                "unsupported deck action: \(action.rawValue)"
+            )
+        }
         return try jsonResponse(
-            .serviceUnavailable,
-            APIErrorResponse(
-                error: "native provider actions are not available yet",
-                retryable: false
+            .ok,
+            DeckActivationResponse(
+                accepted: true,
+                action: action,
+                snapshot: updated
+            )
+        )
+    }
+
+    private func longPress(
+        _ request: DeckActionRequest
+    ) async throws -> HTTPResponse {
+        let snapshot = try await deckService.snapshot(
+            clientID: request.clientID
+        )
+        guard let button = snapshot.buttons.first(
+            where: { $0.id == request.buttonID }
+        ) else {
+            throw DeckServiceError.invalidAction(
+                "button is absent from the current snapshot"
+            )
+        }
+
+        let action: DeckAction
+        let updated: DeckSnapshot
+        if button.kind == .session, let sessionID = button.sessionID {
+            action = .chooseSessionIcon
+            updated = try await deckService.chooseSessionIcon(
+                clientID: request.clientID,
+                sessionID: sessionID
+            )
+        } else if 11..<14 ~= button.position,
+                  button.action == .executeCommand
+        {
+            action = .chooseSlotCommand
+            updated = try await deckService.chooseSlotCommand(
+                clientID: request.clientID,
+                index: button.position - 11
+            )
+        } else {
+            throw DeckServiceError.invalidAction(
+                "button does not support long press"
+            )
+        }
+        return try jsonResponse(
+            .ok,
+            DeckActivationResponse(
+                accepted: true,
+                action: action,
+                snapshot: updated
             )
         )
     }
@@ -254,14 +438,4 @@ public struct FoundationHTTPHandler: HTTPHandler {
         "/api/focus",
         "/api/intent",
     ]
-
-    private static func isValidClientID(_ value: String) -> Bool {
-        guard 1...128 ~= value.utf8.count else { return false }
-        return value.unicodeScalars.allSatisfy { scalar in
-            scalar.isASCII && (
-                CharacterSet.alphanumerics.contains(scalar)
-                    || "._:-".unicodeScalars.contains(scalar)
-            )
-        }
-    }
 }

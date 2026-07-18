@@ -12,7 +12,8 @@ public actor LoopbackService {
     public init(
         port: UInt16 = LoopbackService.defaultPort,
         assetRoot: URL?,
-        accessibility: any AccessibilityChecking
+        accessibility: any AccessibilityChecking,
+        deckService: DeckService
     ) throws {
         let address = try sockaddr_in.inet(ip4: "127.0.0.1", port: port)
         let configuration = HTTPServer.Configuration(
@@ -25,7 +26,8 @@ public actor LoopbackService {
             config: configuration,
             handler: FoundationHTTPHandler(
                 assetRoot: assetRoot,
-                accessibility: accessibility
+                accessibility: accessibility,
+                deckService: deckService
             )
         )
     }

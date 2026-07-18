@@ -7,6 +7,15 @@ from pathlib import Path
 
 from elchango.preferences import DEFAULT_ACTION_SLOTS, PreferencesStore
 
+PREFERENCES_FIXTURE = (
+    Path(__file__).resolve().parents[1]
+    / "contracts/preferences/v1/preferences.json"
+)
+UNICODE_PREFERENCES_FIXTURE = (
+    Path(__file__).resolve().parents[1]
+    / "contracts/preferences/v1/preferences-unicode.json"
+)
+
 
 class PreferencesStoreTests(unittest.TestCase):
     def test_defaults_persist_atomically_and_reload(self) -> None:
@@ -36,6 +45,33 @@ class PreferencesStoreTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "unsupported"):
                 PreferencesStore(path)
+
+    def test_shared_fixture_is_python_compatible(self) -> None:
+        preferences = PreferencesStore(PREFERENCES_FIXTURE).snapshot()
+
+        self.assertEqual(
+            preferences.session_icons,
+            {
+                "claude-code:session-1": "terminal",
+                "cursor:session-1": "robot",
+            },
+        )
+        self.assertEqual(
+            preferences.action_slots,
+            ("compact", "commit_push", "create_pr"),
+        )
+
+        unicode_preferences = PreferencesStore(
+            UNICODE_PREFERENCES_FIXTURE
+        ).snapshot()
+        self.assertEqual(
+            unicode_preferences.session_icons,
+            {'cursor:é😀\n"\\/': "robot"},
+        )
+        self.assertEqual(
+            unicode_preferences.action_slots,
+            ("accept", "accept", "compact"),
+        )
 
 
 if __name__ == "__main__":

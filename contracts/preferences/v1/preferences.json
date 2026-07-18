@@ -1,0 +1,12 @@
+{
+  "action_slots": [
+    "compact",
+    "commit_push",
+    "create_pr"
+  ],
+  "session_icons": {
+    "claude-code:session-1": "terminal",
+    "cursor:session-1": "robot"
+  },
+  "version": 1
+}

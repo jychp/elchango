@@ -7,7 +7,7 @@ import Testing
 struct FoundationHTTPHandlerTests {
     @Test("health exposes degradation without blocking the host")
     func health() async throws {
-        let handler = FoundationHTTPHandler(
+        let handler = try makeHandler(
             assetRoot: nil,
             accessibility: StubAccessibility(isTrusted: false)
         )
@@ -31,7 +31,7 @@ struct FoundationHTTPHandlerTests {
 
     @Test("snapshot remains compatible with both deck surfaces")
     func snapshot() async throws {
-        let handler = FoundationHTTPHandler(
+        let handler = try makeHandler(
             assetRoot: nil,
             accessibility: StubAccessibility(isTrusted: true)
         )
@@ -53,7 +53,7 @@ struct FoundationHTTPHandlerTests {
 
     @Test("snapshot rejects invalid client identifiers")
     func invalidClientID() async throws {
-        let handler = FoundationHTTPHandler(
+        let handler = try makeHandler(
             assetRoot: nil,
             accessibility: StubAccessibility(isTrusted: false)
         )
@@ -73,14 +73,14 @@ struct FoundationHTTPHandlerTests {
 
     @Test("provider actions fail closed")
     func actionRejected() async throws {
-        let handler = FoundationHTTPHandler(
+        let handler = try makeHandler(
             assetRoot: nil,
             accessibility: StubAccessibility(isTrusted: false)
         )
         let response = try await handler.handleRequest(
             request(
                 method: .POST,
-                path: "/api/activate",
+                path: "/api/focus",
                 headers: [
                     .contentType: "application/json",
                     .contentLength: "2",
@@ -100,7 +100,7 @@ struct FoundationHTTPHandlerTests {
 
     @Test("oversized action bodies are rejected before dispatch")
     func oversizedActionRejected() async throws {
-        let handler = FoundationHTTPHandler(
+        let handler = try makeHandler(
             assetRoot: nil,
             accessibility: StubAccessibility(isTrusted: false)
         )
@@ -120,7 +120,7 @@ struct FoundationHTTPHandlerTests {
 
     @Test("hooks and unknown actions preserve fail-closed status semantics")
     func unavailableRoutes() async throws {
-        let handler = FoundationHTTPHandler(
+        let handler = try makeHandler(
             assetRoot: nil,
             accessibility: StubAccessibility(isTrusted: false)
         )
@@ -149,6 +149,64 @@ struct FoundationHTTPHandlerTests {
         #expect(unknown.statusCode == .methodNotAllowed)
     }
 
+    @Test("long press customization is client-scoped and persists")
+    func customizationFlow() async throws {
+        let handler = try makeHandler(
+            assetRoot: nil,
+            accessibility: StubAccessibility(isTrusted: false)
+        )
+        let initial = try await deckSnapshot(
+            from: handler,
+            clientID: "web"
+        )
+        let longPress = try await handler.handleRequest(
+            try actionRequest(
+                path: "/api/long-press",
+                clientID: "web",
+                buttonID: "command:11:accept",
+                revision: initial.revision
+            )
+        )
+        let picker = try JSONDecoder().decode(
+            DeckActivationResponse.self,
+            from: await responseBody(longPress)
+        )
+        let hardware = try await deckSnapshot(
+            from: handler,
+            clientID: "streamdeck"
+        )
+
+        #expect(longPress.statusCode == .ok)
+        #expect(picker.action == .chooseSlotCommand)
+        #expect(
+            picker.snapshot.buttons.contains {
+                $0.commandID == .compact
+            }
+        )
+        #expect(hardware.buttons[11].label == "Accept")
+
+        let select = try await handler.handleRequest(
+            try actionRequest(
+                path: "/api/activate",
+                clientID: "web",
+                buttonID: "command-option:compact",
+                revision: picker.snapshot.revision
+            )
+        )
+        let updated = try JSONDecoder().decode(
+            DeckActivationResponse.self,
+            from: await responseBody(select)
+        )
+        let shared = try await deckSnapshot(
+            from: handler,
+            clientID: "streamdeck"
+        )
+
+        #expect(select.statusCode == .ok)
+        #expect(updated.snapshot.buttons[11].label == "Compact")
+        #expect(shared.buttons[11].label == "Compact")
+    }
+
     @Test("assets use SPA fallback and reject traversal")
     func assetsAndTraversal() async throws {
         let root = FileManager.default.temporaryDirectory
@@ -165,7 +223,7 @@ struct FoundationHTTPHandlerTests {
             to: root.appendingPathComponent("app.123.js")
         )
 
-        let handler = FoundationHTTPHandler(
+        let handler = try makeHandler(
             assetRoot: root,
             accessibility: StubAccessibility(isTrusted: false)
         )
@@ -204,6 +262,71 @@ struct FoundationHTTPHandlerTests {
             query: [],
             headers: headers,
             body: body
+        )
+    }
+
+    private func actionRequest(
+        path: String,
+        clientID: String,
+        buttonID: String,
+        revision: Int
+    ) throws -> HTTPRequest {
+        let body = try JSONEncoder().encode(
+            DeckActionRequest(
+                clientID: clientID,
+                buttonID: buttonID,
+                revision: revision
+            )
+        )
+        return request(
+            method: .POST,
+            path: path,
+            headers: [
+                .contentType: "application/json",
+                .contentLength: String(body.count),
+            ],
+            body: body
+        )
+    }
+
+    private func deckSnapshot(
+        from handler: FoundationHTTPHandler,
+        clientID: String
+    ) async throws -> DeckSnapshot {
+        let response = try await handler.handleRequest(
+            HTTPRequest(
+                method: .GET,
+                version: .http11,
+                path: "/api/snapshot",
+                query: [.init(name: "client_id", value: clientID)],
+                headers: [:],
+                body: Data()
+            )
+        )
+        return try JSONDecoder().decode(
+            DeckSnapshot.self,
+            from: await responseBody(response)
+        )
+    }
+
+    private func responseBody(_ response: HTTPResponse) async -> Data {
+        (try? await response.bodyData) ?? Data()
+    }
+
+    private func makeHandler(
+        assetRoot: URL?,
+        accessibility: any AccessibilityChecking
+    ) throws -> FoundationHTTPHandler {
+        let preferences = try PreferencesStore(
+            url: FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathComponent("preferences.json")
+        )
+        let deckService = try DeckService(preferences: preferences)
+        return FoundationHTTPHandler(
+            assetRoot: assetRoot,
+            accessibility: accessibility,
+            deckService: deckService
         )
     }
 }
