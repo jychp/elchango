@@ -67,6 +67,14 @@ def make_snapshot(count: int) -> ProviderSnapshot:
 
 
 class DeckServiceTests(unittest.TestCase):
+    def test_empty_provider_registry_renders_disabled_deck(self) -> None:
+        snapshot = DeckService({}).snapshot()
+
+        self.assertEqual(len(snapshot.buttons), 15)
+        self.assertEqual(snapshot.source, "no providers available")
+        self.assertTrue(all(not button.enabled for button in snapshot.buttons[:10]))
+        self.assertFalse(snapshot.buttons[14].enabled)
+
     def test_snapshot_always_contains_fifteen_ordered_buttons(self) -> None:
         service = DeckService(FakeProvider(make_snapshot(3)))
 

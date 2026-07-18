@@ -25,6 +25,7 @@ class DeckHTTPServer(ThreadingHTTPServer):
     activity_store: ActivityStore
     hook_recorders: dict[str, Callable[[dict[str, Any], int], object]]
     providers: dict[str, AgentProvider]
+    unavailable_providers: dict[str, str]
     assets: Path
     api_only: bool = False
 
@@ -55,6 +56,11 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
                         provider_id: sorted(provider.capabilities)
                         for provider_id, provider in providers.items()
                     },
+                    "unavailable_providers": getattr(
+                        self.server,
+                        "unavailable_providers",
+                        {},
+                    ),
                 },
             )
             return
@@ -526,6 +532,7 @@ def serve(
         str,
         Callable[[dict[str, Any], int], object],
     ] | None = None,
+    unavailable_providers: dict[str, str] | None = None,
 ) -> None:
     """Serve until interrupted."""
 
@@ -539,10 +546,13 @@ def serve(
     server = DeckHTTPServer((host, port), DeckRequestHandler)
     server.deck_service = service
     server.activity_store = activity_store
-    server.hook_recorders = hook_recorders or {
-        "cursor": activity_store.record,
-    }
+    server.hook_recorders = (
+        {"cursor": activity_store.record}
+        if hook_recorders is None
+        else hook_recorders
+    )
     server.providers = providers
+    server.unavailable_providers = unavailable_providers or {}
     server.assets = assets
     server.api_only = api_only
     try:

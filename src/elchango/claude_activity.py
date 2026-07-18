@@ -15,7 +15,12 @@ MAX_ACTIVITY_SIGNALS = 1_000
 SUPPORTED_EVENTS = {
     "SessionStart",
     "UserPromptSubmit",
+    "PreToolUse",
+    "PostToolUse",
+    "PermissionRequest",
     "Notification",
+    "Elicitation",
+    "ElicitationResult",
     "Stop",
     "StopFailure",
     "SessionEnd",
@@ -26,6 +31,7 @@ WAITING_NOTIFICATIONS = {
     "elicitation_dialog",
     "agent_needs_input",
 }
+WAITING_TOOLS = {"AskUserQuestion", "ExitPlanMode"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +62,7 @@ class ClaudeActivityStore:
         self._terminal_deadline_ms = terminal_deadline_ms
         self._ttl_ms = ttl_ms
         self._signals: dict[str, ClaudeActivitySignal] = {}
+        self._acknowledged_at_ms: dict[str, int] = {}
         self._lock = threading.Lock()
 
     def record(
@@ -81,6 +88,7 @@ class ClaudeActivityStore:
         state, confidence, detail = _event_state(
             event,
             payload.get("notification_type"),
+            payload.get("tool_name"),
         )
         signal = ClaudeActivitySignal(
             session_id=session_id,
@@ -129,7 +137,20 @@ class ClaudeActivityStore:
                     f"Claude Code {signal.event} signal is stale; "
                     "expected terminal event was not observed",
                 )
+            acknowledged_at_ms = self._acknowledged_at_ms.get(session_id)
+            if (
+                signal.state == "done"
+                and acknowledged_at_ms is not None
+                and acknowledged_at_ms >= signal.observed_at_ms
+            ):
+                return "idle", "observed", "completion acknowledged by focus"
             return signal.state, signal.confidence, signal.detail
+
+    def acknowledge(self, session_id: str, observed_at_ms: int) -> None:
+        """Acknowledge one completed session after verified deck focus."""
+
+        with self._lock:
+            self._acknowledged_at_ms[session_id] = observed_at_ms
 
     def _purge_expired_locked(self, observed_at_ms: int) -> None:
         expired = [
@@ -139,11 +160,13 @@ class ClaudeActivityStore:
         ]
         for session_id in expired:
             self._signals.pop(session_id, None)
+            self._acknowledged_at_ms.pop(session_id, None)
 
 
 def _event_state(
     event: object,
     notification_type: object,
+    tool_name: object,
 ) -> tuple[SessionState, StateConfidence, str]:
     if event == "UserPromptSubmit":
         return "working", "observed", "Claude Code prompt submitted"
@@ -155,6 +178,22 @@ def _event_state(
         return "idle", "observed", "Claude Code session ended"
     if event == "SessionStart":
         return "idle", "observed", "Claude Code session started"
+    if event == "PermissionRequest":
+        if not isinstance(tool_name, str) or not tool_name:
+            raise ValueError("Claude Code PermissionRequest is missing tool_name")
+        return "waiting", "observed", f"Claude Code needs permission: {tool_name}"
+    if event == "Elicitation":
+        return "waiting", "observed", "Claude Code MCP tool needs input"
+    if event == "ElicitationResult":
+        return "working", "observed", "Claude Code MCP input received"
+    if event == "PreToolUse":
+        if tool_name not in WAITING_TOOLS:
+            raise ValueError(f"unsupported Claude Code waiting tool: {tool_name!r}")
+        return "waiting", "observed", f"Claude Code needs input: {tool_name}"
+    if event == "PostToolUse":
+        if tool_name not in WAITING_TOOLS:
+            raise ValueError(f"unsupported Claude Code resumed tool: {tool_name!r}")
+        return "working", "observed", f"Claude Code input received: {tool_name}"
     if notification_type in WAITING_NOTIFICATIONS:
         return (
             "waiting",

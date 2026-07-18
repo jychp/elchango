@@ -18,7 +18,10 @@ The ``config`` command prints, but never installs, a settings snippet for:
 
 * ``SessionStart``
 * ``UserPromptSubmit``
+* ``PreToolUse`` and ``PostToolUse`` for interactive question tools
+* ``PermissionRequest``
 * ``Notification``
+* ``Elicitation`` and ``ElicitationResult``
 * ``Stop``
 * ``StopFailure``
 * ``SessionEnd``
@@ -47,10 +50,12 @@ Examples
 
 Interpretation
 ==============
-Observed ``UserPromptSubmit`` supports blue (working). ``Stop`` supports green
-(done). ``StopFailure`` supports an explicit error/degraded terminal state.
-``Notification`` supports orange only when a waiting notification type such as
-``permission_prompt`` or ``agent_needs_input`` is actually observed.
+Observed ``UserPromptSubmit`` supports blue (working). ``PreToolUse`` for
+``AskUserQuestion`` or ``ExitPlanMode``, ``PermissionRequest``, and
+``Elicitation`` support orange (waiting). Their corresponding completion events
+support a return to blue. ``Stop`` supports green (done). ``StopFailure``
+supports an explicit error/degraded terminal state. ``Notification`` remains an
+additional orange signal for documented waiting notification types.
 ``SessionStart`` and ``SessionEnd`` describe lifecycle boundaries, not active
 turn state. Missing terminal evidence must become degraded after a freshness
 deadline; it must never be invented from transcript contents.
@@ -77,7 +82,12 @@ from typing import Any
 OBSERVED_EVENTS = (
     "SessionStart",
     "UserPromptSubmit",
+    "PreToolUse",
+    "PostToolUse",
+    "PermissionRequest",
     "Notification",
+    "Elicitation",
+    "ElicitationResult",
     "Stop",
     "StopFailure",
     "SessionEnd",
@@ -88,6 +98,7 @@ WAITING_NOTIFICATIONS = {
     "elicitation_dialog",
     "agent_needs_input",
 }
+WAITING_TOOLS = {"AskUserQuestion", "ExitPlanMode"}
 TERMINAL_EVENTS = {"Stop", "StopFailure"}
 
 
@@ -105,6 +116,7 @@ class HookRecord:
     cwd: str
     transcript_path: str
     notification_type: str | None
+    tool_name: str | None
     source: str | None
     reason: str | None
     error: str | None
@@ -203,6 +215,7 @@ def sanitize_hook_payload(payload: Any) -> HookRecord:
         cwd=required_string(payload, "cwd"),
         transcript_path=required_string(payload, "transcript_path"),
         notification_type=optional_string(payload, "notification_type"),
+        tool_name=optional_string(payload, "tool_name"),
         source=optional_string(payload, "source"),
         reason=optional_string(payload, "reason"),
         error=optional_string(payload, "error"),
@@ -256,6 +269,8 @@ def analyze_records(records: list[HookRecord]) -> Analysis:
         if (
             record.event == "Notification"
             and record.notification_type in WAITING_NOTIFICATIONS
+        ) or record.event in {"PermissionRequest", "Elicitation"} or (
+            record.event == "PreToolUse" and record.tool_name in WAITING_TOOLS
         ):
             waiting_sessions.add(record.session_id)
     submit_and_terminal = sum(
@@ -330,7 +345,14 @@ def hook_config(python: str, script: Path, log: Path) -> dict[str, Any]:
         )
     )
     handler = [{"hooks": [{"type": "command", "command": command, "timeout": 10}]}]
-    return {"hooks": {event: handler for event in OBSERVED_EVENTS}}
+    hooks = {event: handler for event in OBSERVED_EVENTS}
+    hooks["PreToolUse"] = [
+        {"matcher": "AskUserQuestion|ExitPlanMode", **handler[0]}
+    ]
+    hooks["PostToolUse"] = [
+        {"matcher": "AskUserQuestion|ExitPlanMode", **handler[0]}
+    ]
+    return {"hooks": hooks}
 
 
 def print_analysis(analysis: Analysis) -> None:

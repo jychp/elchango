@@ -114,6 +114,9 @@ class DeckServerTests(unittest.TestCase):
         )
         self.server.deck_service = DeckService(self.cursor)
         self.server.providers = {self.cursor.provider_id: self.cursor}
+        self.server.unavailable_providers = {
+            "claude-code": "Claude Desktop application is not installed"
+        }
         self.server.assets = assets
         self.server.api_only = False
         self.thread = threading.Thread(
@@ -156,6 +159,10 @@ class DeckServerTests(unittest.TestCase):
         self.assertEqual(
             payload["providers"]["cursor"],
             ["focus_session", "new_session"],
+        )
+        self.assertEqual(
+            payload["unavailable_providers"],
+            {"claude-code": "Claude Desktop application is not installed"},
         )
 
     def test_snapshot_clients_keep_independent_pages(self) -> None:

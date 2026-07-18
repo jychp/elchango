@@ -22,10 +22,8 @@ class ClaudeCodeProviderTests(unittest.TestCase):
         self.projects_root = root / "projects"
         self.records = self.desktop_root / "account" / "workspace"
         self.desktop_config = root / "claude_desktop_config.json"
-        self.launch_folder = root / "launch folder"
         self.records.mkdir(parents=True)
         self.projects_root.mkdir()
-        self.launch_folder.mkdir()
         self._write_shortcut_config([])
         self.activity = ClaudeActivityStore(
             terminal_deadline_ms=100,
@@ -73,6 +71,12 @@ class ClaudeCodeProviderTests(unittest.TestCase):
             activity=200,
             last_focused_at=100,
         )
+        self._write_session(
+            "local_other",
+            "cli-other",
+            activity=100,
+            last_focused_at=200,
+        )
         self._write_shortcut_config(["local_target"])
         provider = self._provider()
         self.assertEqual(
@@ -106,7 +110,52 @@ class ClaudeCodeProviderTests(unittest.TestCase):
         self.assertEqual(result.verdict, "FOCUS_VERIFIED")
         self.assertEqual(result.details["shortcut_index"], 1)
 
-    def test_open_new_uses_official_deep_link_with_folder(self) -> None:
+    def test_focus_accepts_already_selected_session_and_acknowledges_done(self) -> None:
+        self._write_session(
+            "local_target",
+            "cli-target",
+            activity=200,
+            last_focused_at=500,
+        )
+        self._write_shortcut_config(["local_target"])
+        self.activity.record(
+            {
+                "hook_event_name": "Stop",
+                "session_id": "cli-target",
+                "cwd": "/tmp/worktree-local_target",
+                "transcript_path": "/tmp/cli-target.jsonl",
+            },
+            100,
+        )
+        provider = self._provider()
+
+        with (
+            mock.patch(
+                "elchango.providers.claude_code._activate_claude"
+            ) as activate,
+            mock.patch(
+                "elchango.providers.claude_code._send_focus_shortcut"
+            ) as shortcut,
+            mock.patch(
+                "elchango.providers.claude_code._claude_is_frontmost",
+                return_value=True,
+            ),
+            mock.patch(
+                "elchango.providers.claude_code.time.time_ns",
+                return_value=200_000_000,
+            ),
+        ):
+            result = provider.focus("local_target")
+
+        self.assertTrue(result.accepted)
+        activate.assert_called_once_with()
+        shortcut.assert_not_called()
+        self.assertEqual(
+            self.activity.state_for("cli-target", 200),
+            ("idle", "observed", "completion acknowledged by focus"),
+        )
+
+    def test_open_new_uses_neutral_official_deep_link(self) -> None:
         provider = self._provider()
         completed = mock.Mock(returncode=0, stderr="")
 
@@ -118,10 +167,7 @@ class ClaudeCodeProviderTests(unittest.TestCase):
 
         self.assertTrue(result.accepted)
         self.assertEqual(result.verdict, "NEW_SESSION_REQUESTED")
-        deep_link = result.details["deep_link"]
-        self.assertIsInstance(deep_link, str)
-        self.assertTrue(deep_link.startswith("claude://code/new?folder="))
-        self.assertIn("launch+folder", deep_link)
+        self.assertEqual(result.details["deep_link"], "claude://code/new")
         run.assert_called_once()
 
     def test_fresh_hook_state_overlays_persistent_inventory(self) -> None:
@@ -191,7 +237,6 @@ class ClaudeCodeProviderTests(unittest.TestCase):
             desktop_sessions_root=self.desktop_root,
             projects_root=self.projects_root,
             desktop_config=self.desktop_config,
-            launch_folder=self.launch_folder,
             activity_store=self.activity,
         )
 
@@ -271,7 +316,13 @@ class ClaudeActivityStoreTests(unittest.TestCase):
     def test_documented_events_map_to_deck_states(self) -> None:
         cases = (
             ("UserPromptSubmit", {}, "working"),
+            ("PreToolUse", {"tool_name": "AskUserQuestion"}, "waiting"),
+            ("PostToolUse", {"tool_name": "AskUserQuestion"}, "working"),
+            ("PreToolUse", {"tool_name": "ExitPlanMode"}, "waiting"),
+            ("PermissionRequest", {"tool_name": "Bash"}, "waiting"),
             ("Notification", {"notification_type": "permission_prompt"}, "waiting"),
+            ("Elicitation", {}, "waiting"),
+            ("ElicitationResult", {}, "working"),
             ("Stop", {}, "done"),
             ("StopFailure", {}, "error"),
             ("SessionEnd", {}, "idle"),
@@ -297,6 +348,10 @@ class ClaudeActivityStoreTests(unittest.TestCase):
 
         self.assertEqual(state[0], "idle")
         self.assertEqual(state[1], "candidate")
+
+    def test_unrelated_tool_event_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "unsupported Claude Code waiting tool"):
+            self.record("PreToolUse", tool_name="Read")
 
 
 if __name__ == "__main__":

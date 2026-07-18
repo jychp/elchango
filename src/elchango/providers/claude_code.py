@@ -7,7 +7,6 @@ import json
 import subprocess
 import threading
 import time
-import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar
@@ -82,13 +81,11 @@ class ClaudeCodeProvider:
         desktop_sessions_root: Path = DEFAULT_DESKTOP_SESSIONS_ROOT,
         projects_root: Path = DEFAULT_CLAUDE_PROJECTS,
         desktop_config: Path = DEFAULT_CLAUDE_DESKTOP_CONFIG,
-        launch_folder: Path | None = None,
         activity_store: ClaudeActivityStore | None = None,
     ) -> None:
         self._desktop_sessions_root = desktop_sessions_root
         self._projects_root = projects_root
         self._desktop_config = desktop_config
-        self._launch_folder = (launch_folder or Path.cwd()).resolve()
         self.activity_store = activity_store or ClaudeActivityStore()
         self._cache: dict[Path, _CachedRecord] = {}
         self._lock = threading.Lock()
@@ -220,8 +217,18 @@ class ClaudeCodeProvider:
                 ),
                 default=-1,
             )
+            target_already_selected = (
+                target.last_focused_at_ms == before_max
+                and sum(
+                    record.last_focused_at_ms == before_max for record in visible
+                )
+                == 1
+            )
 
-        _send_focus_shortcut(shortcut_index)
+        if target_already_selected:
+            _activate_claude()
+        else:
+            _send_focus_shortcut(shortcut_index)
         deadline = time.monotonic() + 4.0
         while time.monotonic() < deadline:
             with self._lock:
@@ -252,10 +259,17 @@ class ClaudeCodeProvider:
             )
             if (
                 current_target.last_focused_at_ms is not None
-                and current_target.last_focused_at_ms > before_max
+                and (
+                    current_target.last_focused_at_ms > before_max
+                    or target_already_selected
+                )
                 and uniquely_newest
                 and _claude_is_frontmost()
             ):
+                self.activity_store.acknowledge(
+                    target.cli_session_id,
+                    time.time_ns() // 1_000_000,
+                )
                 return _focus_result(
                     started,
                     native_session_id,
@@ -278,12 +292,7 @@ class ClaudeCodeProvider:
         """Open Claude Desktop's official new Code session deep link."""
 
         with self._launch_lock:
-            if not self._launch_folder.is_dir():
-                raise ClaudeCodeProviderError(
-                    f"Claude launch folder is not a directory: {self._launch_folder}"
-                )
-            query = urllib.parse.urlencode({"folder": str(self._launch_folder)})
-            deep_link = f"claude://code/new?{query}"
+            deep_link = "claude://code/new"
             started = time.monotonic()
             completed = subprocess.run(
                 ["/usr/bin/open", deep_link],
@@ -303,12 +312,8 @@ class ClaudeCodeProvider:
                 details={
                     "executed": True,
                     "deep_link": deep_link,
-                    "folder": str(self._launch_folder),
                     "elapsed_ms": round((time.monotonic() - started) * 1_000),
-                    "message": (
-                        "Claude Desktop new Code session requested; "
-                        "folder confirmation remains manual."
-                    ),
+                    "message": "Claude Desktop new Code session requested.",
                 },
             )
 
@@ -548,17 +553,7 @@ def _shortcut_order(
 
 
 def _send_focus_shortcut(index: int) -> None:
-    completed = subprocess.run(
-        ["/usr/bin/open", "-b", CLAUDE_BUNDLE_ID],
-        capture_output=True,
-        text=True,
-        timeout=5,
-        check=False,
-    )
-    if completed.returncode != 0:
-        raise ClaudeCodeProviderError(
-            f"cannot activate Claude Desktop: {completed.stderr.strip()}"
-        )
+    _activate_claude()
     time.sleep(0.25)
     direct_index = min(index, 9)
     number_key_codes = {
@@ -579,6 +574,20 @@ def _send_focus_shortcut(index: int) -> None:
         for _ in range(remaining):
             _post_chord(59, 1 << 18, 48)
             time.sleep(0.12)
+
+
+def _activate_claude() -> None:
+    completed = subprocess.run(
+        ["/usr/bin/open", "-b", CLAUDE_BUNDLE_ID],
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise ClaudeCodeProviderError(
+            f"cannot activate Claude Desktop: {completed.stderr.strip()}"
+        )
 
 
 def _post_chord(modifier_key: int, modifier_flag: int, key_code: int) -> None:

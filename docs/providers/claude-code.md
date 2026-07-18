@@ -120,7 +120,12 @@ Sessions without fresh hook evidence are gray with persisted confidence.
 Documented hook transitions map as follows:
 
 - `UserPromptSubmit`: blue, working;
-- waiting `Notification` types: orange, waiting;
+- `PreToolUse` for `AskUserQuestion` or `ExitPlanMode`: orange, waiting;
+- corresponding `PostToolUse`: blue, working after the user responds;
+- `PermissionRequest`: orange, waiting for tool approval;
+- `Elicitation`: orange, waiting for MCP input;
+- `ElicitationResult`: blue, working after MCP input;
+- waiting `Notification` types remain an additional orange signal;
 - `Stop`: green, done;
 - `StopFailure`: error, rendered orange by the four-color deck;
 - `SessionStart` and `SessionEnd`: gray, idle.
@@ -170,12 +175,17 @@ Desktop is frontmost. Any absent order entry or failed verification keeps the
 action rejected. The probe and production action do not submit prompts or alter
 conversation content.
 
-New-session launch uses the documented `claude://code/new` deep link with an
-absolute `folder` query parameter. The default folder is the directory where
-the elChango service starts and can be overridden with
-`--claude-new-session-folder`. Claude Desktop retains its official manual folder
-confirmation. Launch selection is exposed through the same client-scoped
-provider chooser on web and Stream Deck.
+When the target is already Claude Desktop's uniquely most recently focused
+session, focus activates Claude without sending a navigation shortcut and
+verifies that the same target remains uniquely selected. This avoids a false
+warning when Claude correctly opens an already-selected session without
+changing `lastFocusedAt`. Verified focus also acknowledges a green completion,
+returning it to gray.
+
+New-session launch uses the documented `claude://code/new` deep link without a
+folder parameter, so Claude Desktop opens its neutral new Code session screen.
+Launch selection is exposed through the same client-scoped provider chooser on
+web and Stream Deck.
 
 ## References
 

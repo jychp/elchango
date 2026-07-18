@@ -1,9 +1,7 @@
 # elChango
 
 <p align="center">
-  <img src="docs/assets/elchango-logo.png" alt="elChango ready" width="220">
-  <img src="docs/assets/elchango-off.png" alt="elChango asleep" width="220">
-  <img src="docs/assets/elchango-ko.png" alt="elChango knocked out" width="220">
+  <img src="docs/assets/elchango-logo.png" alt="elChango cybernetic monkey logo" width="320">
 </p>
 
 elChango is a local web and Stream Deck command surface for native AI coding
@@ -19,7 +17,7 @@ independently, and open a blank New Agent view for manual prompt entry.
 - macOS
 - Python 3.11 or newer
 - Node.js and npm
-- Cursor with at least one local agent session
+- Cursor and/or Claude Desktop; unavailable harnesses are skipped independently
 - Stream Deck 7.1 or newer for the hardware surface
 
 ## Build and run
@@ -36,7 +34,9 @@ chango serve
 Open <http://127.0.0.1:8765/>.
 
 The production command serves both the compiled Svelte application and the
-Cursor-backed loopback API from one process. All SQLite access remains
+provider-neutral loopback API from one process. A missing or incompatible
+harness does not block other providers or prevent elChango from starting.
+Unavailable providers are reported by `/api/health`. All SQLite access remains
 read-only.
 
 ## Stream Deck MK.2

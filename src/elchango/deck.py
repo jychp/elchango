@@ -82,15 +82,16 @@ class DeckService:
             self._providers = dict(providers)
         else:
             self._providers = {providers.provider_id: providers}
-        if not self._providers:
-            raise ValueError("at least one provider is required")
         for provider_id, provider in self._providers.items():
             if provider_id != provider.provider_id:
                 raise ValueError("provider registry key must match provider_id")
         self._default_provider_id = (
-            default_provider_id or next(iter(self._providers))
+            default_provider_id or next(iter(self._providers), None)
         )
-        if self._default_provider_id not in self._providers:
+        if (
+            self._default_provider_id is not None
+            and self._default_provider_id not in self._providers
+        ):
             raise ValueError("default_provider_id is not registered")
         self._lock = threading.Lock()
         self._session_order: list[str | None] = []
@@ -175,6 +176,14 @@ class DeckService:
         snapshots = tuple(
             provider.snapshot() for provider in self._providers.values()
         )
+        if not snapshots:
+            return _CombinedSnapshot(
+                observed_at_ms=time.time_ns() // 1_000_000,
+                selected_session_id=None,
+                sessions=(),
+                source="no providers available",
+                read_only=True,
+            )
         selected_session_id = next(
             (
                 snapshot.selected_session_id
