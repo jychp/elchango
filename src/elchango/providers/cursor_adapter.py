@@ -7,7 +7,11 @@ from dataclasses import dataclass, replace
 from typing import ClassVar
 
 from elchango.activity import ActivityStore
-from elchango.command_dispatch import dispatch_text, frontmost_bundle_id
+from elchango.command_dispatch import (
+    dispatch_command_enter,
+    dispatch_text,
+    frontmost_bundle_id,
+)
 from elchango.focus import CursorFocusController
 from elchango.launch import CursorLaunchController
 from elchango.models import (
@@ -18,6 +22,12 @@ from elchango.models import (
 )
 from elchango.providers.base import ProviderActionResult
 from elchango.providers.cursor import CursorProvider
+
+
+@dataclass(frozen=True, slots=True)
+class CursorCommandRecipe:
+    text: str | None
+    submit_count: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,10 +43,25 @@ class CursorAdapter:
     display_name: ClassVar[str] = "Cursor"
     icon: ClassVar[ButtonIcon] = "cursor"
     capabilities: ClassVar[frozenset[ProviderCapability]] = frozenset(
-        {"focus_session", "new_session"}
+        {"focus_session", "new_session", "execute_command"}
     )
     bundle_id: ClassVar[str] = "com.todesktop.230313mzl4w4u92"
-    command_recipes: ClassVar[dict[CommandId, str]] = {}
+    input_marker: ClassVar[str] = (
+        "tiptapProseMirrorui-prompt-input-editor__inputProseMirror-focused"
+    )
+    command_recipes: ClassVar[dict[CommandId, CursorCommandRecipe]] = {
+        "accept": CursorCommandRecipe(text=None),
+        "create_pr": CursorCommandRecipe(
+            text="Create a pull request for the current changes."
+        ),
+        "commit_push": CursorCommandRecipe(
+            text=(
+                "Commit the current changes with a Conventional Commit message "
+                "and push the current branch."
+            )
+        ),
+        "compact": CursorCommandRecipe(text="/summarize", submit_count=2),
+    }
 
     def snapshot(self) -> ProviderSnapshot:
         snapshot = self.inventory.snapshot()
@@ -104,7 +129,20 @@ class CursorAdapter:
                     "message": "Cursor target is not uniquely selected and frontmost."
                 },
             )
-        result = dispatch_text(recipe, self.bundle_id)
+        if recipe.text is None:
+            result = dispatch_command_enter(
+                self.bundle_id,
+                expected_input_marker=self.input_marker,
+                focus_shortcut="l",
+            )
+        else:
+            result = dispatch_text(
+                recipe.text,
+                self.bundle_id,
+                expected_input_marker=self.input_marker,
+                focus_shortcut="l",
+                submit_count=recipe.submit_count,
+            )
         after = self.snapshot()
         accepted = (
             result.verdict == "DISPATCH_VERIFIED"

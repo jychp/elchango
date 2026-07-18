@@ -215,7 +215,7 @@ retry automatically after an ambiguous result.
 
 POC: `scripts/poc/12_cursor_command_dispatch.py`
 
-Current verdict: `UNPROVEN_REQUIRES_FOCUSED_INPUT_OBSERVATION`.
+Current verdict: `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
 
 ### Observations
 
@@ -225,24 +225,35 @@ Current verdict: `UNPROVEN_REQUIRES_FOCUSED_INPUT_OBSERVATION`.
   input is in the agent prompt. The focused control could instead be an editor,
   terminal, search field, or another text input.
 - macOS Accessibility can expose the focused element's role and metadata. The
-  POC requires an explicit metadata marker from a focused local observation,
-  and refuses dispatch when that marker, an enabled text-input role, the exact
-  composer ID, or Cursor foreground status is absent.
+  observed Cursor composer is an enabled `AXTextArea` with the exact
+  `AXDOMClassList` value
+  `tiptapProseMirrorui-prompt-input-editor__inputProseMirror-focused`.
+- `Cmd+L` focuses that composer from the conversation message area. Product
+  dispatch verifies the exact class after focusing and refuses input if it does
+  not match.
 - The POC is dry-run by default. Execute mode submits one explicitly supplied
   recipe after two matching preflights and never retries.
+- A harmless `test` instruction was observed arriving as a submitted message
+  after one Return with a 500 ms delay.
+- Cursor's `/summarize` suggestion requires two delayed Return presses: one to
+  select the slash-command suggestion and one to submit it. This sequence was
+  observed triggering summarize successfully.
 
-### Unproven command mappings
+### Product mappings
 
-No official Cursor evidence currently maps elChango's stable semantic IDs
-`accept`, `create_pr`, `commit_push`, or `compact` to a native command,
-shortcut, slash command, or prompt. The POC therefore requires either
-`--recipe-text` or `--recipe-command`; it does not provide defaults.
+- `accept`: `Cmd+Enter`, as explicitly validated by the operator. Dispatch
+  verifies the selected composer, foreground Cursor application, and exact
+  composer input before sending the shortcut. Semantic completion has not yet
+  been observed against a live pending approval.
+- `create_pr`: submit `Create a pull request for the current changes.` as an
+  agent instruction.
+- `commit_push`: submit `Commit the current changes with a Conventional Commit
+  message and push the current branch.` as an agent instruction.
+- `compact`: submit `/summarize` through the observed two-Return sequence.
 
 `DISPATCH_SENT` proves only that one supplied recipe was injected while the
 exact target remained selected immediately afterward. It does not prove Cursor
-understood, accepted, or completed the semantic operation. No product command
-capability should be declared until focused-input evidence and per-command
-behavior are observed directly.
+understood or completed the semantic operation.
 
 ## Open questions
 
@@ -254,11 +265,9 @@ behavior are observed directly.
 - How does the schema behave across Cursor upgrades?
 - Does `composerHeaders.recency` continue to match the switcher across larger
   and mixed local/cloud session sets?
-- Can keyboard focus inside the target agent input be verified before
-  dispatching a privileged action?
-- Which accessibility marker, if any, uniquely identifies Cursor's agent prompt
-  across supported versions?
-- Does Cursor document any stable mapping for the four semantic command IDs?
+- Does the observed composer accessibility marker remain stable across Cursor
+  versions?
+- Can `accept` be observed against a real pending approval without ambiguity?
 
 ## Safety constraints
 

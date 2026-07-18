@@ -49,13 +49,22 @@ def frontmost_bundle_id() -> str | None:
     return completed.stdout.strip() if completed.returncode == 0 else None
 
 
-def dispatch_text(command_text: str, expected_bundle_id: str) -> CommandDispatchResult:
+def dispatch_text(
+    command_text: str,
+    expected_bundle_id: str,
+    *,
+    expected_input_marker: str | None = None,
+    focus_shortcut: str | None = None,
+    submit_count: int = 1,
+) -> CommandDispatchResult:
     """Type and submit text only into a verified frontmost text input."""
 
     from elchango.providers.base import ProviderError
 
     if not command_text:
         raise ValueError("command text must be non-empty")
+    if submit_count < 1:
+        raise ValueError("submit count must be positive")
     if frontmost_bundle_id() != expected_bundle_id:
         raise ProviderError("command provider is not the frontmost application")
     started = time.monotonic()
@@ -64,22 +73,46 @@ def dispatch_text(command_text: str, expected_bundle_id: str) -> CommandDispatch
         'tell application "System Events"\n'
         "set targetProcess to first application process whose frontmost is true\n"
         "tell targetProcess\n"
-        "set focusedRole to role of focused UI element\n"
+        'if item 2 of argv is not "" then\n'
+        "keystroke item 2 of argv using command down\n"
+        "delay 0.2\n"
+        "end if\n"
+        'set focusedElement to value of attribute "AXFocusedUIElement"\n'
+        'set focusedRole to value of attribute "AXRole" of focusedElement\n'
         'if focusedRole is not "AXTextArea" and focusedRole is not "AXTextField" '
         'and focusedRole is not "AXComboBox" then error "focused element is not '
         'a text input: " & focusedRole\n'
+        'if item 3 of argv is not "" then\n'
+        'set focusedClass to (value of attribute "AXDOMClassList" of '
+        "focusedElement) as text\n"
+        'if focusedClass is not item 3 of argv then error "focused input marker '
+        'does not match"\n'
+        "end if\n"
         "keystroke item 1 of argv\n"
+        "set submitCount to item 4 of argv as integer\n"
+        "repeat submitCount times\n"
+        "delay 0.5\n"
         "key code 36\n"
+        "end repeat\n"
         "end tell\n"
         "end tell\n"
         "end run"
     )
     try:
         completed = subprocess.run(
-            ["/usr/bin/osascript", "-e", script, command_text],
+            [
+                "/usr/bin/osascript",
+                "-e",
+                script,
+                "--",
+                command_text,
+                focus_shortcut or "",
+                expected_input_marker or "",
+                str(submit_count),
+            ],
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=8,
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as error:
@@ -99,4 +132,72 @@ def dispatch_text(command_text: str, expected_bundle_id: str) -> CommandDispatch
         elapsed_ms=round((time.monotonic() - started) * 1_000),
         verdict="DISPATCH_VERIFIED",
         message="Command text was submitted to the verified provider input.",
+    )
+
+
+def dispatch_command_enter(
+    expected_bundle_id: str,
+    *,
+    expected_input_marker: str | None = None,
+    focus_shortcut: str | None = None,
+) -> CommandDispatchResult:
+    """Send Cmd+Enter once to a verified frontmost provider."""
+
+    from elchango.providers.base import ProviderError
+
+    if frontmost_bundle_id() != expected_bundle_id:
+        raise ProviderError("command provider is not the frontmost application")
+    started = time.monotonic()
+    script = (
+        "on run argv\n"
+        'tell application "System Events"\n'
+        "tell first application process whose frontmost is true\n"
+        'if item 1 of argv is not "" then\n'
+        "keystroke item 1 of argv using command down\n"
+        "delay 0.2\n"
+        "end if\n"
+        'if item 2 of argv is not "" then\n'
+        'set focusedElement to value of attribute "AXFocusedUIElement"\n'
+        'set focusedClass to (value of attribute "AXDOMClassList" of '
+        "focusedElement) as text\n"
+        'if focusedClass is not item 2 of argv then error "focused input marker '
+        'does not match"\n'
+        "end if\n"
+        "key code 36 using command down\n"
+        "end tell\n"
+        "end tell\n"
+        "end run"
+    )
+    try:
+        completed = subprocess.run(
+            [
+                "/usr/bin/osascript",
+                "-e",
+                script,
+                "--",
+                focus_shortcut or "",
+                expected_input_marker or "",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise ProviderError(f"command dispatch failed: {error}") from error
+    if completed.returncode != 0:
+        detail = completed.stderr.strip() or completed.stdout.strip() or "no output"
+        raise ProviderError(f"command dispatch rejected: {detail}")
+    if frontmost_bundle_id() != expected_bundle_id:
+        return CommandDispatchResult(
+            executed=True,
+            elapsed_ms=round((time.monotonic() - started) * 1_000),
+            verdict="DISPATCH_UNVERIFIED",
+            message="Shortcut was sent but the provider lost foreground identity.",
+        )
+    return CommandDispatchResult(
+        executed=True,
+        elapsed_ms=round((time.monotonic() - started) * 1_000),
+        verdict="DISPATCH_VERIFIED",
+        message="Cmd+Enter was sent to the verified provider.",
     )

@@ -23,8 +23,10 @@ The POC opens Cursor's SQLite database with ``mode=ro`` and
    contains the operator-supplied ``--input-marker``;
 5. all evidence is unchanged in an immediate second preflight.
 
-Only then does execute mode type the supplied recipe and press Return once.
-There is no focus action, coordinate click, mapping fallback, or retry.
+Only then does execute mode type the supplied recipe. Text recipes press Return
+once. Slash-command recipes wait for Cursor's suggestion UI, press Return to
+select the command, wait again, and press Return to submit it. There is no
+coordinate click, mapping fallback, or retry.
 
 Safety and side effects
 =======================
@@ -95,6 +97,7 @@ class FocusEvidence:
     description: str | None
     title: str | None
     help_text: str | None
+    dom_class: str | None
     enabled: bool | None
 
 
@@ -255,8 +258,9 @@ tell application "System Events"
   set descriptionValue to my axValue(e, "AXDescription")
   set titleValue to my axValue(e, "AXTitle")
   set helpValue to my axValue(e, "AXHelp")
+  set domClassValue to my axValue(e, "AXDOMClassList")
   set enabledValue to my axValue(e, "AXEnabled")
-  return bundleValue & tab & roleValue & tab & idValue & tab & descriptionValue & tab & titleValue & tab & helpValue & tab & enabledValue
+  return bundleValue & tab & roleValue & tab & idValue & tab & descriptionValue & tab & titleValue & tab & helpValue & tab & domClassValue & tab & enabledValue
 end tell
 
 on axValue(e, attributeName)
@@ -280,10 +284,10 @@ end axValue
         detail = completed.stderr.strip() or "Accessibility query failed."
         raise ProbeError(detail)
     fields = completed.stdout.rstrip("\n").split("\t")
-    if len(fields) != 7:
+    if len(fields) != 8:
         raise ProbeError("Unexpected Accessibility evidence shape.")
-    enabled = {"true": True, "false": False}.get(fields[6].lower())
-    values = [value or None for value in fields[:6]]
+    enabled = {"true": True, "false": False}.get(fields[7].lower())
+    values = [value or None for value in fields[:7]]
     return FocusEvidence(*values, enabled)
 
 
@@ -299,21 +303,34 @@ def focus_is_exact(focus: FocusEvidence, marker: str | None) -> bool:
             focus.description,
             focus.title,
             focus.help_text,
+            focus.dom_class,
         }
     )
 
 
-def send_once(value: str) -> None:
+def send_once(value: str, *, confirm_suggestion: bool) -> None:
     script = r'''
 on run argv
   tell application "System Events"
     keystroke (item 1 of argv)
+    delay 0.5
     key code 36
+    if (item 2 of argv) is "true" then
+      delay 0.5
+      key code 36
+    end if
   end tell
 end run
 '''
     completed = subprocess.run(
-        ["/usr/bin/osascript", "-e", script, "--", value],
+        [
+            "/usr/bin/osascript",
+            "-e",
+            script,
+            "--",
+            value,
+            "true" if confirm_suggestion else "false",
+        ],
         capture_output=True,
         text=True,
         timeout=10,
@@ -413,7 +430,7 @@ def inspect(args: argparse.Namespace) -> DispatchResult:
                 latest_focus,
                 query_only,
             )
-        send_once(recipe_value)
+        send_once(recipe_value, confirm_suggestion=recipe_kind == "command")
         after = selected_id(connection)
         verdict = "DISPATCH_SENT" if after == args.target else "POST_DISPATCH_AMBIGUOUS"
         message = (

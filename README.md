@@ -45,11 +45,12 @@ Commit Push, or Compact. Preferences are shared by the web and Stream Deck
 surfaces and stored in
 `~/Library/Application Support/elChango/preferences.json`.
 
-Session commands remain disabled until a provider recipe and focused-input
-identity have been proven by its command-dispatch POC. Once enabled, a command
-is sent only to the uniquely selected session of the frontmost harness after
-target and text-input verification. Create PR and Commit Push instruct the
-native agent; elChango does not run host-side Git operations for these buttons.
+Cursor enables Accept, Create PR, Commit Push, and Compact after live
+command-dispatch reconnaissance. A command is sent only to the uniquely
+selected session of the frontmost harness after target and composer-input
+verification. Create PR and Commit Push instruct the native agent; elChango
+does not run host-side Git operations for these buttons. Other providers keep
+commands disabled until their own mappings and input identity are proven.
 
 ## Stream Deck MK.2
 
@@ -163,5 +164,6 @@ npm --prefix streamdeck run validate
 - Pagination intents never modify Cursor state.
 - New opens Cursor's blank New Agent view. It does not submit a prompt or claim
   that a persisted composer exists before the user takes over.
-- Prompt dispatch and agent actions remain disabled.
+- Cursor prompt dispatch verifies the exact selected session, foreground
+  application, and composer input before sending one bounded recipe.
 - Undocumented Cursor schema changes fail explicitly instead of guessing.

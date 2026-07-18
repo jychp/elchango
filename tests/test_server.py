@@ -212,9 +212,9 @@ class DeckServerTests(unittest.TestCase):
         self.assertTrue(payload["launch_enabled"])
         self.assertEqual(
             payload["providers"]["cursor"],
-            ["focus_session", "new_session"],
+            ["execute_command", "focus_session", "new_session"],
         )
-        self.assertFalse(payload["actions_enabled"])
+        self.assertTrue(payload["actions_enabled"])
         self.assertEqual(
             payload["unavailable_providers"],
             {"claude-code": "Claude Desktop application is not installed"},
