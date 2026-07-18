@@ -15,7 +15,14 @@ SessionState = Literal[
     "unknown",
 ]
 StateConfidence = Literal["observed", "candidate", "persisted", "unknown"]
-ProviderCapability = Literal["focus_session", "new_session"]
+ProviderCapability = Literal["focus_session", "new_session", "execute_command"]
+CommandId = Literal["accept", "create_pr", "commit_push", "compact"]
+COMMAND_IDS: tuple[CommandId, ...] = (
+    "accept",
+    "create_pr",
+    "commit_push",
+    "compact",
+)
 ButtonKind = Literal["session", "control", "empty"]
 ButtonIcon = Literal[
     "cursor",
@@ -24,7 +31,39 @@ ButtonIcon = Literal[
     "arrow-left",
     "arrow-right",
     "arrows-clockwise",
+    "robot",
+    "terminal",
+    "code",
+    "bug",
+    "wrench",
+    "rocket",
+    "shield",
+    "database",
+    "globe",
+    "package",
+    "git-branch",
+    "flask",
+    "check",
+    "git-pull-request",
+    "git-commit",
+    "article",
 ]
+ICON_OPTIONS: tuple[ButtonIcon, ...] = (
+    "cursor",
+    "claude",
+    "robot",
+    "terminal",
+    "code",
+    "bug",
+    "wrench",
+    "rocket",
+    "shield",
+    "database",
+    "globe",
+    "package",
+    "git-branch",
+    "flask",
+)
 ButtonColor = Literal[
     "idle",
     "working",
@@ -41,9 +80,14 @@ DeckAction = Literal[
     "refresh_sessions",
     "previous_page",
     "next_page",
-    "primary_action",
-    "secondary_action",
-    "stop_session",
+    "choose_session_icon",
+    "set_session_icon",
+    "choose_slot_command",
+    "set_slot_command",
+    "cancel_picker",
+    "previous_picker_page",
+    "next_picker_page",
+    "execute_command",
 ]
 
 
@@ -63,6 +107,7 @@ class AgentSession:
     state_detail: str
     selected: bool
     last_activity_at_ms: int
+    commands: frozenset[CommandId] = frozenset()
 
     @property
     def id(self) -> str:
@@ -113,6 +158,8 @@ class DeckButton:
     action: DeckAction | None = None
     provider_id: str | None = None
     native_session_id: str | None = None
+    command_id: CommandId | None = None
+    option_id: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         """Return the public button contract without native provider IDs."""

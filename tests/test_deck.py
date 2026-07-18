@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
+from dataclasses import replace
+from pathlib import Path
 
 from elchango.deck import DeckService, provider_positions
 from elchango.models import AgentSession, ProviderSnapshot
+from elchango.preferences import PreferencesStore
 from elchango.providers.base import ProviderError
 
 
@@ -34,6 +38,13 @@ class FailingProvider(FakeProvider):
 
     def snapshot(self) -> ProviderSnapshot:
         raise ProviderError("inventory temporarily unavailable")
+
+
+class CommandProvider(FakeProvider):
+    capabilities = frozenset({"focus_session", "new_session", "execute_command"})
+
+    def is_frontmost(self) -> bool:
+        return True
 
 
 def make_session(
@@ -98,6 +109,52 @@ class DeckServiceTests(unittest.TestCase):
             {"failing": "inventory temporarily unavailable"},
         )
 
+    def test_icon_and_command_pickers_are_client_scoped_and_persist(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            session = replace(
+                make_session(0, selected=True),
+                capabilities=CommandProvider.capabilities,
+                commands=frozenset({"create_pr", "commit_push", "compact"}),
+            )
+            provider = CommandProvider(
+                ProviderSnapshot(
+                    provider_id="test",
+                    capabilities=CommandProvider.capabilities,
+                    observed_at_ms=123,
+                    selected_native_session_id=session.native_id,
+                    sessions=(session,),
+                    source="test",
+                )
+            )
+            preferences = PreferencesStore(Path(directory) / "preferences.json")
+            service = DeckService(provider, preferences=preferences)
+
+            icon_picker = service.choose_session_icon("web", session.id)
+            hardware = service.snapshot("streamdeck")
+            self.assertEqual(icon_picker.buttons[0].action, "set_session_icon")
+            self.assertEqual(hardware.buttons[0].kind, "session")
+
+            customized = service.select_session_icon("web", "robot")
+            self.assertEqual(customized.buttons[0].icon, "robot")
+
+            command_picker = service.choose_slot_command("web", 0)
+            self.assertTrue(
+                any(
+                    button.command_id == "compact"
+                    for button in command_picker.buttons
+                )
+            )
+            reassigned = service.select_slot_command("web", "compact")
+            self.assertEqual(reassigned.buttons[11].command_id, "compact")
+            self.assertTrue(reassigned.buttons[11].enabled)
+
+            persisted = DeckService(
+                provider,
+                preferences=PreferencesStore(preferences.path),
+            ).snapshot()
+            self.assertEqual(persisted.buttons[0].icon, "robot")
+            self.assertEqual(persisted.buttons[11].command_id, "compact")
+
     def test_snapshot_always_contains_fifteen_ordered_buttons(self) -> None:
         service = DeckService(FakeProvider(make_snapshot(3)))
 
@@ -124,8 +181,13 @@ class DeckServiceTests(unittest.TestCase):
         self.assertTrue(all(button.enabled for button in snapshot.buttons[3:10]))
         self.assertEqual(
             [button.kind for button in snapshot.buttons[10:]],
-            ["control", "empty", "empty", "empty", "control"],
+            ["control", "control", "control", "control", "control"],
         )
+        self.assertEqual(
+            [button.label for button in snapshot.buttons[11:14]],
+            ["Accept", "Commit Push", "Open PR"],
+        )
+        self.assertTrue(all(not button.enabled for button in snapshot.buttons[11:14]))
         self.assertEqual(snapshot.buttons[10].action, "refresh_sessions")
         self.assertEqual(snapshot.buttons[10].icon, "arrows-clockwise")
         self.assertEqual(snapshot.buttons[14].action, "choose_new_provider")

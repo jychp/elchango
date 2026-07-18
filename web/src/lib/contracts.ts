@@ -7,6 +7,22 @@ export type DeckIconName =
   | 'arrow-left'
   | 'arrow-right'
   | 'arrows-clockwise'
+  | 'robot'
+  | 'terminal'
+  | 'code'
+  | 'bug'
+  | 'wrench'
+  | 'rocket'
+  | 'shield'
+  | 'database'
+  | 'globe'
+  | 'package'
+  | 'git-branch'
+  | 'flask'
+  | 'check'
+  | 'git-pull-request'
+  | 'git-commit'
+  | 'article'
 
 export type DeckButtonColor =
   | 'idle'
@@ -26,6 +42,14 @@ export type DeckAction =
   | 'refresh_sessions'
   | 'previous_page'
   | 'next_page'
+  | 'choose_session_icon'
+  | 'set_session_icon'
+  | 'choose_slot_command'
+  | 'set_slot_command'
+  | 'cancel_picker'
+  | 'previous_picker_page'
+  | 'next_picker_page'
+  | 'execute_command'
 
 export interface DeckButton {
   id: string

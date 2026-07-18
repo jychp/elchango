@@ -84,14 +84,17 @@
     return `Deck action failed (${response.status})`
   }
 
-  async function activateButton(button: DeckButton | null): Promise<void> {
+  async function performButtonAction(
+    button: DeckButton | null,
+    endpoint: '/api/activate' | '/api/long-press',
+  ): Promise<void> {
     const currentSnapshot = snapshot
 
     if (
       pendingButtonId !== null ||
       !currentSnapshot ||
       !button ||
-      !button.enabled
+      (!button.enabled && endpoint !== '/api/long-press')
     ) {
       return
     }
@@ -105,7 +108,7 @@
         button_id: button.id,
         revision: currentSnapshot.revision,
       }
-      const response = await fetch('/api/activate', {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
@@ -124,6 +127,19 @@
     } finally {
       pendingButtonId = null
     }
+  }
+
+  function longPressHandler(button: DeckButton | null): (() => void) | undefined {
+    const supportsLongPress =
+      button !== null &&
+      ((button.kind === 'session' && button.session_id != null) ||
+        (button.position >= 11 &&
+          button.position <= 13 &&
+          button.action === 'execute_command'))
+
+    return supportsLongPress
+      ? () => void performButtonAction(button, '/api/long-press')
+      : undefined
   }
 
   onMount(() => {
@@ -201,7 +217,8 @@
           {button}
           slot={index}
           busy={pendingButtonId !== null && pendingButtonId === button?.id}
-          onactivate={() => void activateButton(button)}
+          onactivate={() => void performButtonAction(button, '/api/activate')}
+          onlongpress={longPressHandler(button)}
         />
       {/each}
     </div>

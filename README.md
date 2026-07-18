@@ -39,6 +39,20 @@ harness does not block other providers or prevent elChango from starting.
 Unavailable providers are reported by `/api/health`. All SQLite access remains
 read-only.
 
+Long-press a session key to choose a persisted icon from the curated Phosphor
+set. Long-press any of the three center action keys to assign Accept, Open PR,
+Commit Push, or Compact. Preferences are shared by the web and Stream Deck
+surfaces and stored in
+`~/Library/Application Support/elChango/preferences.json`.
+
+Cursor and Claude Code Desktop enable Accept, Open PR, Commit Push, and Compact
+after live command-dispatch reconnaissance. Every action requires the uniquely
+selected session of the frontmost harness. Text and slash recipes additionally
+require an empty, enabled, provider-specific composer input. Claude Accept is
+an intentional application-level `Cmd+Enter` shortcut and does not require
+composer focus. Open PR and Commit Push instruct the native agent; elChango does
+not run host-side Git operations for these buttons.
+
 ## Stream Deck MK.2
 
 Build, validate, and package the official Elgato plugin:
@@ -151,5 +165,6 @@ npm --prefix streamdeck run validate
 - Pagination intents never modify Cursor state.
 - New opens Cursor's blank New Agent view. It does not submit a prompt or claim
   that a persisted composer exists before the user takes over.
-- Prompt dispatch and agent actions remain disabled.
+- Provider text dispatch verifies the exact selected session, foreground
+  application, and composer input before sending one bounded recipe.
 - Undocumented Cursor schema changes fail explicitly instead of guessing.

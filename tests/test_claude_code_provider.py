@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest import mock
 
 from elchango.claude_activity import ClaudeActivityStore
+from elchango.command_dispatch import CommandDispatchResult
 from elchango.providers.base import ProviderActionResult
 from elchango.providers.claude_code import (
     ClaudeCodeProvider,
@@ -48,14 +49,18 @@ class ClaudeCodeProviderTests(unittest.TestCase):
         self.assertEqual(snapshot.provider_id, "claude-code")
         self.assertEqual(
             snapshot.capabilities,
-            frozenset({"focus_session", "new_session"}),
+            frozenset({"focus_session", "new_session", "execute_command"}),
         )
         self.assertEqual(len(snapshot.sessions), 1)
         session = snapshot.sessions[0]
         self.assertEqual(session.id, "claude-code:local_a")
         self.assertEqual(
             session.capabilities,
-            frozenset({"focus_session", "new_session"}),
+            frozenset({"focus_session", "new_session", "execute_command"}),
+        )
+        self.assertEqual(
+            session.commands,
+            frozenset({"accept", "create_pr", "commit_push", "compact"}),
         )
         self.assertEqual(session.icon, "claude")
         self.assertEqual(session.title, "Claude A")
@@ -81,7 +86,7 @@ class ClaudeCodeProviderTests(unittest.TestCase):
         provider = self._provider()
         self.assertEqual(
             provider.snapshot().sessions[0].capabilities,
-            frozenset({"focus_session", "new_session"}),
+            frozenset({"focus_session", "new_session", "execute_command"}),
         )
 
         def focus_target(index: int) -> None:
@@ -210,6 +215,108 @@ class ClaudeCodeProviderTests(unittest.TestCase):
                 "cannot open Claude Desktop new session link",
             ):
                 provider.open_new()
+
+    def test_execute_command_requires_selected_frontmost_target(self) -> None:
+        self._write_session(
+            "local_target",
+            "cli-target",
+            activity=200,
+            last_focused_at=500,
+        )
+        provider = self._provider()
+        dispatched = CommandDispatchResult(
+            executed=True,
+            elapsed_ms=5,
+            verdict="DISPATCH_VERIFIED",
+            message="submitted",
+        )
+
+        with (
+            mock.patch(
+                "elchango.providers.claude_code.frontmost_bundle_id",
+                return_value="com.anthropic.claudefordesktop",
+            ),
+            mock.patch(
+                "elchango.providers.claude_code.dispatch_text",
+                return_value=dispatched,
+            ) as dispatch,
+        ):
+            result = provider.execute_command("local_target", "compact")
+
+        self.assertTrue(result.accepted)
+        self.assertEqual(result.verdict, "DISPATCH_VERIFIED")
+        dispatch.assert_called_once_with(
+            "/compact",
+            "com.anthropic.claudefordesktop",
+            expected_input_marker=provider.input_marker,
+            submit_count=2,
+        )
+
+    def test_open_pr_uses_claude_instruction_text(self) -> None:
+        self._write_session(
+            "local_target",
+            "cli-target",
+            activity=200,
+            last_focused_at=500,
+        )
+        provider = self._provider()
+        dispatched = CommandDispatchResult(
+            executed=True,
+            elapsed_ms=5,
+            verdict="DISPATCH_VERIFIED",
+            message="submitted",
+        )
+
+        with (
+            mock.patch(
+                "elchango.providers.claude_code.frontmost_bundle_id",
+                return_value="com.anthropic.claudefordesktop",
+            ),
+            mock.patch(
+                "elchango.providers.claude_code.dispatch_text",
+                return_value=dispatched,
+            ) as dispatch,
+        ):
+            result = provider.execute_command("local_target", "create_pr")
+
+        self.assertTrue(result.accepted)
+        dispatch.assert_called_once_with(
+            "Open a pull request for the current branch.",
+            "com.anthropic.claudefordesktop",
+            expected_input_marker=provider.input_marker,
+            submit_count=1,
+        )
+
+    def test_accept_command_uses_command_enter_shortcut(self) -> None:
+        self._write_session(
+            "local_target",
+            "cli-target",
+            activity=200,
+            last_focused_at=500,
+        )
+        provider = self._provider()
+        dispatched = CommandDispatchResult(
+            executed=True,
+            elapsed_ms=5,
+            verdict="DISPATCH_VERIFIED",
+            message="submitted",
+        )
+
+        with (
+            mock.patch(
+                "elchango.providers.claude_code.frontmost_bundle_id",
+                return_value="com.anthropic.claudefordesktop",
+            ),
+            mock.patch(
+                "elchango.providers.claude_code.dispatch_command_enter",
+                return_value=dispatched,
+            ) as dispatch,
+        ):
+            result = provider.execute_command("local_target", "accept")
+
+        self.assertTrue(result.accepted)
+        self.assertEqual(result.verdict, "DISPATCH_VERIFIED")
+        dispatch.assert_called_once_with("com.anthropic.claudefordesktop")
 
     def test_record_hook_rejects_unknown_session_ids(self) -> None:
         self._write_session("local_a", "cli-a", activity=200)

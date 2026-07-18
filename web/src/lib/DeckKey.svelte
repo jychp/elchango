@@ -7,9 +7,18 @@
     slot: number
     busy?: boolean
     onactivate?: () => void
+    onlongpress?: () => void
   }
 
-  let { button, slot, busy = false, onactivate }: Props = $props()
+  let { button, slot, busy = false, onactivate, onlongpress }: Props = $props()
+
+  const LONG_PRESS_MS = 650
+  const SYNTHETIC_CLICK_WINDOW_MS = 500
+
+  let activePointerId: number | null = null
+  let pointerStartedAt = 0
+  let suppressClickUntil = 0
+  let keyboardKey: 'Enter' | ' ' | null = null
 
   const isBlank = $derived(
     button !== null && !button.enabled && !button.label && !button.detail,
@@ -21,10 +30,83 @@
       : `Unavailable key ${slot + 1}`,
   )
 
-  const actionable = $derived(button?.enabled === true && onactivate !== undefined)
+  const shortActionEligible = $derived(button?.enabled === true && onactivate !== undefined)
+  const longPressEligible = $derived(button !== null && onlongpress !== undefined)
+  const actionable = $derived(shortActionEligible || longPressEligible)
 
-  function handleActivate(): void {
-    if (actionable) onactivate?.()
+  function activate(): void {
+    if (shortActionEligible) onactivate?.()
+  }
+
+  function longPress(): void {
+    if (longPressEligible) onlongpress?.()
+  }
+
+  function resetPointer(): void {
+    activePointerId = null
+    pointerStartedAt = 0
+  }
+
+  function handlePointerDown(event: PointerEvent): void {
+    if (!actionable || !event.isPrimary || event.button !== 0 || activePointerId !== null) return
+
+    const target = event.currentTarget as HTMLButtonElement
+    activePointerId = event.pointerId
+    pointerStartedAt = performance.now()
+    target.setPointerCapture(event.pointerId)
+  }
+
+  function handlePointerUp(event: PointerEvent): void {
+    if (event.pointerId !== activePointerId) return
+
+    const duration = performance.now() - pointerStartedAt
+    suppressClickUntil = performance.now() + SYNTHETIC_CLICK_WINDOW_MS
+    resetPointer()
+
+    const target = event.currentTarget as HTMLButtonElement
+    if (target.hasPointerCapture(event.pointerId)) {
+      target.releasePointerCapture(event.pointerId)
+    }
+
+    if (duration >= LONG_PRESS_MS && longPressEligible) longPress()
+    else activate()
+  }
+
+  function handlePointerCancel(event: PointerEvent): void {
+    if (event.pointerId !== activePointerId) return
+
+    suppressClickUntil = performance.now() + SYNTHETIC_CLICK_WINDOW_MS
+    resetPointer()
+  }
+
+  function handleClick(event: MouseEvent): void {
+    if (performance.now() <= suppressClickUntil) {
+      event.preventDefault()
+      return
+    }
+
+    activate()
+  }
+
+  function handleKeyDown(event: KeyboardEvent): void {
+    if (!shortActionEligible || (event.key !== 'Enter' && event.key !== ' ')) return
+
+    event.preventDefault()
+    if (event.repeat || keyboardKey !== null) return
+    keyboardKey = event.key
+  }
+
+  function handleKeyUp(event: KeyboardEvent): void {
+    if (event.key !== keyboardKey) return
+
+    event.preventDefault()
+    keyboardKey = null
+    suppressClickUntil = performance.now() + SYNTHETIC_CLICK_WINDOW_MS
+    activate()
+  }
+
+  function handleBlur(): void {
+    keyboardKey = null
   }
 </script>
 
@@ -46,7 +128,13 @@
   aria-pressed={button?.kind === 'session' ? button.selected : undefined}
   data-confidence={button?.confidence}
   data-disabled={!button || !button.enabled}
-  onclick={handleActivate}
+  onpointerdown={handlePointerDown}
+  onpointerup={handlePointerUp}
+  onpointercancel={handlePointerCancel}
+  onclick={handleClick}
+  onkeydown={handleKeyDown}
+  onkeyup={handleKeyUp}
+  onblur={handleBlur}
 >
   {#if button && !isBlank}
     <span class="deck-key__icon"><DeckIcon name={button.icon} /></span>
@@ -75,6 +163,8 @@
       0 2px 0 #050607;
     font: inherit;
     text-align: center;
+    touch-action: manipulation;
+    user-select: none;
     cursor: default;
     transition:
       border-color 120ms ease,

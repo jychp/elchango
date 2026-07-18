@@ -5,7 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from elchango.models import ButtonIcon, ProviderCapability, ProviderSnapshot
+from elchango.models import (
+    ButtonIcon,
+    CommandId,
+    ProviderCapability,
+    ProviderSnapshot,
+)
 
 
 class ProviderError(RuntimeError):
@@ -41,5 +46,19 @@ class AgentProvider(Protocol):
 
     def open_new(self) -> ProviderActionResult:
         """Open a new native session composer when supported."""
+
+        ...
+
+    def is_frontmost(self) -> bool:
+        """Return whether this provider owns the foreground application."""
+
+        ...
+
+    def execute_command(
+        self,
+        native_session_id: str,
+        command_id: CommandId,
+    ) -> ProviderActionResult:
+        """Dispatch one semantic command to an exact selected session."""
 
         ...

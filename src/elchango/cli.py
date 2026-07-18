@@ -14,6 +14,7 @@ from elchango.deck import DeckService
 from elchango.focus import CursorFocusController
 from elchango.hook_reporter import DEFAULT_HOOK_ENDPOINT, report_hook
 from elchango.launch import CursorLaunchController
+from elchango.preferences import DEFAULT_PREFERENCES_PATH, PreferencesStore
 from elchango.providers.cursor import (
     DEFAULT_DATABASE,
     DEFAULT_WORKSPACE_STORAGE,
@@ -98,6 +99,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=DEFAULT_CLAUDE_DESKTOP_CONFIG,
         help=f"Claude Desktop config (default: {DEFAULT_CLAUDE_DESKTOP_CONFIG}).",
+    )
+    serve_parser.add_argument(
+        "--preferences",
+        type=Path,
+        default=DEFAULT_PREFERENCES_PATH,
+        help=f"Deck preferences (default: {DEFAULT_PREFERENCES_PATH}).",
     )
     hook_parser = subparsers.add_parser(
         "report-hook",
@@ -184,7 +191,12 @@ def main(argv: list[str] | None = None) -> int:
             "Claude Desktop application is not installed"
         )
 
-    service = DeckService(providers)
+    try:
+        preferences = PreferencesStore(args.preferences)
+    except ValueError as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 2
+    service = DeckService(providers, preferences=preferences)
     url = f"http://{args.host}:{args.port}/"
     print("elChango v0.2")
     print(f"Deck: {url}")
@@ -218,7 +230,19 @@ def main(argv: list[str] | None = None) -> int:
             else "disabled; no available provider supports launch"
         )
     )
-    print("Agent actions: disabled")
+    command_providers = sorted(
+        provider_id
+        for provider_id, provider in providers.items()
+        if "execute_command" in provider.capabilities
+    )
+    print(
+        "Agent actions: "
+        + (
+            f"enabled for {', '.join(command_providers)} with target verification"
+            if command_providers
+            else "disabled; no available provider supports commands"
+        )
+    )
     print("Press Ctrl-C to stop.")
     try:
         serve(

@@ -38,7 +38,10 @@ export class StreamDeckSurface {
   private activationInFlight = false;
 
   constructor(
-    private readonly api: Pick<DeckApiClient, "snapshot" | "activate">,
+    private readonly api: Pick<
+      DeckApiClient,
+      "snapshot" | "activate" | "longPress"
+    >,
     private readonly logger: SurfaceLogger,
     private readonly successFeedbackMs = SUCCESS_FEEDBACK_MS,
   ) {}
@@ -64,6 +67,29 @@ export class StreamDeckSurface {
   }
 
   async activate(keyId: string): Promise<void> {
+    await this.dispatch(
+      keyId,
+      false,
+      (buttonId, revision) => this.api.activate(buttonId, revision),
+    );
+  }
+
+  async longPress(keyId: string): Promise<void> {
+    await this.dispatch(
+      keyId,
+      true,
+      (buttonId, revision) => this.api.longPress(buttonId, revision),
+    );
+  }
+
+  private async dispatch(
+    keyId: string,
+    allowDisabled: boolean,
+    request: (
+      buttonId: string,
+      revision: number,
+    ) => ReturnType<DeckApiClient["activate"]>,
+  ): Promise<void> {
     const key = this.keys.get(keyId);
     const snapshot = this.snapshotValue;
     if (
@@ -78,12 +104,21 @@ export class StreamDeckSurface {
     const button = snapshot.buttons.find(
       (candidate) => candidate.position === key.position,
     );
-    if (!button?.enabled) return;
+    if (!button || (!button.enabled && !allowDisabled)) return;
+    if (
+      allowDisabled &&
+      button.kind !== "session" &&
+      !(button.position >= 11 &&
+        button.position <= 13 &&
+        button.action === "execute_command")
+    ) {
+      return;
+    }
 
     this.activationInFlight = true;
     await this.renderKey(key, "busy");
     try {
-      const response = await this.api.activate(button.id, snapshot.revision);
+      const response = await request(button.id, snapshot.revision);
       if (response.snapshot) await this.installSnapshot(response.snapshot);
       await this.showSuccess(key);
       await this.poll();

@@ -187,6 +187,51 @@ folder parameter, so Claude Desktop opens its neutral new Code session screen.
 Launch selection is exposed through the same client-scoped provider chooser on
 web and Stream Deck.
 
+## V4.2 personalized command dispatch
+
+POC: `scripts/poc/13_claude_command_dispatch.py`
+
+Current verdict: `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
+
+### Observations
+
+- A non-archived Desktop session with the unique newest `lastFocusedAt` can be
+  treated as the selected Code target, subject to the schema limitations
+  already documented for focus.
+- Unique target selection and Claude foreground status do not prove that the
+  Code prompt owns keyboard input. Another Claude text field could be focused.
+- macOS Accessibility can expose the focused element's role and metadata. The
+  observed Claude composer is an enabled `AXTextArea` with description `Prompt`
+  and exact `AXDOMClassList` value
+  `tiptapProseMirrorProseMirror-focused`. The POC performs two preflights, and
+  both POC and product injection scripts recheck the frontmost bundle, enabled
+  input role, exact marker, and empty draft immediately before typing.
+- The POC reads bounded metadata prefixes, defaults to dry-run, submits at most
+  one explicitly supplied recipe in execute mode, and never retries.
+- A harmless `test` instruction was observed arriving as a submitted message
+  after one Return with a 500 ms delay.
+- Claude's `/compact` suggestion requires two delayed Return presses: one to
+  select the command and one to submit it. This sequence was observed
+  triggering compaction successfully. The implementation preserves this
+  operator-approved timed sequence; it does not claim to identify the
+  suggestion semantically.
+- `Cmd+Enter` was observed accepting a real open plan while the exact Claude
+  session was uniquely selected and Claude Desktop was frontmost. This is an
+  application-level shortcut and intentionally does not require composer focus.
+
+### Product mappings
+
+- `accept`: send `Cmd+Enter` once.
+- `create_pr`: submit `Open a pull request for the current branch.` as an agent
+  instruction.
+- `commit_push`: submit `Commit the current changes with a Conventional Commit
+  message and push the current branch.` as an agent instruction.
+- `compact`: submit `/compact` through the observed two-Return sequence.
+
+`DISPATCH_SENT` proves only that one supplied recipe was injected while the
+exact Desktop target remained uniquely selected immediately afterward. It does
+not prove Claude understood or completed the semantic operation.
+
 ## References
 
 - [Claude Code hooks reference](https://docs.anthropic.com/en/docs/claude-code/hooks)

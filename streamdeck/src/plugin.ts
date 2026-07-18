@@ -1,12 +1,14 @@
 import streamDeck, {
   action,
   KeyDownEvent,
+  KeyUpEvent,
   SingletonAction,
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
 
 import { DeckApiClient } from "./client.js";
+import { KeyPressController } from "./key-press.js";
 import { StreamDeckSurface } from "./surface.js";
 
 const ACTION_UUID = "com.jychp.elchango.key";
@@ -17,6 +19,10 @@ const surface = new StreamDeckSurface(
       streamDeck.logger.error(message);
     },
   },
+);
+const keyPresses = new KeyPressController(
+  (keyId) => surface.activate(keyId),
+  (keyId) => surface.longPress(keyId),
 );
 
 @action({ UUID: ACTION_UUID })
@@ -36,11 +42,16 @@ class DeckKeyAction extends SingletonAction {
   }
 
   override onWillDisappear(event: WillDisappearEvent): void {
+    keyPresses.cancel(event.action.id);
     surface.unregister(event.action.id);
   }
 
-  override onKeyDown(event: KeyDownEvent): Promise<void> {
-    return surface.activate(event.action.id);
+  override onKeyDown(event: KeyDownEvent): void {
+    keyPresses.keyDown(event.action.id);
+  }
+
+  override onKeyUp(event: KeyUpEvent): Promise<void> {
+    return keyPresses.keyUp(event.action.id);
   }
 }
 

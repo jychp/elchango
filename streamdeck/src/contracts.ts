@@ -13,7 +13,23 @@ export type DeckIconName =
   | "plus"
   | "arrow-left"
   | "arrow-right"
-  | "arrows-clockwise";
+  | "arrows-clockwise"
+  | "robot"
+  | "terminal"
+  | "code"
+  | "bug"
+  | "wrench"
+  | "rocket"
+  | "shield"
+  | "database"
+  | "globe"
+  | "package"
+  | "git-branch"
+  | "flask"
+  | "check"
+  | "git-pull-request"
+  | "git-commit"
+  | "article";
 export type DeckButtonConfidence =
   | "observed"
   | "candidate"
@@ -26,7 +42,15 @@ export type DeckAction =
   | "refresh_sessions"
   | "previous_page"
   | "next_page"
-  | "focus_session";
+  | "focus_session"
+  | "choose_session_icon"
+  | "set_session_icon"
+  | "choose_slot_command"
+  | "set_slot_command"
+  | "cancel_picker"
+  | "previous_picker_page"
+  | "next_picker_page"
+  | "execute_command";
 
 export interface DeckButton {
   id: string;
@@ -86,6 +110,22 @@ const ICON_NAMES = new Set<DeckIconName>([
   "arrow-left",
   "arrow-right",
   "arrows-clockwise",
+  "robot",
+  "terminal",
+  "code",
+  "bug",
+  "wrench",
+  "rocket",
+  "shield",
+  "database",
+  "globe",
+  "package",
+  "git-branch",
+  "flask",
+  "check",
+  "git-pull-request",
+  "git-commit",
+  "article",
 ]);
 const CONFIDENCE_VALUES = new Set<DeckButtonConfidence>([
   "observed",
@@ -101,6 +141,14 @@ const ACTION_VALUES = new Set<DeckAction>([
   "previous_page",
   "next_page",
   "focus_session",
+  "choose_session_icon",
+  "set_session_icon",
+  "choose_slot_command",
+  "set_slot_command",
+  "cancel_picker",
+  "previous_picker_page",
+  "next_picker_page",
+  "execute_command",
 ]);
 
 export function parseDeckSnapshot(value: unknown): DeckSnapshot {
