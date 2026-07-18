@@ -164,6 +164,10 @@ Bind only to loopback and preserve the existing API security constraints.
 - Complete: shared deck layout, stable pagination, client-scoped picker state,
   conservative revisions, provider failure isolation, and version 1 preference
   compatibility with atomic persistence.
-- Next: port Cursor inventory and exact selected-session detection behind the
-  native provider contract. Claude remains independently unavailable until its
-  adapter is ported.
+- Complete: native Cursor inventory, workspace mapping, state inference, and
+  exact selected-session detection through a strict read-only SQLite
+  transaction. Cursor is registered independently and reports schema or data
+  failures without blocking the host.
+- Next: port Claude Code Desktop inventory and exact selected-session detection.
+  Cursor focus, launch, hooks, and commands remain fail-closed until their
+  native action boundaries are ported and verified separately.

@@ -9,6 +9,24 @@ internals and must be revalidated when Cursor changes.
 Executable evidence lives in `scripts/poc/`. This document summarizes what the
 POCs prove and what remains uncertain. It does not replace them.
 
+## Native migration status
+
+The Swift host now ports the read-only inventory, workspace mapping, database
+state inference, and exact selected-agent key used by the Python provider. It
+opens SQLite with `SQLITE_OPEN_READONLY`, enables `PRAGMA query_only=ON`,
+disables trusted schema features, starts one read transaction, and rejects
+schemas missing any required table or column.
+
+The selected-agent key is accepted only when it resolves to exactly one emitted
+candidate with a mapped workspace path. Unresolved, filtered, or ambiguous IDs
+produce no selected session. This is intentionally stricter than exposing
+Cursor's raw persisted key.
+
+The Python and Swift implementations are checked against the same versioned
+fixture under `contracts/providers/cursor/v1/`. The native provider advertises
+no privileged capabilities yet, so focus, launch, hooks, and commands remain
+fail-closed until each boundary is ported and verified separately.
+
 ## M0.1: session inventory
 
 POC: `scripts/poc/01_cursor_session_inventory.py`

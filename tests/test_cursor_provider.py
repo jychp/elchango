@@ -9,6 +9,11 @@ from pathlib import Path
 from elchango.activity import ActivityStore
 from elchango.providers.cursor import CursorProvider, CursorProviderError
 
+CURSOR_FIXTURE_ROOT = (
+    Path(__file__).resolve().parents[1]
+    / "contracts/providers/cursor/v1"
+)
+
 
 class CursorProviderTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -418,6 +423,49 @@ class CursorProviderTests(unittest.TestCase):
 
         with self.assertRaisesRegex(CursorProviderError, "missing tables"):
             provider.snapshot()
+
+    def test_shared_inventory_fixture_matches_python_provider(self) -> None:
+        connection = sqlite3.connect(self.database)
+        connection.executescript(
+            (CURSOR_FIXTURE_ROOT / "cursor-state.sql").read_text(
+                encoding="utf-8"
+            )
+        )
+        connection.close()
+        provider = CursorProvider(
+            database=self.database,
+            workspace_storage=CURSOR_FIXTURE_ROOT / "workspaceStorage",
+            active_signal_ttl_ms=1_000,
+            clock=lambda: 1_000,
+        )
+
+        snapshot = provider.snapshot()
+        actual = {
+            "provider_id": snapshot.provider_id,
+            "read_only": snapshot.read_only,
+            "selected_session_id": snapshot.selected_session_id,
+            "sessions": [
+                {
+                    "confidence": session.confidence,
+                    "id": session.id,
+                    "last_activity_at_ms": session.last_activity_at_ms,
+                    "selected": session.selected,
+                    "state": session.state,
+                    "state_detail": session.state_detail,
+                    "title": session.title,
+                    "workspace_id": session.workspace_id,
+                    "workspace_path": session.workspace_path,
+                }
+                for session in snapshot.sessions
+            ],
+        }
+        expected = json.loads(
+            (CURSOR_FIXTURE_ROOT / "expected-inventory.json").read_text(
+                encoding="utf-8"
+            )
+        )
+
+        self.assertEqual(actual, expected)
 
     def _create_database(self) -> None:
         connection = sqlite3.connect(self.database)

@@ -387,6 +387,27 @@ public actor DeckService {
         providerErrors
     }
 
+    public func providerDiagnostics() async -> ProviderDiagnostics {
+        _ = await combinedSnapshot()
+        let entries: [(String, [String])] = providerOrder.compactMap {
+            providerID in
+                guard let descriptor = providers[providerID]?.descriptor else {
+                    return nil
+                }
+                return (
+                    providerID,
+                    descriptor.capabilities.map(\.rawValue).sorted()
+                )
+            }
+        let capabilities = Dictionary(
+            uniqueKeysWithValues: entries
+        )
+        return ProviderDiagnostics(
+            providers: capabilities,
+            unavailableProviders: providerErrors
+        )
+    }
+
     public func activeClientCount() -> Int {
         expireClientStates(at: monotonicNow())
         return clientStates.count

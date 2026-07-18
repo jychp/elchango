@@ -8,17 +8,22 @@ public struct FoundationHTTPHandler: HTTPHandler {
     private let assetRoot: URL?
     private let accessibility: any AccessibilityChecking
     private let deckService: DeckService
+    private let unavailableProviders: [String: String]
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
 
     public init(
         assetRoot: URL?,
         accessibility: any AccessibilityChecking,
-        deckService: DeckService
+        deckService: DeckService,
+        unavailableProviders: [String: String] = [
+            "claude-code": "provider not migrated to native host",
+        ]
     ) {
         self.assetRoot = assetRoot?.standardizedFileURL
         self.accessibility = accessibility
         self.deckService = deckService
+        self.unavailableProviders = unavailableProviders
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         self.encoder = encoder
@@ -29,17 +34,25 @@ public struct FoundationHTTPHandler: HTTPHandler {
         if request.method == .GET {
             switch request.path {
             case "/api/health":
+                let diagnostics = await deckService.providerDiagnostics()
+                let unavailable = unavailableProviders.merging(
+                    diagnostics.unavailableProviders
+                ) { _, runtimeError in runtimeError }
+                let capabilities = diagnostics.providers.values
                 return try jsonResponse(
                     .ok,
                     HealthResponse(
-                        focusEnabled: false,
-                        launchEnabled: false,
-                        actionsEnabled: false,
-                        providers: [:],
-                        unavailableProviders: [
-                            "cursor": "provider not migrated to native host",
-                            "claude-code": "provider not migrated to native host",
-                        ],
+                        focusEnabled: capabilities.contains {
+                            $0.contains("focus_session")
+                        },
+                        launchEnabled: capabilities.contains {
+                            $0.contains("new_session")
+                        },
+                        actionsEnabled: capabilities.contains {
+                            $0.contains("execute_command")
+                        },
+                        providers: diagnostics.providers,
+                        unavailableProviders: unavailable,
                         accessibilityTrusted: accessibility.isTrusted
                     )
                 )

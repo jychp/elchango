@@ -6,7 +6,6 @@
   "providers": {},
   "status": "ok",
   "unavailable_providers": {
-    "claude-code": "provider not migrated to native host",
-    "cursor": "provider not migrated to native host"
+    "claude-code": "provider not migrated to native host"
   }
 }

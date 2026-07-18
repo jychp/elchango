@@ -1,5 +1,6 @@
 import AppKit
 import ElChangoCore
+import ElChangoProviders
 import Foundation
 
 @MainActor
@@ -69,11 +70,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         do {
             let preferences = try PreferencesStore()
-            let deckService = try DeckService(preferences: preferences)
+            let registry = ProviderRegistry()
+            let deckService = try DeckService(
+                providers: registry.providers,
+                preferences: preferences
+            )
             let service = try LoopbackService(
                 assetRoot: Self.webAssetRoot,
                 accessibility: accessibility,
-                deckService: deckService
+                deckService: deckService,
+                unavailableProviders: registry.unavailableProviders
             )
             self.service = service
             Task {
@@ -198,7 +204,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Endpoint: http://127.0.0.1:\(LoopbackService.defaultPort)
         Accessibility: \(accessibility.isTrusted ? "granted" : "not granted")
         Web assets: \(Self.webAssetRoot?.path ?? "not found")
-        Providers: migration pending
+        Cursor: inventory enabled; actions disabled
+        Claude Code: migration pending
         """
     }
 

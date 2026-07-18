@@ -36,7 +36,6 @@ struct ContractTests {
             actionsEnabled: false,
             providers: [:],
             unavailableProviders: [
-                "cursor": "provider not migrated to native host",
                 "claude-code": "provider not migrated to native host",
             ],
             accessibilityTrusted: false

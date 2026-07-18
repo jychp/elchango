@@ -1,6 +1,16 @@
 import ElChangoCore
 
-/// Native providers are added here as they are migrated from the Python backend.
 public struct ProviderRegistry: Sendable {
-    public init() {}
+    public let providers: [any AgentProvider]
+    public let unavailableProviders: [String: String]
+
+    public init(
+        providers: [any AgentProvider] = [CursorProvider()],
+        unavailableProviders: [String: String] = [
+            "claude-code": "provider not migrated to native host",
+        ]
+    ) {
+        self.providers = providers
+        self.unavailableProviders = unavailableProviders
+    }
 }

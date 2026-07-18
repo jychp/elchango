@@ -21,12 +21,39 @@ struct FoundationHTTPHandlerTests {
         #expect(response.statusCode == .ok)
         #expect(health.status == "ok")
         #expect(health.providers.isEmpty)
-        #expect(health.unavailableProviders.keys.sorted() == [
-            "claude-code",
-            "cursor",
-        ])
+        #expect(
+            health.unavailableProviders.keys.sorted() == ["claude-code"]
+        )
         #expect(!health.accessibilityTrusted)
         #expect(response.headers[HTTPHeader("Cache-Control")] == "no-store")
+    }
+
+    @Test("one provider failure remains visible without disabling the host")
+    func providerDegradation() async throws {
+        let handler = try makeHandler(
+            assetRoot: nil,
+            accessibility: StubAccessibility(isTrusted: false),
+            providers: [FailingCursorProvider()]
+        )
+
+        let response = try await handler.handleRequest(
+            request(path: "/api/health")
+        )
+        let health = try JSONDecoder().decode(
+            HealthResponse.self,
+            from: await responseBody(response)
+        )
+
+        #expect(response.statusCode == .ok)
+        #expect(health.providers["cursor"] == [])
+        #expect(
+            health.unavailableProviders["cursor"]
+                == "fixture unavailable"
+        )
+        #expect(
+            health.unavailableProviders["claude-code"]
+                == "provider not migrated to native host"
+        )
     }
 
     @Test("snapshot remains compatible with both deck surfaces")
@@ -315,14 +342,18 @@ struct FoundationHTTPHandlerTests {
 
     private func makeHandler(
         assetRoot: URL?,
-        accessibility: any AccessibilityChecking
+        accessibility: any AccessibilityChecking,
+        providers: [any AgentProvider] = []
     ) throws -> FoundationHTTPHandler {
         let preferences = try PreferencesStore(
             url: FileManager.default.temporaryDirectory
                 .appendingPathComponent(UUID().uuidString)
                 .appendingPathComponent("preferences.json")
         )
-        let deckService = try DeckService(preferences: preferences)
+        let deckService = try DeckService(
+            providers: providers,
+            preferences: preferences
+        )
         return FoundationHTTPHandler(
             assetRoot: assetRoot,
             accessibility: accessibility,
@@ -333,4 +364,29 @@ struct FoundationHTTPHandlerTests {
 
 private struct StubAccessibility: AccessibilityChecking {
     let isTrusted: Bool
+}
+
+private struct FailingCursorProvider: AgentProvider {
+    let descriptor = ProviderDescriptor(
+        id: "cursor",
+        displayName: "Cursor",
+        icon: .cursor,
+        capabilities: []
+    )
+
+    func snapshot() async throws -> ProviderSnapshot {
+        throw FailingCursorError.unavailable
+    }
+
+    func isFrontmost() async throws -> Bool {
+        false
+    }
+}
+
+private enum FailingCursorError: LocalizedError {
+    case unavailable
+
+    var errorDescription: String? {
+        "fixture unavailable"
+    }
 }

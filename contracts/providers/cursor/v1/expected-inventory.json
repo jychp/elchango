@@ -1,0 +1,29 @@
+{
+  "provider_id": "cursor",
+  "read_only": true,
+  "selected_session_id": "cursor:composer-1",
+  "sessions": [
+    {
+      "confidence": "candidate",
+      "id": "cursor:composer-1",
+      "last_activity_at_ms": 100,
+      "selected": true,
+      "state": "working",
+      "state_detail": "tool loading",
+      "title": "Foundation work",
+      "workspace_id": "workspace-1",
+      "workspace_path": "/tmp/elchango"
+    },
+    {
+      "confidence": "unknown",
+      "id": "cursor:composer-2",
+      "last_activity_at_ms": 50,
+      "selected": false,
+      "state": "idle",
+      "state_detail": "composer data unavailable",
+      "title": "Untitled session",
+      "workspace_id": "workspace-2",
+      "workspace_path": "/tmp/workspace two"
+    }
+  ]
+}

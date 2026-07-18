@@ -117,6 +117,19 @@ public struct ProviderDescriptor: Equatable, Sendable {
     }
 }
 
+public struct ProviderDiagnostics: Equatable, Sendable {
+    public let providers: [String: [String]]
+    public let unavailableProviders: [String: String]
+
+    public init(
+        providers: [String: [String]],
+        unavailableProviders: [String: String]
+    ) {
+        self.providers = providers
+        self.unavailableProviders = unavailableProviders
+    }
+}
+
 public protocol AgentProvider: Sendable {
     var descriptor: ProviderDescriptor { get }
     func snapshot() async throws -> ProviderSnapshot

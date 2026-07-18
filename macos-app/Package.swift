@@ -34,6 +34,9 @@ let package = Package(
             dependencies: ["ElChangoCore"],
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency"),
+            ],
+            linkerSettings: [
+                .linkedLibrary("sqlite3"),
             ]
         ),
         .executableTarget(
@@ -52,6 +55,17 @@ let package = Package(
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency"),
                 .enableExperimentalFeature("SwiftTesting"),
+            ]
+        ),
+        .testTarget(
+            name: "ElChangoProvidersTests",
+            dependencies: ["ElChangoCore", "ElChangoProviders"],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency"),
+                .enableExperimentalFeature("SwiftTesting"),
+            ],
+            linkerSettings: [
+                .linkedLibrary("sqlite3"),
             ]
         ),
     ]
