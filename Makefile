@@ -52,7 +52,7 @@ test-pocs:
 		$(PYTHON) "$$poc" --help >/dev/null; \
 	done
 
-build: build-web build-app-macos build-plugins
+build: build-app-macos build-plugins
 
 build-app-macos:
 	./macos-app/Scripts/package-app.sh

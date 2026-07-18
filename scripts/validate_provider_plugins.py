@@ -141,7 +141,11 @@ def validate_cursor() -> None:
     validate_manifest("cursor", ".cursor-plugin")
     path = ROOT / "plugins/cursor/hooks/hooks.json"
     document = load_object(path)
-    require(document.get("version") == 1, f"{path}: schema version must be 1")
+    version = document.get("version")
+    require(
+        type(version) is int and version == 1,
+        f"{path}: schema version must be integer 1",
+    )
     hooks = document.get("hooks")
     require(isinstance(hooks, dict), f"{path}: hooks must be an object")
     expected = {
@@ -199,6 +203,11 @@ def validate_claude() -> None:
         )
         group = groups[0]
         require(isinstance(group, dict), f"{path}: {event} group is invalid")
+        require_allowed_keys(
+            group,
+            {"hooks"} if matcher is None else {"matcher", "hooks"},
+            path,
+        )
         if matcher is None:
             require("matcher" not in group, f"{path}: {event} matcher is invalid")
         else:

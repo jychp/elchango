@@ -28,8 +28,17 @@ responses, tool data, email, and transcript paths.
 
 ## Installation
 
-Install `elchango` from the elChango Cursor marketplace. For local development,
-register this repository as a marketplace and select the `elchango` plugin.
+Individual users will install `elchango` from Cursor's public Marketplace after
+it is published. For local development:
+
+```bash
+mkdir -p ~/.cursor/plugins/local
+ln -s /path/to/elchango/plugins/cursor ~/.cursor/plugins/local/elchango
+```
+
+Restart Cursor or run `Developer: Reload Window`, then verify the plugin in
+Customize and inspect the Hooks output channel. Teams and Enterprise
+organizations may import the repository through a managed Team Marketplace.
 
 The fixed application path is part of the plugin configuration. If elChango is
 installed elsewhere, the reporter hook fails open and the plugin cannot report

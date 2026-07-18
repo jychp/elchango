@@ -38,8 +38,8 @@ persists a session identity.
 
 - One plugin-wide loop polls the loopback snapshot API every second while an
   elChango key is visible.
-- Each key receives an SVG containing its current color, icon, label, detail,
-  enabled state, and selected state.
+- Each key receives an SVG containing its current color, icon, label, and
+  enabled-state opacity.
 - Key presses send the current opaque button ID and revision to the unified
   activation endpoint. The native service rebuilds the deck and resolves the
   target before acting.

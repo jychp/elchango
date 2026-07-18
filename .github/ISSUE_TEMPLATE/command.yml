@@ -39,7 +39,7 @@ body:
     id: target
     attributes:
       label: Fresh session and command-target verification
-      description: Explain how provider, native session, current UI state, and the exact prompt input or validated application-level shortcut scope are rebuilt and verified immediately before dispatch.
+      description: Explain the sanitized structural evidence that identifies the provider, native session, current UI state, and composer or validated application-level shortcut immediately before dispatch. Never include prompt text or session content.
     validations:
       required: true
   - type: textarea

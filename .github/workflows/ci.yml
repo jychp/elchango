@@ -16,7 +16,7 @@ concurrency:
 jobs:
   macos:
     name: macOS Swift
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 30
     steps:
       - name: Check out repository
@@ -83,9 +83,7 @@ jobs:
       - name: Install official Claude validator
         if: matrix.provider == 'claude'
         run: npm install --global @anthropic-ai/claude-code@2.1.212
-      - name: Test provider plugin
-        run: make test-plugin-${{ matrix.provider }}
-      - name: Build provider plugin
+      - name: Validate and build provider plugin
         run: make build-plugin-${{ matrix.provider }}
 
   pocs:

@@ -229,9 +229,10 @@ workspace mappings, ambiguous selection, stale preflights, and failed
 Accessibility checks fail closed for Cursor. They do not block Claude Code or
 prevent the native host from starting.
 
-Stale working or waiting signals degrade to unknown rather than remaining
-active indefinitely. Unmatched hook events are ignored. Database uncertainty is
-rendered gray unless fresh waiting or terminal evidence supports another state.
+Expired working or waiting hook signals are removed rather than remaining
+active indefinitely. The session then falls back to its persisted database
+state, which is currently idle and rendered gray unless fresh waiting or
+terminal evidence supports another state. Unmatched hook events are ignored.
 
 ## Limitations and open questions
 

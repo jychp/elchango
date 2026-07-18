@@ -11,9 +11,11 @@ The production build is bundled into `elChango.app` and served by the native
 loopback service at `http://127.0.0.1:8765`. The browser does not read Cursor or
 Claude data directly and does not perform native automation.
 
-Each browser client has independent pagination and provider-picker state. Key
-activations send the current opaque button ID and revision to the native
-service, which rebuilds the deck and resolves the target before acting.
+The web surface has pagination and provider-picker state independent from the
+Stream Deck surface. All browser tabs currently use the same `web` client ID
+and therefore share that web state. Key activations send the current opaque
+button ID and revision to the native service, which rebuilds the deck and
+resolves the target before acting.
 
 ## Requirements
 

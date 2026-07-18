@@ -104,10 +104,19 @@ app or unavailable loopback service does not block the coding agent.
 
 ### Cursor marketplace plugin
 
-The repository contains `.cursor-plugin/marketplace.json`. In Cursor's Plugins
-settings, add or import `https://github.com/jychp/elchango` as a marketplace,
-then install the `elchango` plugin from that marketplace. For local development,
-register the cloned repository and select the same plugin.
+Individual users install reviewed plugins from Cursor's public Marketplace.
+elChango is not yet listed there, so local development currently uses a symlink:
+
+```bash
+mkdir -p ~/.cursor/plugins/local
+ln -s /path/to/elchango/plugins/cursor ~/.cursor/plugins/local/elchango
+```
+
+Restart Cursor or run `Developer: Reload Window`, then confirm `elchango`
+appears in Customize and its Hooks panel. Teams and Enterprise organizations
+can instead import `https://github.com/jychp/elchango` through their managed
+Team Marketplace. Repository import is not an individual-user installation
+flow.
 
 The plugin invokes
 `/Applications/elChango.app/Contents/MacOS/elChangoHookReporter`, so use the
