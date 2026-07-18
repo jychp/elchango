@@ -343,6 +343,7 @@ function buttonAt(position: number): DeckButton {
       selected: position === 0,
       enabled: true,
       confidence: "observed",
+      provider_id: "cursor",
       session_id: `session-${position}`,
     };
   }
@@ -357,6 +358,7 @@ function buttonAt(position: number): DeckButton {
     selected: false,
     enabled: position === 10 || position === 14,
     confidence: "observed",
+    provider_id: position === 14 ? "cursor" : null,
     action: position === 14 ? "new_session" : "refresh_sessions",
   };
 }

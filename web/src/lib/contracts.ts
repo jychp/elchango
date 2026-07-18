@@ -35,6 +35,7 @@ export interface DeckButton {
   selected: boolean
   enabled: boolean
   confidence: DeckButtonConfidence
+  provider_id: string | null
   session_id?: string | null
   action?: DeckAction | null
 }

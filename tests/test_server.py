@@ -15,17 +15,24 @@ from elchango.deck import DeckService
 from elchango.focus import FocusResult
 from elchango.launch import LaunchResult
 from elchango.models import AgentSession, ProviderSnapshot
+from elchango.providers.cursor_adapter import CursorAdapter
 from elchango.server import DeckHTTPServer, DeckRequestHandler, serve
 
 
 class StaticProvider:
+    provider_id = "cursor"
+    capabilities = frozenset({"focus_session", "new_session"})
+
     def __init__(self, count: int = 1) -> None:
         self.count = count
 
     def snapshot(self) -> ProviderSnapshot:
         sessions = tuple(
             AgentSession(
-                id=f"session-{index}",
+                provider_id=self.provider_id,
+                native_id=f"session-{index}",
+                capabilities=self.capabilities,
+                icon="cursor",
                 title=f"Server test {index}",
                 workspace_id=f"workspace-{index}",
                 workspace_path="/tmp/server-test",
@@ -38,8 +45,10 @@ class StaticProvider:
             for index in range(1, self.count + 1)
         )
         return ProviderSnapshot(
+            provider_id=self.provider_id,
+            capabilities=self.capabilities,
             observed_at_ms=123,
-            selected_session_id="session-1",
+            selected_native_session_id="session-1",
             sessions=sessions,
             source="test",
         )
@@ -86,12 +95,17 @@ class DeckServerTests(unittest.TestCase):
         assets = Path(self.temporary_directory.name)
         (assets / "index.html").write_text("<main>deck</main>", encoding="utf-8")
         self.server = DeckHTTPServer(("127.0.0.1", 0), DeckRequestHandler)
-        self.server.deck_service = DeckService(StaticProvider())
         self.server.activity_store = ActivityStore()
         self.focus_controller = FakeFocusController()
-        self.server.focus_controller = self.focus_controller
         self.launch_controller = FakeLaunchController()
-        self.server.launch_controller = self.launch_controller
+        self.cursor = CursorAdapter(
+            inventory=StaticProvider(),  # type: ignore[arg-type]
+            focus_controller=self.focus_controller,  # type: ignore[arg-type]
+            launch_controller=self.launch_controller,  # type: ignore[arg-type]
+            activity_store=self.server.activity_store,
+        )
+        self.server.deck_service = DeckService(self.cursor)
+        self.server.providers = {self.cursor.provider_id: self.cursor}
         self.server.assets = assets
         self.server.api_only = False
         self.thread = threading.Thread(
@@ -117,8 +131,24 @@ class DeckServerTests(unittest.TestCase):
 
         self.assertEqual(response.status, 200)
         self.assertEqual(len(payload["buttons"]), 15)
-        self.assertEqual(payload["selected_session_id"], "session-1")
+        self.assertEqual(payload["selected_session_id"], "cursor:session-1")
+        self.assertEqual(payload["buttons"][0]["provider_id"], "cursor")
+        self.assertNotIn("native_session_id", payload["buttons"][0])
         self.assertEqual(response.headers["Cache-Control"], "no-store")
+
+    def test_health_reports_provider_capabilities(self) -> None:
+        with urllib.request.urlopen(
+            f"{self.base_url}/api/health",
+            timeout=2,
+        ) as response:
+            payload = json.load(response)
+
+        self.assertTrue(payload["focus_enabled"])
+        self.assertTrue(payload["launch_enabled"])
+        self.assertEqual(
+            payload["providers"]["cursor"],
+            ["focus_session", "new_session"],
+        )
 
     def test_snapshot_clients_keep_independent_pages(self) -> None:
         self.server.deck_service = DeckService(StaticProvider(count=11))
@@ -156,8 +186,7 @@ class DeckServerTests(unittest.TestCase):
             serve(
                 self.server.deck_service,
                 self.server.activity_store,
-                self.focus_controller,
-                self.launch_controller,
+                self.server.providers,
                 Path(self.temporary_directory.name),
                 "0.0.0.0",
                 0,
@@ -321,7 +350,7 @@ class DeckServerTests(unittest.TestCase):
             observed_at_ms=now,
         )
 
-        payload = self._post_activate("hardware", "session:session-1")
+        payload = self._post_activate("hardware", "session:cursor:session-1")
 
         self.assertTrue(payload["accepted"])
         self.assertEqual(payload["action"], "focus_session")

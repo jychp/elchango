@@ -18,6 +18,7 @@ from elchango.providers.cursor import (
     CursorProvider,
     CursorProviderError,
 )
+from elchango.providers.cursor_adapter import CursorAdapter
 from elchango.server import serve
 
 
@@ -111,12 +112,18 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: {error}", file=sys.stderr)
         return 2
 
-    service = DeckService(provider)
     focus_controller = CursorFocusController(
         database=args.database,
         workspace_storage=args.workspace_storage,
     )
     launch_controller = CursorLaunchController()
+    cursor = CursorAdapter(
+        inventory=provider,
+        focus_controller=focus_controller,
+        launch_controller=launch_controller,
+        activity_store=activity_store,
+    )
+    service = DeckService(cursor)
     url = f"http://{args.host}:{args.port}/"
     print("elChango v0.2")
     print(f"Deck: {url}")
@@ -129,8 +136,7 @@ def main(argv: list[str] | None = None) -> int:
         serve(
             service,
             activity_store,
-            focus_controller,
-            launch_controller,
+            {cursor.provider_id: cursor},
             assets,
             args.host,
             args.port,

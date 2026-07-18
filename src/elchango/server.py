@@ -14,9 +14,7 @@ from urllib.parse import parse_qs, urlparse
 
 from elchango.activity import ActivityStore
 from elchango.deck import DEFAULT_CLIENT_ID, DeckService, validate_client_id
-from elchango.focus import CursorFocusController
-from elchango.launch import CursorLaunchController
-from elchango.providers.cursor import CursorProviderError
+from elchango.providers.base import AgentProvider, ProviderError
 
 
 class DeckHTTPServer(ThreadingHTTPServer):
@@ -25,8 +23,7 @@ class DeckHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
     deck_service: DeckService
     activity_store: ActivityStore
-    focus_controller: CursorFocusController
-    launch_controller: CursorLaunchController
+    providers: dict[str, AgentProvider]
     assets: Path
     api_only: bool = False
 
@@ -39,13 +36,24 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/api/health":
+            providers = self.server.providers
             self._send_json(
                 HTTPStatus.OK,
                 {
                     "status": "ok",
-                    "focus_enabled": True,
-                    "launch_enabled": True,
+                    "focus_enabled": any(
+                        "focus_session" in provider.capabilities
+                        for provider in providers.values()
+                    ),
+                    "launch_enabled": any(
+                        "new_session" in provider.capabilities
+                        for provider in providers.values()
+                    ),
                     "actions_enabled": False,
+                    "providers": {
+                        provider_id: sorted(provider.capabilities)
+                        for provider_id, provider in providers.items()
+                    },
                 },
             )
             return
@@ -101,7 +109,8 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
                 (
                     button
                     for button in snapshot.buttons
-                    if button.session_id == session_id
+                    if button.provider_id == "cursor"
+                    and button.native_session_id == session_id
                     and button.kind == "session"
                     and button.enabled
                 ),
@@ -113,24 +122,16 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
                     {"error": "session is not focusable in the current snapshot"},
                 )
                 return
-            result = self.server.focus_controller.focus(session_id)
-        except CursorProviderError as error:
+            provider = self.server.providers[target.provider_id]
+            result = provider.focus(target.native_session_id)
+        except (KeyError, ProviderError) as error:
             self._send_json(
                 HTTPStatus.SERVICE_UNAVAILABLE,
                 {"error": str(error), "retryable": True},
             )
             return
-        if result.verdict == "FOCUS_VERIFIED":
-            self.server.activity_store.acknowledge(
-                session_id,
-                time.time_ns() // 1_000_000,
-            )
-        status = (
-            HTTPStatus.OK
-            if result.verdict == "FOCUS_VERIFIED"
-            else HTTPStatus.CONFLICT
-        )
-        self._send_json(status, result.to_dict())
+        status = HTTPStatus.OK if result.accepted else HTTPStatus.CONFLICT
+        self._send_json(status, result.details)
 
     def _activate_intent(self) -> None:
         payload = self._read_json_payload(max_bytes=4_096)
@@ -178,24 +179,20 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
                     {"error": "button is not actionable in the current snapshot"},
                 )
                 return
-            if target.kind == "session" and target.session_id is not None:
-                result = self.server.focus_controller.focus(target.session_id)
-                if result.verdict == "FOCUS_VERIFIED":
-                    self.server.activity_store.acknowledge(
-                        target.session_id,
-                        time.time_ns() // 1_000_000,
-                    )
-                status = (
-                    HTTPStatus.OK
-                    if result.verdict == "FOCUS_VERIFIED"
-                    else HTTPStatus.CONFLICT
-                )
+            if (
+                target.kind == "session"
+                and target.provider_id is not None
+                and target.native_session_id is not None
+            ):
+                provider = self.server.providers[target.provider_id]
+                result = provider.focus(target.native_session_id)
+                status = HTTPStatus.OK if result.accepted else HTTPStatus.CONFLICT
                 self._send_json(
                     status,
                     {
                         "accepted": status == HTTPStatus.OK,
                         "action": "focus_session",
-                        "focus": result.to_dict(),
+                        "focus": result.details,
                     },
                 )
                 return
@@ -208,8 +205,12 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
                     {"error": "button is not actionable in the current snapshot"},
                 )
                 return
-            self._dispatch_control(target.action, client_id)
-        except (CursorProviderError, RuntimeError) as error:
+            self._dispatch_control(
+                target.action,
+                client_id,
+                target.provider_id,
+            )
+        except (KeyError, ProviderError, RuntimeError) as error:
             self._send_json(
                 HTTPStatus.SERVICE_UNAVAILABLE,
                 {"error": str(error), "retryable": True},
@@ -254,15 +255,24 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
                     {"error": "button is not actionable in the current snapshot"},
                 )
                 return
-            self._dispatch_control(target.action, client_id)
-        except (CursorProviderError, RuntimeError) as error:
+            self._dispatch_control(
+                target.action,
+                client_id,
+                target.provider_id,
+            )
+        except (KeyError, ProviderError, RuntimeError) as error:
             self._send_json(
                 HTTPStatus.SERVICE_UNAVAILABLE,
                 {"error": str(error), "retryable": True},
             )
             return
 
-    def _dispatch_control(self, action: str, client_id: str) -> None:
+    def _dispatch_control(
+        self,
+        action: str,
+        client_id: str,
+        provider_id: str | None,
+    ) -> None:
         try:
             if action == "refresh_sessions":
                 updated = self.server.deck_service.refresh(client_id)
@@ -271,18 +281,16 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
             elif action == "next_page":
                 updated = self.server.deck_service.next_page(client_id)
             elif action == "new_session":
-                launch = self.server.launch_controller.open_new()
-                status = (
-                    HTTPStatus.OK
-                    if launch.verdict == "NEW_AGENT_VIEW_REQUESTED"
-                    else HTTPStatus.CONFLICT
-                )
+                if provider_id is None:
+                    raise ValueError("new session button has no provider target")
+                launch = self.server.providers[provider_id].open_new()
+                status = HTTPStatus.OK if launch.accepted else HTTPStatus.CONFLICT
                 self._send_json(
                     status,
                     {
                         "accepted": status == HTTPStatus.OK,
                         "action": action,
-                        "launch": launch.to_dict(),
+                        "launch": launch.details,
                     },
                 )
                 return
@@ -292,7 +300,7 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
                     {"error": f"unsupported deck action: {action}"},
                 )
                 return
-        except (CursorProviderError, RuntimeError) as error:
+        except (KeyError, ProviderError, RuntimeError) as error:
             self._send_json(
                 HTTPStatus.SERVICE_UNAVAILABLE,
                 {"error": str(error), "retryable": True},
@@ -378,7 +386,7 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
         except ValueError as error:
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
             return
-        except CursorProviderError as error:
+        except ProviderError as error:
             self._send_json(
                 HTTPStatus.SERVICE_UNAVAILABLE,
                 {"error": str(error), "retryable": True},
@@ -477,8 +485,7 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
 def serve(
     service: DeckService,
     activity_store: ActivityStore,
-    focus_controller: CursorFocusController,
-    launch_controller: CursorLaunchController,
+    providers: dict[str, AgentProvider],
     assets: Path,
     host: str,
     port: int,
@@ -496,8 +503,7 @@ def serve(
     server = DeckHTTPServer((host, port), DeckRequestHandler)
     server.deck_service = service
     server.activity_store = activity_store
-    server.focus_controller = focus_controller
-    server.launch_controller = launch_controller
+    server.providers = providers
     server.assets = assets
     server.api_only = api_only
     try:

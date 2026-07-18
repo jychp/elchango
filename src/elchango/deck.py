@@ -14,6 +14,7 @@ from elchango.models import (
     ButtonColor,
     DeckButton,
     DeckSnapshot,
+    ProviderCapability,
     ProviderSnapshot,
     SessionState,
 )
@@ -54,7 +55,7 @@ class _ClientState:
 
 
 class DeckService:
-    """Build stable, versioned render snapshots from one provider."""
+    """Build stable, versioned render snapshots from one provider adapter."""
 
     def __init__(
         self,
@@ -109,6 +110,8 @@ class DeckService:
             visible_sessions,
             page=page,
             has_next=has_next,
+            default_provider_id=self._provider.provider_id,
+            default_capabilities=self._provider.capabilities,
         )
         if len(buttons) != TOTAL_BUTTONS:
             raise RuntimeError(
@@ -240,6 +243,8 @@ def _build_buttons(
     *,
     page: int,
     has_next: bool,
+    default_provider_id: str,
+    default_capabilities: frozenset[ProviderCapability],
 ) -> list[DeckButton]:
     buttons: list[DeckButton] = []
     for position, session in enumerate(sessions):
@@ -254,9 +259,10 @@ def _build_buttons(
                     icon="plus",
                     color="control",
                     selected=False,
-                    enabled=True,
+                    enabled="new_session" in default_capabilities,
                     confidence="observed",
                     action="new_session",
+                    provider_id=default_provider_id,
                 )
             )
             continue
@@ -267,12 +273,14 @@ def _build_buttons(
                 kind="session",
                 label=session.title,
                 detail="",
-                icon="cursor",
+                icon=session.icon,
                 color=_display_color(session.state),
                 selected=session.selected,
-                enabled=True,
+                enabled="focus_session" in session.capabilities,
                 confidence=session.confidence,
                 session_id=session.id,
+                provider_id=session.provider_id,
+                native_session_id=session.native_id,
             )
         )
 
@@ -340,13 +348,14 @@ def _build_buttons(
             position=14,
             kind="control",
             label="New",
-            detail="Create Cursor agent",
+            detail="Create agent",
             icon="plus",
             color="control",
             selected=False,
-            enabled=True,
+            enabled="new_session" in default_capabilities,
             confidence="observed",
             action="new_session",
+            provider_id=default_provider_id,
         )
     )
     controls = (

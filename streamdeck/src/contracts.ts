@@ -36,6 +36,7 @@ export interface DeckButton {
   selected: boolean;
   enabled: boolean;
   confidence: DeckButtonConfidence;
+  provider_id: string | null;
   session_id?: string | null;
   action?: DeckAction | null;
 }
@@ -194,6 +195,10 @@ function parseDeckButton(value: unknown, index: number): DeckButton {
     selected: booleanValue(button.selected, `button ${index}.selected`),
     enabled: booleanValue(button.enabled, `button ${index}.enabled`),
     confidence: confidence as DeckButtonConfidence,
+    provider_id: nullableString(
+      button.provider_id,
+      `button ${index}.provider_id`,
+    ),
     ...(button.session_id === undefined
       ? {}
       : {

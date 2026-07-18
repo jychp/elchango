@@ -32,7 +32,7 @@ class CursorProviderTests(unittest.TestCase):
         snapshot = provider.snapshot()
 
         self.assertTrue(snapshot.read_only)
-        self.assertEqual(snapshot.selected_session_id, "composer-1")
+        self.assertEqual(snapshot.selected_session_id, "cursor:composer-1")
         self.assertEqual(len(snapshot.sessions), 1)
         session = snapshot.sessions[0]
         self.assertEqual(session.title, "Foundation work")
