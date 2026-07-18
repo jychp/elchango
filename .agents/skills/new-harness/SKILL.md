@@ -23,8 +23,9 @@ provider-specific findings in `docs/providers/<provider>.md`.
 
 ## 2. Build executable reconnaissance
 
-Create numbered, self-documenting Python POCs under `scripts/poc/` before
-building the adapter. Follow the POC standard in `AGENTS.md`.
+Create numbered, self-documenting Python POCs under
+`scripts/poc/<provider>/` before building the adapter. Number each provider's
+POCs independently from `01`. Follow the POC standard in `AGENTS.md`.
 
 Establish evidence for each capability separately:
 
@@ -34,7 +35,8 @@ Establish evidence for each capability separately:
 4. Find authoritative activity signals, preferably official hooks.
 5. Determine whether exact focus can be verified after acting.
 6. Determine whether an official new-session mechanism exists.
-7. Determine whether exact prompt-input focus can be verified before dispatch.
+7. Determine the exact provider-specific command target: prompt-input focus for
+   text recipes, or proven application-level scope for shortcuts.
 8. Search official evidence for each command mapping; record absent evidence
    rather than inferring a slash command, shortcut, or prompt.
 
@@ -45,9 +47,9 @@ unless exact post-action identity can be verified.
 For command reconnaissance, use only stable semantic IDs already validated for
 the shared contract. Keep provider recipes outside surfaces. A POC must require
 an explicit recipe when no official mapping is available, default to dry-run,
-require `--execute`, recheck target, frontmost application, and input focus
-immediately before one dispatch, and never retry an ambiguous result. Use the
-`new-command` skill for the full workflow.
+require `--execute`, recheck the session, frontmost application, and exact
+command target immediately before one dispatch, and never retry an ambiguous
+result. Use the `new-command` skill for the full workflow.
 
 ## 3. Define the provider identity
 
@@ -140,7 +142,8 @@ Do not declare a command capability from focus evidence alone. Establish:
 
 1. a fresh public-button to provider-native target resolution;
 2. exact selected-session and frontmost-application evidence;
-3. exact agent prompt-input focus evidence, distinct from generic text focus;
+3. exact command-target evidence: agent prompt-input focus for text recipes, or
+   an explicitly validated application-level shortcut scope;
 4. an official provider recipe or an explicitly configured local recipe;
 5. one dispatch with no fallback or automatic retry;
 6. a conservative post-dispatch verdict that does not claim semantic completion
@@ -189,8 +192,9 @@ Add provider tests covering:
 - every state transition and stale-signal degradation;
 - focus success, rejection, and exact verification;
 - official new-session launch and encoded parameters.
-- command recipe resolution, exact input-focus refusal, stale preflight refusal,
-  one-shot dispatch, and ambiguous-result handling when commands are in scope.
+- command recipe resolution, exact command-target refusal, stale preflight
+  refusal, one-shot dispatch, and ambiguous-result handling when commands are
+  in scope.
 
 Extend deck and server tests to prove:
 
@@ -217,6 +221,41 @@ npm --prefix plugins/streamdeck run validate
 git diff --check
 ```
 
-Update `docs/providers/<provider>.md` with measured evidence, limitations,
-verdicts, and official references. Update the roadmap only for points validated
-with the user. Do not commit or push unless the user explicitly asks.
+Update `docs/providers/<provider>.md` using this required structure:
+
+1. **Scope and status**: define the exact product and session type, exclusions,
+   implementation status, and conservative capability verdicts.
+2. **Tested versions and environment**: record product version, date, operating
+   system, and any relevant hardware or installation assumptions. Use
+   `unknown` when a value was not captured.
+3. **Evidence**: summarize the controlled observations, fixture parity, and
+   official references that support the conclusions. Keep observations,
+   conclusions, and hypotheses distinct.
+4. **Inventory and identity**: document persistent and live sources, stable
+   native IDs, filtering rules, ordering signals, and process-liveness
+   annotations.
+5. **Workspace mapping**: explain which fields map a session to its current
+   workspace, repository, or worktree, including ambiguity and failure rules.
+6. **State model and hooks**: list authoritative lifecycle signals, the mapping
+   to provider-neutral states, stale-signal behavior, and retained metadata.
+7. **Focus and launch**: describe measured existing-session focus and new-session
+   launch mechanisms, preflight checks, post-action verification, and verdicts.
+8. **Semantic commands**: list each stable semantic ID, its evidence-backed
+   provider recipe, composer requirements, dispatch semantics, and unproven
+   completion claims.
+9. **Safety and target verification**: state the exact identity, foreground,
+   command-target, bounded-dispatch, and read-only barriers. Include
+   input-focus evidence for every text recipe.
+10. **Degradation behavior**: explain schema drift, malformed records, missing
+    harnesses, stale hooks, and provider isolation.
+11. **Limitations and open questions**: preserve every unproven assumption and
+    required live experiment.
+12. **POCs**: list every executable evidence file under the provider's POC
+    directory with its purpose and current verdict.
+13. **References**: link official provider documentation and any other primary
+    sources used.
+
+Do not omit a section. Write `None established` where evidence does not yet
+support content. Do not fill gaps by inference or copy a finding from another
+provider. Update the roadmap only for points validated with the user. Do not
+commit or push unless the user explicitly asks.

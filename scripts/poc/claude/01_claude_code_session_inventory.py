@@ -36,10 +36,10 @@ delivering a signal. Titles are hidden unless ``--show-titles`` is supplied.
 
 Examples
 ========
-    python scripts/poc/09_claude_code_session_inventory.py
-    python scripts/poc/09_claude_code_session_inventory.py --limit 30
-    python scripts/poc/09_claude_code_session_inventory.py --include-archived
-    python scripts/poc/09_claude_code_session_inventory.py --json
+    python scripts/poc/claude/01_claude_code_session_inventory.py
+    python scripts/poc/claude/01_claude_code_session_inventory.py --limit 30
+    python scripts/poc/claude/01_claude_code_session_inventory.py --include-archived
+    python scripts/poc/claude/01_claude_code_session_inventory.py --json
 
 Interpretation
 ==============

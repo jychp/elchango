@@ -38,12 +38,12 @@ agent prompt, rather than a terminal, search box, or editor, has input focus.
 
 Examples
 ========
-    python scripts/poc/12_cursor_command_dispatch.py
-    python scripts/poc/12_cursor_command_dispatch.py accept --target <composer>
-    python scripts/poc/12_cursor_command_dispatch.py compact \
+    python scripts/poc/cursor/09_cursor_command_dispatch.py
+    python scripts/poc/cursor/09_cursor_command_dispatch.py accept --target <composer>
+    python scripts/poc/cursor/09_cursor_command_dispatch.py compact \
       --target <composer> --recipe-command /known-command \
       --input-marker composer-input
-    python scripts/poc/12_cursor_command_dispatch.py create_pr \
+    python scripts/poc/cursor/09_cursor_command_dispatch.py create_pr \
       --target <composer> --recipe-text "Create a pull request..." \
       --input-marker composer-input --execute
 

@@ -1,0 +1,65 @@
+name: Agent command
+description: Propose or research a privileged session command
+title: "feat(command): "
+labels:
+  - command
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Commands are privileged actions. Provide sanitized behavioral evidence only, never real prompt text, credentials, private code, or full transcripts.
+  - type: input
+    id: command
+    attributes:
+      label: Command name and semantic intent
+      placeholder: accept, create_pr, commit_push, compact, or another stable intent
+    validations:
+      required: true
+  - type: input
+    id: providers
+    attributes:
+      label: Providers and tested versions
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected preconditions and outcome
+      description: Define when the command is enabled, what it does, and the observable success state.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Dispatch evidence
+      description: Link one-shot POCs and summarize the observed native mechanism without including sensitive input.
+    validations:
+      required: true
+  - type: textarea
+    id: target
+    attributes:
+      label: Fresh session and command-target verification
+      description: Explain how provider, native session, current UI state, and the exact prompt input or validated application-level shortcut scope are rebuilt and verified immediately before dispatch.
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Post-action verification and failure behavior
+      description: State the exact observable success check, timeout behavior, ambiguity handling, and conservative failure verdict.
+    validations:
+      required: true
+  - type: textarea
+    id: parity
+    attributes:
+      label: Web and Stream Deck parity
+      description: Describe availability, labeling, disabled states, and feedback on both surfaces.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety confirmation
+      options:
+        - label: The proposal disables dispatch whenever the session or provider-specific command target cannot be verified.
+          required: true
+        - label: Evidence contains no sensitive prompts, secrets, private code, or personal session data.
+          required: true

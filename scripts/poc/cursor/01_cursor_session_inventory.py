@@ -25,10 +25,10 @@ visible without stopping the application.
 
 Examples
 ========
-    python scripts/poc/01_cursor_session_inventory.py
-    python scripts/poc/01_cursor_session_inventory.py --workspace elchango
-    python scripts/poc/01_cursor_session_inventory.py --json
-    python scripts/poc/01_cursor_session_inventory.py --watch 30
+    python scripts/poc/cursor/01_cursor_session_inventory.py
+    python scripts/poc/cursor/01_cursor_session_inventory.py --workspace elchango
+    python scripts/poc/cursor/01_cursor_session_inventory.py --json
+    python scripts/poc/cursor/01_cursor_session_inventory.py --watch 30
 
 Use ``--watch`` while opening, switching, archiving, or creating a session.
 The resulting change stream is the evidence needed to test update latency and

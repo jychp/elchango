@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider cursor",
+        "timeout": 1,
+        "failClosed": false
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider cursor",
+        "timeout": 1,
+        "failClosed": false
+      }
+    ],
+    "stop": [
+      {
+        "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider cursor",
+        "timeout": 1,
+        "failClosed": false
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider cursor",
+        "timeout": 1,
+        "failClosed": false
+      }
+    ]
+  }
+}

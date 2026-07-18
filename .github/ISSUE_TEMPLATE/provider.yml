@@ -1,0 +1,58 @@
+name: Provider support
+description: Propose or report reconnaissance for an agent harness provider
+title: "feat(provider): "
+labels:
+  - provider
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Provider support starts with executable, sanitized evidence. Never include prompts, credentials, private code, or raw session transcripts.
+  - type: input
+    id: provider
+    attributes:
+      label: Provider and harness
+      placeholder: Provider name and native host application
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Tested versions
+      description: Include provider, harness, and macOS versions.
+    validations:
+      required: true
+  - type: textarea
+    id: use-case
+    attributes:
+      label: User need
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Reconnaissance evidence
+      description: Link self-documenting POCs and summarize observed inventory, identifier stability, workspace mapping, hooks/state, active-session detection, focus, launch, and dispatch behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: identity
+    attributes:
+      label: Session identity and target verification
+      description: Describe native identifiers, provider qualification, freshness, ambiguity, and how the wrong-session risk is prevented.
+    validations:
+      required: true
+  - type: textarea
+    id: limitations
+    attributes:
+      label: Limitations and conservative fallback
+      description: Separate observations, conclusions, assumptions, undocumented dependencies, and safe degradation behavior.
+    validations:
+      required: true
+  - type: checkboxes
+    id: sanitization
+    attributes:
+      label: Evidence safety
+      options:
+        - label: Evidence is sanitized and contains no sensitive prompts, secrets, private code, or personal session data.
+          required: true

@@ -1,0 +1,83 @@
+name: Release Stream Deck plugin
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  streamdeck:
+    name: Validate and release Stream Deck plugin
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out tagged commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify release tag and ancestry
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Release tag must use strict SemVer: vX.Y.Z"
+            exit 1
+          fi
+          git fetch --no-tags origin \
+            +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tagged commit is not an ancestor of origin/main"
+            exit 1
+          fi
+          python3 scripts/validate_streamdeck_version.py "${RELEASE_TAG#v}"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: plugins/streamdeck/package-lock.json
+
+      - name: Install Stream Deck dependencies
+        run: npm ci
+        working-directory: plugins/streamdeck
+
+      - name: Validate and package Stream Deck plugin
+        run: make build-plugin-streamdeck
+
+      - name: Create SHA-256 checksum
+        id: artifact
+        shell: bash
+        run: |
+          shopt -s nullglob
+          packages=(plugins/streamdeck/*.streamDeckPlugin)
+          if (( ${#packages[@]} != 1 )); then
+            echo "::error::Expected exactly one .streamDeckPlugin artifact, found ${#packages[@]}"
+            exit 1
+          fi
+          package="${packages[0]}"
+          package_directory="$(dirname "$package")"
+          package_name="$(basename "$package")"
+          (
+            cd "$package_directory"
+            sha256sum "$package_name" > "$package_name.sha256"
+          )
+          echo "package=$package" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
+        with:
+          files: |
+            ${{ steps.artifact.outputs.package }}
+            ${{ steps.artifact.outputs.package }}.sha256
+          fail_on_unmatched_files: true
+          generate_release_notes: true

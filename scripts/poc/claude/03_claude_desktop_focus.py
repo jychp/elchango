@@ -35,10 +35,10 @@ action. No other session action is safe after an unverified result.
 
 Examples
 ========
-    python scripts/poc/11_claude_desktop_focus.py
-    python scripts/poc/11_claude_desktop_focus.py --show-titles
-    python scripts/poc/11_claude_desktop_focus.py --session-id local_<uuid>
-    python scripts/poc/11_claude_desktop_focus.py \
+    python scripts/poc/claude/03_claude_desktop_focus.py
+    python scripts/poc/claude/03_claude_desktop_focus.py --show-titles
+    python scripts/poc/claude/03_claude_desktop_focus.py --session-id local_<uuid>
+    python scripts/poc/claude/03_claude_desktop_focus.py \
       --session-id local_<uuid> --execute
 
 Interpretation

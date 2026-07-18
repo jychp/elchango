@@ -5,17 +5,18 @@
 elChango aims to monitor and control native, local AI coding agent sessions from
 pluggable surfaces such as a web deck, Stream Deck hardware, and mobile.
 
-The initial target is Cursor on macOS. The project is currently in technical
-reconnaissance, before its core architecture is fixed.
+The current native macOS host supports Cursor and Claude Code sessions opened
+by Claude Desktop. Provider behavior remains evidence-driven and must degrade
+conservatively when undocumented integrations change.
 
 ## Sources of truth
 
 Use these sources according to their role:
 
 1. `AGENTS.md` contains durable project-wide working instructions.
-2. The Cursor canvas `elchango-roadmap.canvas.tsx` contains the validated roadmap.
-3. `scripts/poc/` contains executable evidence from technical reconnaissance.
-4. `docs/providers/` contains provider-specific understanding and findings.
+2. `scripts/poc/<provider>/` contains executable evidence from technical
+   reconnaissance.
+3. `docs/providers/` contains provider-specific understanding and findings.
 
 ## Working agreement
 
@@ -42,12 +43,13 @@ Use these sources according to their role:
 ## POC standard
 
 Every reconnaissance deliverable must be a self-documenting Python POC under
-`scripts/poc/`. A separate report is not a substitute for the executable POC.
+`scripts/poc/<provider>/`. Each provider has its own sequence beginning at
+`01`. A separate report is not a substitute for the executable POC.
 
 Each POC must:
 
 - use a numbered, descriptive filename such as
-  `scripts/poc/01_cursor_session_inventory.py`;
+  `scripts/poc/cursor/01_cursor_session_inventory.py`;
 - run directly and expose useful `--help` documentation;
 - explain its purpose, method, safety properties, interpretation, and limitations;
 - print observable evidence and a conservative verdict;
@@ -60,8 +62,8 @@ Each POC must:
 
 ## Validated launch sequence
 
-Start with M0, a Cursor feasibility phase, before building the web deck or fixing
-the final architecture.
+For a new provider, begin with a feasibility phase before adding it to shared
+surfaces or extending durable contracts.
 
 M0 investigates:
 
@@ -73,9 +75,10 @@ M0 investigates:
 6. session launch;
 7. safe action dispatch after target verification.
 
-Only after M0 should the project define durable contracts and build the first
-vertical slice using a real Cursor session.
+Only after provider feasibility is established should the project extend
+durable contracts and build a vertical slice using a real session.
 
 ## Provider documentation
 
-Cursor findings are documented in `docs/providers/cursor.md`.
+Cursor findings are documented in `docs/providers/cursor.md`. Claude Code
+findings are documented in `docs/providers/claude-code.md`.

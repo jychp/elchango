@@ -28,10 +28,10 @@ The POC uses only the Python standard library and does not modify Cursor state.
 
 Examples
 ========
-    python scripts/poc/02_cursor_active_session.py
-    python scripts/poc/02_cursor_active_session.py --json
-    python scripts/poc/02_cursor_active_session.py --watch 60
-    python scripts/poc/02_cursor_active_session.py --expect-workspace elchango
+    python scripts/poc/cursor/02_cursor_active_session.py
+    python scripts/poc/cursor/02_cursor_active_session.py --json
+    python scripts/poc/cursor/02_cursor_active_session.py --watch 60
+    python scripts/poc/cursor/02_cursor_active_session.py --expect-workspace elchango
 
 Interpretation
 ==============

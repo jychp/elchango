@@ -1,65 +1,88 @@
 # elChango Stream Deck plugin
 
-This package is the official Elgato Stream Deck surface for elChango v0.2. It
-mirrors the fixed 5 by 3 web deck on a Stream Deck MK.2. The native macOS app
-remains the source of truth for session ordering, state, pagination, focus, and
-New Agent behavior.
+This package is the official Elgato Stream Deck surface for elChango. It mirrors
+the fixed 5-column by 3-row browser deck on Stream Deck MK.2 hardware. The
+native macOS app remains the source of truth for Cursor and Claude Code session
+ordering, state, pagination, preferences, provider selection, focus, launch,
+and semantic commands.
 
 ## Requirements
 
-- macOS 13 or newer
-- Stream Deck 7.1 or newer
-- Node.js 20.5.1 or newer for development
-- A running local elChango service on `http://127.0.0.1:8765`
+For users:
 
-The distributed plugin uses the Node.js runtime embedded by Stream Deck. Users
-do not need Node.js to install the packaged plugin.
+- macOS 14 or newer;
+- Stream Deck 7.1 or newer;
+- the native elChango app running at `http://127.0.0.1:8765`.
 
-## Development
+For development, use Node.js 24 and npm. The packaged plugin runs with the
+Node.js runtime embedded by Stream Deck, so users do not install Node.js.
 
-```bash
-npm --prefix plugins/streamdeck install
-npm --prefix plugins/streamdeck run check
-npm --prefix plugins/streamdeck run validate
-npm --prefix plugins/streamdeck run link
-npm --prefix plugins/streamdeck run restart
-```
+## Build and install
 
-`npm --prefix plugins/streamdeck run watch` rebuilds the plugin and restarts it after
-each successful build.
-
-## Installable package
+From the repository root:
 
 ```bash
-npm --prefix plugins/streamdeck run pack
+make setup
+make build-plugin-streamdeck
 ```
 
-The command validates the manifest and writes a `.streamDeckPlugin` installer
-under `plugins/streamdeck/`. Double-click that file to install the plugin and accept the
-bundled `elChango` MK.2 profile.
+Double-click the generated
+`plugins/streamdeck/com.jychp.elchango.streamDeckPlugin`. The installer includes
+an automatically installed `elChango` MK.2 profile with all 15 keys populated.
 
-The profile assigns the same elChango action to every key. Runtime key
-coordinates determine which position from the 15-button snapshot is rendered,
-so no session identity is persisted in the profile. The plugin manifest marks
-this MK.2 profile for automatic installation with all 15 keys populated.
+The profile assigns the same elChango action to every key. Runtime coordinates
+select one position from the current 15-button snapshot, so the profile never
+persists a session identity.
 
 ## Runtime behavior
 
 - One plugin-wide loop polls the loopback snapshot API every second while an
   elChango key is visible.
-- Each key receives an SVG image containing its current color, icon, label,
-  detail, enabled state, and selected state.
-- Key presses send the current button ID and revision to the unified activation
-endpoint. The native service resolves the button again before acting.
-- If the service is unavailable, all visible keys show `Offline` and reconnect
-  with bounded backoff.
-- `New` and `Available` only open Cursor's blank New Agent view. They never
-  submit a prompt.
+- Each key receives an SVG containing its current color, icon, label, detail,
+  enabled state, and selected state.
+- Key presses send the current opaque button ID and revision to the unified
+  activation endpoint. The native service rebuilds the deck and resolves the
+  target before acting.
+- Pagination and provider-picker state are scoped to this Stream Deck client.
+- `New` and `Available` open the selected provider's neutral new-session view.
+  They never submit a prompt.
+- An offline service shows the sleeping monkey and reconnects with bounded
+  backoff. Failed actions show the knocked-out monkey.
+
+For the locked or idle device screen, select
+`docs/assets/elchango-screensaver.png` in Stream Deck Settings under Devices,
+Set Screensaver. Stream Deck owns this setting outside the plugin SDK.
+
+## Development
+
+Useful package commands:
+
+```bash
+npm --prefix plugins/streamdeck run check
+npm --prefix plugins/streamdeck run validate
+npm --prefix plugins/streamdeck run link
+npm --prefix plugins/streamdeck run watch
+npm --prefix plugins/streamdeck run restart
+```
+
+`watch` rebuilds and restarts the linked plugin after each successful build.
+`validate` regenerates the profile, builds the plugin, and runs Elgato manifest
+validation. `pack` validates and creates the installable
+`.streamDeckPlugin` distribution.
+
+## Release artifact
+
+A strict `vX.Y.Z` tag triggers the repository release workflow. It validates
+and packages this plugin, writes a SHA-256 checksum, and attaches both files to
+the GitHub Release with generated notes.
 
 ## Uninstall
 
-Remove the plugin in Stream Deck preferences, or unlink a development install:
+Remove the plugin in Stream Deck preferences. To unlink a development install:
 
 ```bash
 npx --yes @elgato/cli unlink com.jychp.elchango
 ```
+
+See the root [README](../../README.md) for application and provider plugin
+installation, safety, development targets, and current release scope.

@@ -1,65 +1,78 @@
-# Cursor Provider Research
+# Cursor provider findings
 
-## Status
+## Scope and status
 
-Cursor on macOS is the first provider under feasibility testing. These findings
-describe the Cursor version observed on July 16, 2026. They rely on undocumented
-internals and must be revalidated when Cursor changes.
+This provider targets local Cursor agent sessions on macOS. The evidence was
+collected from undocumented local storage, documented lifecycle hooks, native
+keyboard behavior, and macOS Accessibility. Undocumented integration points
+must be revalidated when Cursor changes.
 
-Executable evidence lives in `scripts/poc/`. This document summarizes what the
-POCs prove and what remains uncertain. It does not replace them.
+The native Swift provider implements strict read-only inventory, workspace
+mapping, exact selected-agent detection, hook-backed state, verified focus,
+blank New Agent launch, and four semantic commands.
 
-## Native migration status
+Current conservative verdicts:
 
-The Swift host now ports the read-only inventory, workspace mapping, database
-state inference, and exact selected-agent key used by the Python provider. It
-opens SQLite with `SQLITE_OPEN_READONLY`, enables `PRAGMA query_only=ON`,
-disables trusted schema features, starts one read transaction, and rejects
-schemas missing any required table or column.
+- Inventory: `EXPLOITABLE_WITH_PRECAUTIONS`.
+- Selected session: `SUPPORTED`.
+- Live state: hook-backed implementation exists, but hook ID correlation still
+  requires a focused live test.
+- Existing-session focus: verified for observed native shortcut paths.
+- New session: `NO_NEW_COMPOSER`; the shortcut opens an unpersisted blank view.
+- Commands: `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
 
-The selected-agent key is accepted only when it resolves to exactly one emitted
-candidate with a mapped workspace path. Unresolved, filtered, or ambiguous IDs
-produce no selected session. This is intentionally stricter than exposing
-Cursor's raw persisted key.
+## Tested versions and environment
 
-The Python and Swift implementations are checked against the same versioned
-fixture under `contracts/providers/cursor/v1/`. The native provider now owns
-focus, blank New Agent launch, sanitized hook state, and semantic command
-dispatch. One shared native automation actor serializes provider actions, and
-each action repeats exact selected-session, foreground, and focused-composer
-verification before dispatch.
+- Observation dates: July 16 and July 17, 2026.
+- Cursor version captured for New Agent testing: 3.12.17.
+- Cursor version for other tests: the installation observed on July 16, 2026;
+  exact version was not recorded in those POCs.
+- Operating system: macOS; exact version was not captured.
+- Global database:
+  `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb`.
+- Workspace metadata:
+  `~/Library/Application Support/Cursor/User/workspaceStorage/`.
 
-## M0.1: session inventory
+## Evidence
 
-POC: `scripts/poc/01_cursor_session_inventory.py`
+The executable POCs listed below are the primary evidence. Python and Swift
+inventory implementations are also checked against the same versioned fixture
+under `contracts/providers/cursor/v1/`.
 
-Current verdict: `EXPLOITABLE_WITH_PRECAUTIONS`.
+A 90-second inventory observation at 0.2-second intervals covered switching
+away and back, creating and interacting with a session, and closing or
+archiving it. It observed visibility changes, new-session creation, a stable
+composer ID through that lifecycle, removal from the candidate set after
+closure or archival, and changes within polling resolution. It did not test
+restart or upgrade stability.
 
-### Observed storage
+A separate 90-second selected-session test matched three user-driven switches
+across workspaces. Opening a canvas did not change the selected agent ID.
+Controlled database-state tests observed running tool bubbles and their later
+completion, but also showed aggregate state remaining stale during active work.
 
-The global database is:
+Focus experiments rejected an ineffective composer deep link and unsafe
+`cursor --reuse-window` behavior, then established verified native shortcut
+paths. Command experiments observed a harmless text submission and successful
+`/summarize` dispatch under exact composer checks.
 
-`~/Library/Application Support/Cursor/User/globalStorage/state.vscdb`
+## Inventory and identity
 
-It can be read while Cursor is running by using SQLite `mode=ro` and
-`PRAGMA query_only=ON`. SQLite reads current WAL-backed updates without requiring
-a copy of the database or stopping Cursor.
+SQLite is opened with `SQLITE_OPEN_READONLY`, `PRAGMA query_only=ON`, disabled
+trusted schema features, and one read transaction. It reads current WAL-backed
+updates without copying the database or stopping Cursor. Missing required
+tables or columns fail explicitly.
 
-Relevant structures observed:
+Observed structures:
 
-- `composerHeaders` exposes composer IDs, workspace IDs, timestamps, archive
-  state, subagent state, and JSON header metadata.
-- `ItemTable` exposes additional UI state, including per-agent visibility
-  markers.
-- `workspaceStorage/*/workspace.json` maps workspace hashes to local paths.
-- Composer header JSON can also contain the workspace or worktree path directly.
+- `composerHeaders`: composer IDs, workspace IDs, timestamps, archive state,
+  subagent state, header metadata, and recency.
+- `ItemTable`: additional UI state, including visibility and selected-agent
+  keys.
+- `composerData:<composer-id>`: aggregate composer data that can be stale.
+- `bubbleId:<composer-id>:<bubble-id>`: individual tool bubble statuses.
 
-All names, fields, and keys above are undocumented Cursor implementation details.
-The provider must validate the schema and fail clearly when it changes.
-
-### Candidate session heuristic
-
-The POC currently treats a record as a candidate user session when it:
+A candidate user session:
 
 - is not archived;
 - is not a draft;
@@ -67,235 +80,201 @@ The POC currently treats a record as a candidate user session when it:
 - is not a subagent;
 - has an observed `lastUpdatedAt`.
 
-This heuristic excludes stale empty-window and ephemeral records. It is not yet
-a proven definition of an open agent tab.
+This heuristic excludes stale empty-window and ephemeral records, but it is not
+a proven definition of an open agent tab. `isArchived` is likewise not proven
+equivalent to tab closure, although the observed archived session left the
+candidate set.
 
-### Live observation
+The stable native identity is `composerHeaders.composerId`. Public surfaces
+receive a provider-qualified ID. Several old sessions may retain
+`visible=true`, and a correctly selected session may have `visible=false`, so
+visibility is auxiliary and never identity.
 
-A 90-second observation with a 0.2-second polling interval covered:
+`cursor/glass.selectedAgent` in `ItemTable` contains the selected composer ID.
+It is accepted only when it resolves to exactly one emitted, mapped candidate.
+Absent, unresolved, filtered, duplicated, or unmapped values yield unknown
+selection. The selected agent remains selected while a canvas, diff, browser,
+terminal, or file is foreground content; selection does not imply keyboard
+focus.
 
-1. switching to another session;
-2. returning to the original session;
-3. creating a session;
-4. interacting with it;
-5. closing or archiving it.
+## Workspace mapping
 
-The POC observed:
+`workspaceStorage/*/workspace.json` maps workspace hashes to local paths.
+Composer header JSON may also contain a workspace or worktree path directly.
+The provider emits a selected session only when its composer ID uniquely maps to
+one candidate with a workspace path.
 
-- visibility changes during session switches;
-- the new session being added;
-- one composer ID retained throughout the observed lifecycle;
-- the session being removed from the candidate set after closure or archival;
-- changes within the 0.2-second polling resolution.
+Visibility timestamps and header `lastUpdatedAt` represent different activity:
+visibility metadata can change while the header timestamp remains unchanged.
+Neither is substituted for workspace identity or selected-session evidence.
 
-This validates one live lifecycle. It does not prove stability across Cursor
-restarts or upgrades.
+## State model and hooks
 
-### Signal interpretation
+Database-only state is insufficient for the one-second live-state goal.
+Aggregate `composerData` fields can remain stale throughout a turn. Individual
+tool bubbles expose `loading` and `completed`, but intermediate values may be
+revised when Cursor persists a completed turn. A single failed or completed
+tool is therefore not terminal-turn evidence.
 
-Several old sessions can simultaneously retain `visible=true`. Therefore,
-`visible=true` is not sufficient to identify the globally active session.
+Fresh `hasPendingPlan` or `hasBlockingPendingActions` maps to waiting; stale
+copies are ignored. Recent tool errors and completions remain working until a
+terminal lifecycle event. Genuine cancellation, waiting, and error
+differentiation from database data alone remain unvalidated.
 
-The visibility timestamp can change while the composer header `lastUpdatedAt`
-remains unchanged. They are distinct signals:
+Documented Cursor hooks provide low-latency event name, `conversation_id`,
+`generation_id`, and terminal status. The native reporter accepts sanitized:
 
-- visibility metadata reflects UI visibility activity;
-- header update time reflects other composer metadata changes.
+- `sessionStart`: idle lifecycle evidence;
+- `beforeSubmitPrompt`: working;
+- `stop`: done or terminal error according to status;
+- `sessionEnd`: idle.
 
-`isArchived` has not been proven equivalent to whether an agent tab is currently
-open or closed. In the observed test, closing or archiving removed the session
-from the POC candidate set because that set excludes archived records.
+The in-memory hook overlay applies only when `conversation_id` exactly matches
+a current SQLite composer ID. Cursor does not document that equality, so a
+focused live test remains required. Prompt, response, tool, email, and
+transcript content is discarded.
 
-## M0.2: selected session detection
+The deck maps working to blue, waiting and rendered terminal error to orange,
+done to green, and idle or unknown to gray.
 
-POC: `scripts/poc/02_cursor_active_session.py`
+## Focus and launch
 
-Current verdict: `SUPPORTED` for identifying Cursor's selected agent session.
+Cursor exposes no supported deep link for an existing local agent by composer
+ID. The tested undocumented `/agent?composerId=...` route had no effect.
+`cursor --reuse-window` is unsafe because it can offer to cancel running agents
+before replacing the workspace.
 
-The `ItemTable` key `cursor/glass.selectedAgent` contains one composer ID. During
-a 90-second live test, it matched three user-driven switches among sessions in
-different workspaces. Opening a canvas did not change the selected ID.
+An early Control+Tab experiment used `composerHeaders.recency`. Synthetic input
+was inconsistent when key-down and key-up events were too fast: two Tab events
+toward rank 2 selected rank 1, three later selected rank 6, and the full recency
+snapshot remained unchanged. A physical Control+Tab selected rank 1. With
+100 ms key presses and pauses, two synthetic presses selected and verified rank
+2. The POC activates Cursor, refreshes selection and recency, repeats preflight
+immediately before input, and aborts if either changed. Post-action verification
+detects a wrong result but cannot prevent a wrong session from briefly
+receiving focus.
 
-The selected ID can be validated against `composerHeaders` and mapped to its
-workspace. A consumer must return `unknown` if the ID is absent, does not resolve,
-or resolves to an archived, draft, ephemeral, subagent, or unmapped record.
-
-Visibility remains auxiliary. One correctly selected session had `visible=false`
-during the test, while many historical sessions retained `visible=true`.
-Therefore visibility must not override or invalidate a valid `selectedAgent`.
-
-The workspace tab state reports the foreground content separately. This allows
-elChango to preserve the selected agent while a canvas, diff, browser, terminal,
-or file is displayed. The result means "selected agent", not "control with
-keyboard focus."
-
-## M0.3 and M0.4: DB-only execution state
-
-POCs:
-
-- `scripts/poc/03_cursor_session_state_from_db.py`
-- `scripts/poc/04_cursor_bubble_state_from_db.py`
-
-Aggregate fields in `composerData:<composer-id>` can remain stale throughout a
-turn, so they are insufficient by themselves. Individual
-`bubbleId:<composer-id>:<bubble-id>` records expose tool statuses such as
-`loading` and `completed`. A controlled live run observed new running tool
-bubbles and later completion transitions for the same IDs.
-
-Intermediate result values can be revised when Cursor persists a completed
-turn. Consumers must treat them as provisional. Waiting, genuine cancellation,
-and error differentiation remain unvalidated.
-
-The v0.1 provider therefore does not treat an individual failed or completed
-tool as a terminal turn. Recent tool errors and completions remain `working`
-until a terminal lifecycle event arrives. Fresh `hasPendingPlan` or
-`hasBlockingPendingActions` signals map to `waiting`; stale copies are ignored.
-The deck presents terminal errors as attention-required orange and uncertain
-states as default gray, preserving the four-color product model.
-
-## v0.1 live-state strategy
-
-A live product check on July 17, 2026 confirmed that SQLite can still report the
-selected session as `completed` while its agent is actively responding. The
-provider therefore cannot meet the one-second live-state target from database
-polling alone.
-
-Cursor's documented lifecycle hooks expose a stable `conversation_id`,
-`generation_id`, event name, and terminal status. The v0.1 service accepts
-sanitized `sessionStart`, `beforeSubmitPrompt`, `stop`, and `sessionEnd` events
-as an in-memory overlay on the SQLite snapshot. Prompt, response, tool, email,
-and transcript content is discarded before transmission.
-
-Cursor does not document whether a hook `conversation_id` equals the
-`composerHeaders.composerId` stored in SQLite. elChango applies a hook signal
-only when those identifiers match exactly. A focused live test is still
-required before hook-backed state can be considered validated.
-
-## M0.5: best-effort focus
-
-POC: `scripts/poc/05_cursor_best_effort_focus.py`
-
-Current verdict: `FOCUS_VERIFIED` for one deliberately timed rank-2 switch and
-an earlier two-way scenario.
-
-Cursor does not expose a supported deep link for opening a local agent by
-composer ID. The tested undocumented `/agent?composerId=...` route had no
-effect. `cursor --reuse-window` is unsafe for this purpose because it can offer
-to cancel running agents before replacing the current workspace.
-
-The Agents Window supports a Control+Tab switcher, and Cursor persists a
-matching recently viewed order in `composerHeaders.recency`. Early synthetic
-keyboard tests were inconsistent because key-down and key-up events were sent
-too quickly:
-
-- two Tab events toward persisted rank 2 selected rank 1;
-- three Tab events later selected a session at persisted rank 6;
-- an instrumented run captured identical full recency snapshots before and
-  after the switch.
-
-A physical Control+Tab selected persisted rank 1. After synthetic Tab events
-were changed to 100 ms key presses with pauses, two presses selected and
-verified the exact persisted rank-2 target. The POC activates Cursor, refreshes
-selection and the full recency table, and performs a second preflight read
-immediately before sending keys. It aborts if either value changed.
-
-Post-action verification is still mandatory. It detects a wrong target but
-does not prevent an incorrect session from briefly receiving focus.
-
-## v0.1 targeting strategy
-
-The Agents Window exposes direct `Cmd+1` through `Cmd+9` shortcuts in the same
-logical order as its pinned and repository-grouped sidebar. For later sessions,
-`Cmd+9` followed by repeated `Option+Down` continues through that order.
-
-The v0.1 focus controller reconstructs the current sidebar order from Cursor's
-settings immediately before keyboard injection, sends one shortcut sequence,
-and verifies the exact selected composer ID afterward. It accepts a stale web
-snapshot only when the requested session is still a focusable button in the
-current deck snapshot.
-
-## M0.8: native New Agent launch
-
-POC: `scripts/poc/08_cursor_new_session.py`
-
-Current verdict: `NO_NEW_COMPOSER`.
+Production uses the Agents Window's direct `Cmd+1` through `Cmd+9` shortcuts in
+pinned and repository-grouped sidebar order. Later sessions use `Cmd+9` followed
+by repeated `Option+Down`. It reconstructs current sidebar order immediately
+before input, sends one bounded sequence, and verifies the exact selected
+composer afterward. A stale web snapshot is accepted only if the target remains
+a focusable button in a fresh deck snapshot.
 
 Cursor 3.12.17 exposes `glass.newAgentFromKeyboard` as `Cmd+N` in the Agents
-Window. A controlled test activated Cursor, sent `Option+Cmd+N` to focus the
-Agents Window, and sent `Cmd+N` exactly once. Cursor changed
-`cursor/glass.selectedAgent` to `null`, but no new top-level `composerHeaders`
-row appeared before the 5-second timeout plus settling period.
+Window. The launch POC activated Cursor, sent `Option+Cmd+N` to focus the Agents
+Window, then sent `Cmd+N` once. `cursor/glass.selectedAgent` became `null`, but
+no top-level `composerHeaders` row appeared during the five-second timeout and
+settling period. The result likely represents an unpersisted blank New Agent
+view. It cannot be added to the deck or verified by composer ID before the user
+submits a prompt, and the action must not retry after ambiguity.
 
-The shortcut likely opens an unpersisted blank New Agent view. Because no
-composer ID exists before a prompt, elChango cannot verify the launched target
-or add it to the deck. Product launch remains disabled, and the POC must not
-retry automatically after an ambiguous result.
-
-## V4.1: personalized command dispatch
-
-POC: `scripts/poc/12_cursor_command_dispatch.py`
+## Semantic commands
 
 Current verdict: `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
 
-### Observations
+The observed Cursor composer is an enabled `AXTextArea` with exact
+`AXDOMClassList` value
+`tiptapProseMirrorui-prompt-input-editor__inputProseMirror-focused`. `Cmd+L`
+focuses it from the conversation area. Text dispatch then atomically rechecks
+the foreground Cursor identity, selected composer, enabled role, exact class,
+and empty draft.
 
-- Cursor's selected composer ID and frontmost application can be checked again
-  immediately before input injection.
-- Application focus and selected-composer evidence do not prove that keyboard
-  input is in the agent prompt. The focused control could instead be an editor,
-  terminal, search field, or another text input.
-- macOS Accessibility can expose the focused element's role and metadata. The
-  observed Cursor composer is an enabled `AXTextArea` with the exact
-  `AXDOMClassList` value
-  `tiptapProseMirrorui-prompt-input-editor__inputProseMirror-focused`.
-- `Cmd+L` focuses that composer from the conversation message area. Product
-  dispatch atomically rechecks Cursor foreground identity, the enabled input
-  role, the exact class, and an empty draft after focusing.
-- The POC is dry-run by default. Execute mode submits one explicitly supplied
-  recipe after two matching preflights and never retries.
-- A harmless `test` instruction was observed arriving as a submitted message
-  after one Return with a 500 ms delay.
-- Cursor's `/summarize` suggestion requires two delayed Return presses: one to
-  select the slash-command suggestion and one to submit it. This sequence was
-  observed triggering summarize successfully. The implementation preserves
-  this operator-approved timed sequence; it does not claim to identify the
-  suggestion semantically.
+Provider mappings:
 
-### Product mappings
-
-- `accept`: `Cmd+Enter`, as explicitly validated by the operator. Dispatch
-  verifies the selected composer, foreground Cursor application, and exact
-  composer input before sending the shortcut. Semantic completion has not yet
-  been observed against a live pending approval.
-- `create_pr`: submit `Open a pull request for the current branch.` as an
-  agent instruction.
+- `accept`: send `Cmd+Enter`, as explicitly validated by the operator.
+  Dispatch requires the selected composer, frontmost Cursor application, and
+  exact composer input. Semantic completion against a live pending approval has
+  not been observed.
+- `create_pr`: submit `Open a pull request for the current branch.` as an agent
+  instruction.
 - `commit_push`: submit `Commit the current changes with a Conventional Commit
   message and push the current branch.` as an agent instruction.
-- `compact`: submit `/summarize` through the observed two-Return sequence.
+- `compact`: submit `/summarize` with two delayed Return presses, one to select
+  the suggestion and one to submit it.
 
-`DISPATCH_SENT` proves only that one supplied recipe was injected while the
-exact target remained selected immediately afterward. It does not prove Cursor
-understood or completed the semantic operation.
+A harmless `test` instruction arrived after one Return with a 500 ms delay.
+The `/summarize` sequence triggered summarization successfully. The timing is
+operator-approved but does not semantically identify the autocomplete
+suggestion.
 
-## Open questions
+The POC defaults to dry-run, requires an explicit recipe for execution, repeats
+two preflights, submits once, and never retries. `DISPATCH_SENT` proves only
+verified one-shot recipe injection, not provider understanding or semantic
+completion.
+
+## Safety and target verification
+
+- Open Cursor SQLite in strict read-only mode and validate the complete required
+  schema.
+- Resolve every public button again to a current provider-native composer ID.
+- Reject absent, filtered, ambiguous, or unmapped identities.
+- Rebuild sidebar order, selected session, and foreground evidence immediately
+  before native input.
+- Verify the exact selected composer after focus.
+- Require the exact enabled, empty composer marker for text recipes.
+- Serialize privileged actions across providers. Shortcuts target the verified
+  process ID. Text and submission events use the global HID tap only after an
+  atomic foreground, selected-session, and exact-input preflight because the
+  observed Electron editor ignored PID-targeted Unicode events.
+- Send one bounded recipe or shortcut sequence with no fallback or retry.
+- Keep pagination provider-neutral and free of Cursor side effects.
+- Do not treat undocumented fields, successful keystrokes, or transport
+  acceptance as semantic completion.
+
+## Degradation behavior
+
+Missing databases, incompatible schemas, malformed records, unresolved
+workspace mappings, ambiguous selection, stale preflights, and failed
+Accessibility checks fail closed for Cursor. They do not block Claude Code or
+prevent the native host from starting.
+
+Stale working or waiting signals degrade to unknown rather than remaining
+active indefinitely. Unmatched hook events are ignored. Database uncertainty is
+rendered gray unless fresh waiting or terminal evidence supports another state.
+
+## Limitations and open questions
 
 - Do composer IDs survive Cursor restarts?
 - Which events change `lastUpdatedAt`, visibility timestamps, or both?
 - Can an open session be distinguished reliably from an unarchived historical
   session?
-- Does a hook `conversation_id` always equal its SQLite `composerId`?
+- Does every hook `conversation_id` equal its SQLite `composerId`?
 - How does the schema behave across Cursor upgrades?
 - Does `composerHeaders.recency` continue to match the switcher across larger
-  and mixed local/cloud session sets?
-- Does the observed composer accessibility marker remain stable across Cursor
-  versions?
+  and mixed local or cloud session sets?
+- Does the persisted sidebar order remain stable across Cursor versions?
+- Does the observed composer Accessibility marker remain stable?
 - Can `accept` be observed against a real pending approval without ambiguity?
+- Waiting, genuine cancellation, and error differentiation remain incomplete
+  without authoritative terminal hook evidence.
 
-## Safety constraints
+## POCs
 
-- Open Cursor databases in strict read-only mode.
-- Never treat one undocumented field as authoritative without a live test.
-- Keep active-session detection separate from inventory until its signals are
-  proven.
-- Do not dispatch actions until focus can be verified well enough to avoid
-  targeting the wrong session.
+- `scripts/poc/cursor/01_cursor_session_inventory.py`: strict read-only
+  inventory and candidate lifecycle. Verdict:
+  `EXPLOITABLE_WITH_PRECAUTIONS`.
+- `scripts/poc/cursor/02_cursor_active_session.py`: exact selected-agent
+  detection. Verdict: `SUPPORTED`.
+- `scripts/poc/cursor/03_cursor_session_state_from_db.py`: aggregate database
+  state limitations.
+- `scripts/poc/cursor/04_cursor_bubble_state_from_db.py`: individual tool bubble
+  transitions and provisional values.
+- `scripts/poc/cursor/05_cursor_best_effort_focus.py`: recency switcher
+  experiments and exact post-action verification. Verdict: `FOCUS_VERIFIED` for
+  the controlled rank-2 path and an earlier two-way scenario.
+- `scripts/poc/cursor/06_cursor_readonly_web_deck.py`: read-only deck snapshot
+  integration.
+- `scripts/poc/cursor/07_cursor_web_deck_focus.py`: deck-to-session focus
+  targeting and verification.
+- `scripts/poc/cursor/08_cursor_new_session.py`: one-shot blank New Agent
+  launch. Verdict: `NO_NEW_COMPOSER`.
+- `scripts/poc/cursor/09_cursor_command_dispatch.py`: dry-run-first,
+  exact-composer, one-shot semantic command dispatch. Verdict:
+  `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
+
+## References
+
+- [Cursor hooks](https://docs.cursor.com/agent/hooks)
+- Executable observations in `scripts/poc/cursor/`
+- Versioned fixture in `contracts/providers/cursor/v1/`

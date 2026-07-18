@@ -23,10 +23,10 @@ records. It verifies:
    contains the operator-supplied ``--input-marker``;
 5. all evidence is unchanged in an immediate second preflight.
 
-Only then does execute mode type the supplied recipe. Text recipes press Return
-once. Slash-command recipes wait for Claude's suggestion UI, press Return to
-select the command, wait again, and press Return to submit it. There is no
-focus action, coordinate click, mapping fallback, or retry.
+Only then does execute mode type the supplied recipe. Both observed text and
+slash-command recipes use two delayed Return presses: the first advances
+Claude's intermediate input state and the second submits. There is no focus
+action, coordinate click, mapping fallback, or retry.
 
 Safety and side effects
 =======================
@@ -37,12 +37,12 @@ from being mistaken for Code prompt focus.
 
 Examples
 ========
-    python scripts/poc/13_claude_command_dispatch.py
-    python scripts/poc/13_claude_command_dispatch.py accept --target local_<uuid>
-    python scripts/poc/13_claude_command_dispatch.py compact \
+    python scripts/poc/claude/04_claude_command_dispatch.py
+    python scripts/poc/claude/04_claude_command_dispatch.py accept --target local_<uuid>
+    python scripts/poc/claude/04_claude_command_dispatch.py compact \
       --target local_<uuid> --recipe-command /known-command \
       --input-marker code-prompt
-    python scripts/poc/13_claude_command_dispatch.py commit_push \
+    python scripts/poc/claude/04_claude_command_dispatch.py commit_push \
       --target local_<uuid> --recipe-text "Commit and push..." \
       --input-marker code-prompt --execute
 
@@ -367,7 +367,7 @@ def focus_is_exact(focus: FocusEvidence, marker: str | None) -> bool:
 def send_once(
     value: str,
     *,
-    confirm_suggestion: bool,
+    second_return: bool,
     input_marker: str,
 ) -> None:
     script = r'''
@@ -411,7 +411,7 @@ end verifyInput
             script,
             "--",
             value,
-            "true" if confirm_suggestion else "false",
+            "true" if second_return else "false",
             CLAUDE_BUNDLE_ID,
             input_marker,
         ],
@@ -527,7 +527,7 @@ def inspect(args: argparse.Namespace) -> DispatchResult:
         )
     send_once(
         recipe_value,
-        confirm_suggestion=recipe_kind == "command",
+        second_return=True,
         input_marker=args.input_marker,
     )
     after = exact_selected_id(inventory(args.desktop_sessions_root))

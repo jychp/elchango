@@ -1,20 +1,20 @@
 # Native macOS Backend TODO
 
-## Decision
+## Decision and outcome
 
-Replace the production Python backend with a native Swift macOS application.
-Do not retain a Python-to-Swift accessibility bridge as the durable
+The production Python backend has been replaced by a native Swift macOS
+application. No Python-to-Swift accessibility bridge remains in the production
 architecture.
 
 The web deck and Stream Deck plugin remain separate surfaces and keep their
 current loopback API contracts. Python remains useful for executable
-reconnaissance POCs under `scripts/poc/`, but it should no longer perform
-production accessibility actions after the migration.
+reconnaissance POCs under `scripts/poc/<provider>/`, but it no longer performs
+production accessibility actions.
 
 ## Why
 
-The current Python process requires broad macOS Accessibility permission for
-Cursor or the terminal that launches it. A signed native application provides
+The retired Python host required broad macOS Accessibility permission for
+Cursor or the terminal that launched it. The signed native application provides
 a dedicated, stable TCC identity and a clearer permission experience.
 
 A permanent bridge would add:
@@ -28,10 +28,10 @@ A permanent bridge would add:
 Privileged target verification and input dispatch should happen atomically in
 one native process.
 
-## Target architecture
+## Implemented architecture
 
-Build one signed, non-sandboxed macOS application with a stable bundle
-identifier. It owns:
+One signed, non-sandboxed macOS application with a stable bundle identifier
+owns:
 
 - Cursor and Claude Code Desktop inventory;
 - provider health and degradation reporting;
@@ -67,11 +67,11 @@ Bind only to loopback and preserve the existing API security constraints.
 - Treat undocumented provider schemas and accessibility markers as versioned,
   fail-closed compatibility points.
 
-## Migration plan
+## Completed migration plan
 
 ### 1. Freeze contracts
 
-- Capture the current loopback API as contract fixtures.
+- Capture the loopback API as contract fixtures.
 - Capture representative Cursor and Claude provider snapshots.
 - Preserve web and Stream Deck behavior as black-box acceptance tests.
 
@@ -105,10 +105,11 @@ Bind only to loopback and preserve the existing API security constraints.
 
 ### 6. Cut over
 
-- Run Python and Swift contract suites against identical fixtures.
+- Run Python and Swift contract suites against identical fixtures before
+  removing the legacy production host.
 - Perform live Cursor and Claude action tests.
 - Switch the normal launcher to the native application only after parity.
-- Remove production Python runtime requirements.
+- Production Python runtime requirements were removed.
 - Retain Python POCs as executable reconnaissance evidence.
 
 ## Acceptance criteria

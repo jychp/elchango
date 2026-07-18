@@ -1,47 +1,72 @@
-# Svelte + TS + Vite
+# elChango web deck
 
-This template should help get you started developing with Svelte and TypeScript in Vite.
+This package is the Svelte 5 browser surface for elChango. It renders the same
+fixed 5-column by 3-row deck used by the Stream Deck plugin. The native macOS
+app remains the source of truth for provider inventory, ordering, state,
+pagination, preferences, target verification, and actions.
 
-## Recommended IDE Setup
+## Runtime model
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode).
+The production build is bundled into `elChango.app` and served by the native
+loopback service at `http://127.0.0.1:8765`. The browser does not read Cursor or
+Claude data directly and does not perform native automation.
 
-## Need an official Svelte framework?
+Each browser client has independent pagination and provider-picker state. Key
+activations send the current opaque button ID and revision to the native
+service, which rebuilds the deck and resolves the target before acting.
 
-Check out [SvelteKit](https://github.com/sveltejs/kit#readme), which is also powered by Vite. Deploy anywhere with its serverless-first approach and adapt to various platforms, with out of the box support for TypeScript, SCSS, and Less, and easily-added support for mdsvex, GraphQL, PostCSS, Tailwind CSS, and more.
+## Requirements
 
-## Technical considerations
+- Node.js 24
+- npm
+- the native elChango service for live data and actions
 
-**Why use this over SvelteKit?**
+## Development
 
-- It brings its own routing solution which might not be preferable for some users.
-- It is first and foremost a framework that just happens to use Vite under the hood, not a Vite app.
+Install all repository dependencies from the root:
 
-This template contains as little as possible to get started with Vite + TypeScript + Svelte, while taking into account the developer experience with regards to HMR and intellisense. It demonstrates capabilities on par with the other `create-vite` templates and is a good starting point for beginners dipping their toes into a Vite + Svelte project.
-
-Should you later need the extended capabilities and extensibility provided by SvelteKit, the template has been structured similarly to SvelteKit so that it is easy to migrate.
-
-**Why `global.d.ts` instead of `compilerOptions.types` inside `jsconfig.json` or `tsconfig.json`?**
-
-Setting `compilerOptions.types` shuts out all other types not explicitly listed in the configuration. Using triple-slash references keeps the default TypeScript setting of accepting type information from the entire workspace, while also adding `svelte` and `vite/client` type information.
-
-**Why include `.vscode/extensions.json`?**
-
-Other templates indirectly recommend extensions via the README, but this file allows VS Code to prompt the user to install the recommended extension upon opening the project.
-
-**Why enable `allowJs` in the TS template?**
-
-While `allowJs: false` would indeed prevent the use of `.js` files in the project, it does not prevent the use of JavaScript syntax in `.svelte` files. In addition, it would force `checkJs: false`, bringing the worst of both worlds: not being able to guarantee the entire codebase is TypeScript, and also having worse typechecking for the existing JavaScript. In addition, there are valid use cases in which a mixed codebase may be relevant.
-
-**Why is HMR not preserving my local component state?**
-
-HMR state preservation comes with a number of gotchas! It has been disabled by default in both `svelte-hmr` and `@sveltejs/vite-plugin-svelte` due to its often surprising behavior. You can read the details [here](https://github.com/rixo/svelte-hmr#svelte-hmr).
-
-If you have state that's important to retain within a component, consider creating an external store which would not be replaced by HMR.
-
-```ts
-// store.ts
-// An extremely simple external store
-import { writable } from 'svelte/store'
-export default writable(0)
+```bash
+make setup
 ```
+
+Run the native service and Vite in separate terminals:
+
+```bash
+swift run --package-path macos-app ElChangoApp
+npm --prefix web run dev
+```
+
+Vite proxies `/api` to `http://127.0.0.1:8765`.
+
+## Checks and builds
+
+From the repository root:
+
+```bash
+make test-web
+make build-web
+```
+
+Or run the package scripts directly:
+
+```bash
+npm --prefix web run check
+npm --prefix web run build
+npm --prefix web run preview
+```
+
+`check` runs Svelte diagnostics and TypeScript checks. `build` writes static
+assets to `web/dist/`; the macOS packaging script embeds those assets into the
+application.
+
+## Design constraints
+
+- Keep provider-specific recipes and native IDs out of the browser.
+- Treat button IDs and revisions as opaque, short-lived values.
+- Preserve the fixed 15-position layout and shared deck contract.
+- Do not infer state from labels, colors, or transcript content.
+- Keep client-scoped navigation local to the browser client.
+- Make disabled and degraded states explicit rather than optimistic.
+
+The root [README](../README.md) covers installation, safety, provider plugins,
+Stream Deck setup, and release behavior.

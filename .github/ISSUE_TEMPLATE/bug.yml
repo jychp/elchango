@@ -1,0 +1,69 @@
+name: Bug report
+description: Report a reproducible elChango defect
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Include observable evidence, but do not paste prompts, credentials, tokens, private source code, or full session transcripts.
+  - type: input
+    id: version
+    attributes:
+      label: elChango version
+      placeholder: v1.2.3 or commit SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      options:
+        - macOS app
+        - Web deck
+        - Stream Deck
+        - Cursor provider
+        - Claude Code provider
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: macOS, browser, Stream Deck software, and provider versions that apply.
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+      description: Describe the failure and include sanitized logs or error messages.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Use placeholders for prompt text, workspace paths, and session content.
+    validations:
+      required: true
+  - type: textarea
+    id: target-verification
+    attributes:
+      label: Target verification evidence
+      description: For actions, explain how the intended provider and session were identified before dispatch and what was verified afterward.
+  - type: checkboxes
+    id: sanitization
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed sensitive prompts, secrets, private code, and personal session data.
+          required: true

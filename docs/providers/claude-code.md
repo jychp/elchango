@@ -1,46 +1,67 @@
 # Claude Code provider findings
 
-This document records provider-specific findings. The executable evidence is in
-the numbered POCs under `scripts/poc/`.
+## Scope and status
 
-## Scope
+This provider targets Claude Code sessions opened by Claude Desktop on macOS.
+Claude Cowork and ordinary Claude chats are outside its scope.
 
-The target is Claude Code sessions opened by Claude Desktop on macOS. Claude
-Cowork and ordinary Claude chats are outside this provider's scope.
+The native Swift provider implements bounded metadata inventory, exact
+transcript correlation, unique `lastFocusedAt` selection, official hook state,
+verified sidebar focus, the documented `claude://code/new` launch, and the four
+shared semantic commands. Malformed Claude records degrade only this provider.
 
-## Native migration status
+Current conservative verdicts:
 
-The Swift provider ports bounded metadata inventory, exact transcript
-correlation, unique `lastFocusedAt` selection, official hook state, verified
-sidebar focus, the `claude://code/new` launch, and all four semantic commands.
-Malformed Claude records degrade only this provider.
+- Inventory: `INVENTORY_SUPPORTED` for the observed installation.
+- State: implemented from official hooks, but live hook observation remains
+  outstanding.
+- Existing-session focus: `FOCUS_VERIFIED` for independently tested sidebar
+  positions 3 and 10.
+- New session: supported through the documented neutral Code deep link.
+- Commands: `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
 
-The Python and Swift implementations share fixtures under
-`contracts/providers/claude-code/v1/`. Native HTTP hooks post directly to the
-loopback service. Privileged actions are serialized with Cursor and recheck the
-exact selected session and foreground bundle immediately before dispatch.
-Composer text additionally requires the observed enabled, empty
-provider-specific Accessibility target.
+## Tested versions and environment
 
-## V3.2 reconnaissance
+- Observation date: July 17, 2026.
+- Operating system: macOS; exact version was not captured.
+- Claude Desktop version: not captured.
+- Claude Code version: not captured.
+- Inventory root:
+  `~/Library/Application Support/Claude/claude-code-sessions`.
+- Transcript root: `~/.claude/projects/`.
+- Process registry: `~/.claude/sessions`.
 
-### Observations
+## Evidence
 
-On July 17, 2026, `09_claude_code_session_inventory.py` observed:
+The executable POCs listed below provide the primary evidence. The Python and
+Swift implementations also share versioned fixtures under
+`contracts/providers/claude-code/v1/`.
 
-- 711 persistent Desktop Code records under
-  `~/Library/Application Support/Claude/claude-code-sessions`;
-- 17 non-archived sessions, matching the session list visible in Claude Desktop;
-- five of those 17 sessions with a currently live Claude Code process;
-- a unique Desktop `sessionId` and unique Claude Code `cliSessionId` in every
-  non-archived record;
-- an exact `cwd`, origin workspace, creation time, last activity time, archive
-  state, and optional title in every non-archived record;
-- one top-level transcript at
-  `~/.claude/projects/<encoded-cwd>/<cliSessionId>.jsonl` for every non-archived
-  record.
+The inventory POC observed 711 persistent Desktop Code records, including 17
+non-archived sessions that matched the Claude Desktop session list. Five of
+those 17 had a live Claude Code process. Every non-archived record had unique
+Desktop and CLI IDs, exact workspace fields, timestamps, archive state, and a
+matching top-level transcript.
 
-The observed persistent Desktop schema included:
+The hook probe generated a non-installed configuration and passed its synthetic
+self-check. It recorded no live hook events because testing was deferred to
+avoid disturbing ongoing sessions. The focus probe rejected unverified deep
+links, then independently verified native sidebar positions 3 and 10. The
+command probe observed one harmless text submission, successful `/compact`
+dispatch, and a real `Cmd+Enter` plan acceptance under the documented target
+checks.
+
+Fixture measurements on July 17, 2026:
+
+- first snapshot of 711 records: 126.2 ms;
+- cached snapshot: 12.4 ms;
+- emitted non-archived inventory: 17 sessions.
+
+## Inventory and identity
+
+Desktop `sessionId` is the persistent UI identity. `cliSessionId` is the Claude
+Code runtime, transcript, and expected hook identity. The observed record shape
+was:
 
 ```json
 {
@@ -55,83 +76,40 @@ The observed persistent Desktop schema included:
 }
 ```
 
-The Desktop records can contain large conversation payloads. The POC used a
-bounded top-level metadata parser and stopped before those payloads. It matched
-transcripts by exact CLI session ID. The separate `~/.claude/sessions` process
-registry was used only to annotate process liveness, never to filter inventory.
+Desktop records can contain large conversation payloads. Inventory uses a
+bounded top-level metadata parser and stops before those payloads. It excludes
+archived records, caches unchanged metadata by file modification time and size,
+and sorts sessions by `lastActivityAt`.
 
-The official Claude Code hooks documentation defines these relevant events:
+Transcripts are correlated only by exact CLI session ID. The separate process
+registry annotates process liveness but never filters inventory. Using it as the
+inventory source would have omitted 12 of the 17 visible sessions in the
+observed snapshot.
 
-- `SessionStart`: a session starts or resumes;
-- `UserPromptSubmit`: a prompt is submitted before Claude processes it;
-- `Notification`: includes `permission_prompt`, `idle_prompt`,
-  `agent_needs_input`, and `agent_completed` notification types;
-- `Stop`: Claude finishes responding;
-- `StopFailure`: the turn ends because of an API error;
-- `SessionEnd`: the session terminates.
+Selection requires one uniquely newest `lastFocusedAt` value. Commands remain
+disabled until an inventory snapshot uniquely confirms the selected session.
 
-Official hook payloads share `session_id`, `transcript_path`, `cwd`, and
-`hook_event_name`. Claude Code supports both command and native HTTP handlers.
-The transcript is written asynchronously and can lag the current hook event.
+## Workspace mapping
 
-`10_claude_code_hook_probe.py` generates a non-installed hook configuration,
-sanitizes hook payloads, and analyzes captured evidence. Its synthetic
-self-check passed, but no live hook events were recorded because real-session
-testing is deferred while ongoing sessions must not be disturbed.
+Every observed non-archived record supplied:
 
-### Conclusions
+- `cwd`, the current worktree or working directory;
+- `originCwd`, the originating repository workspace;
+- `lastActivityAt`, the provider-neutral ordering timestamp.
 
-- Read-only inventory of persistent, non-archived Claude Desktop Code sessions
-  is a supported adapter candidate on the observed installation.
-- The Desktop `sessionId` is the persistent UI identity. `cliSessionId` is the
-  Claude Code runtime, transcript, and expected hook identity.
-- `cwd`, `originCwd`, and `lastActivityAt` directly provide workspace mapping
-  and provider-neutral ordering.
-- The process registry is useful only as a liveness annotation. Using it as the
-  inventory source would omit 12 of the 17 visible sessions in this snapshot.
-- Live hook evidence must confirm that hook `session_id` equals Desktop
-  `cliSessionId`.
-- State inference must use hooks as its lifecycle source. Transcript content
-  must not be used to invent current state.
-- Native HTTP hooks are the preferred production candidate because they avoid
-  dependence on Claude's shell hook executor.
-- Existing-session focus is not supported until an exact target can be verified
-  after the action.
+The provider uses these direct fields instead of transcript content or process
+state. Missing or malformed identity and workspace metadata fails that record
+conservatively.
 
-### Hypotheses requiring focused experiments
+## State model and hooks
 
-- Persistent Desktop records appear and update promptly as sessions change.
-- Desktop `sessionId` and `cliSessionId` remain stable when a session resumes.
-- `UserPromptSubmit` followed by `Stop` provides reliable blue-to-green turn
-  transitions.
-- `Notification` with `permission_prompt` or `agent_needs_input` provides a
-  reliable orange transition and a later event clears it.
-- Native HTTP hooks can reach the loopback elChango server from Claude Desktop.
-- Claude Desktop exposes a verifiable existing-session focus mechanism.
+State comes from official Claude Code hooks, not transcript inference. Relevant
+official payloads share `session_id`, `transcript_path`, `cwd`, and
+`hook_event_name`. The transcript is asynchronous and may lag the current hook.
+Native HTTP handlers are preferred because they avoid Claude's shell hook
+executor.
 
-## Conservative V3.2 verdict
-
-- Inventory: `INVENTORY_SUPPORTED` for the observed Claude Desktop version.
-- State: `UNPROVEN_REQUIRES_LIVE_HOOK_OBSERVATION`.
-- Existing-session targeting: `UNPROVEN_NO_EXACT_FOCUS_MECHANISM`.
-- Official new-session launch: documented separately for V3.4 using
-  `claude://code/new`.
-
-## V3.3 provider implementation
-
-The read-only provider uses Desktop `sessionId` as its persistent native
-identity and `cliSessionId` to correlate official hook events and transcripts.
-It excludes archived records, caches unchanged metadata by file modification
-time and size, and sorts sessions by `lastActivityAt`.
-
-Measured on July 17, 2026:
-
-- first snapshot of 711 persistent records: 126.2 ms;
-- cached snapshot: 12.4 ms;
-- resulting non-archived session inventory: 17 sessions.
-
-Sessions without fresh hook evidence are gray with persisted confidence.
-Documented hook transitions map as follows:
+The implemented mapping is:
 
 - `UserPromptSubmit`: blue, working;
 - `PreToolUse` for `AskUserQuestion` or `ExitPlanMode`: orange, waiting;
@@ -139,115 +117,145 @@ Documented hook transitions map as follows:
 - `PermissionRequest`: orange, waiting for tool approval;
 - `Elicitation`: orange, waiting for MCP input;
 - `ElicitationResult`: blue, working after MCP input;
-- waiting `Notification` types remain an additional orange signal;
+- `Notification` with `permission_prompt`, `idle_prompt`, or
+  `elicitation_dialog`, or `agent_needs_input`: orange, waiting;
 - `Stop`: green, done;
 - `StopFailure`: error, rendered orange by the four-color deck;
 - `SessionStart` and `SessionEnd`: gray, idle.
 
-A working or waiting signal older than ten minutes without a terminal event
-becomes unknown with explicit degraded detail. This timeout is conservative and
-will be revisited with live hook evidence. The provider retains no prompt,
-assistant, notification message, or transcript content.
+The activity store retains no prompt, assistant, notification message, or
+transcript content. Live evidence must still confirm that hook `session_id`
+equals the Desktop record's `cliSessionId` and that the expected event sequences
+reliably represent turns and waiting states.
 
-Claude session buttons are enabled after the V3.4 focus probe established an
-exactly verifiable sidebar shortcut strategy. Empty and New buttons continue to
-target Cursor until V3.4 adds explicit provider selection.
+## Focus and launch
 
-## V3.4 existing-session focus probe
+The documented deep link for a new Code session is
+`claude://code/new`. elChango opens it without a folder parameter so Claude
+Desktop presents its neutral new Code session screen. Provider selection is
+client-scoped on both web and Stream Deck.
 
-`11_claude_desktop_focus.py` tested deep links and native sidebar shortcuts with
-exact post-action verification based on `lastFocusedAt` and the frontmost
-application.
+No official existing-session deep link was found. Tests with both the Desktop
+`sessionId` and Claude Code `cliSessionId` brought Claude frontmost but did not
+select the target or change its `lastFocusedAt`; the verdict was
+`FOCUS_NOT_VERIFIED`.
 
-On July 17, 2026, both known identities were tested against a non-archived
-session:
+Native shortcuts provided the verifiable focus mechanism:
 
-- Desktop `sessionId` (`local_<uuid>`): Claude became frontmost, but the target
-  did not become selected and its `lastFocusedAt` did not change;
-- Claude Code `cliSessionId` (`<uuid>`): same result.
+- `Cmd+1` through `Cmd+9` select corresponding persisted sidebar sessions.
+- Order comes from `claude_desktop_config.json`: ungrouped
+  `starred-local-code-sessions` in reverse persisted order, then sessions in
+  `customGroupOrder`, then non-starred sessions by descending
+  `lastActivityAt`.
+- Positions after 9 use `Cmd+9`, followed by one `Ctrl+Tab` for each additional
+  position.
+- Positions 3 and 10 independently returned `FOCUS_VERIFIED`.
 
-The deep-link verdict is `FOCUS_NOT_VERIFIED`. The current Claude Desktop
-documentation explicitly documents `claude://code/new`, but does not document
-opening an existing Desktop Code session.
+Production reconstructs this order immediately before native keyboard dispatch
+and rechecks the order, selected session, and foreground application. Claude may
+persist `lastFocusedAt` several seconds after its UI changes, so that delayed
+value is not used for immediate surface feedback. Any missing order entry or
+failed preflight rejects the action. For a different target, success means the
+exact sidebar shortcut was dispatched and Claude remained frontmost, not that
+the delayed selected-session record already confirms the target. Commands stay
+disabled until a later inventory snapshot uniquely selects that session.
 
-The native keyboard probe then established that:
+If the target is already the uniquely most recently focused session, elChango
+activates Claude without navigation and verifies that the same target remains
+uniquely selected. Focus does not submit prompts or change conversation content.
 
-- `Cmd+1` through `Cmd+9` select the corresponding persisted sidebar session;
-- shortcut order comes from `claude_desktop_config.json`, with ungrouped
-  `starred-local-code-sessions` displayed in reverse persisted order, followed
-  by sessions in `customGroupOrder`, then non-starred sessions ordered by
-  descending `lastActivityAt`;
-- sessions after position 9 are reachable with `Cmd+9`, then one `Ctrl+Tab` per
-  additional position;
-- positions 3 and 10 were independently exercised and returned
-  `FOCUS_VERIFIED`.
-
-Production focus now derives the exact shortcut index from this persisted
-order and emits native macOS keyboard events only after rechecking that the
-order, selected session, and foreground application have not changed. A
-success response means the exact sidebar shortcut dispatch was verified.
-Claude can persist `lastFocusedAt` several seconds after its UI changes, so
-that delayed value is not used for immediate surface feedback. Commands remain
-disabled until a later inventory snapshot uniquely confirms the selected
-session. Any absent order entry or failed preflight keeps the action rejected.
-The probe and production action do not submit prompts or alter conversation
-content.
-
-When the target is already Claude Desktop's uniquely most recently focused
-session, focus activates Claude without sending a navigation shortcut and
-verifies that the same target remains uniquely selected. This avoids a false
-warning when Claude correctly opens an already-selected session without
-changing `lastFocusedAt`.
-
-New-session launch uses the documented `claude://code/new` deep link without a
-folder parameter, so Claude Desktop opens its neutral new Code session screen.
-Launch selection is exposed through the same client-scoped provider chooser on
-web and Stream Deck.
-
-## V4.2 personalized command dispatch
-
-POC: `scripts/poc/13_claude_command_dispatch.py`
+## Semantic commands
 
 Current verdict: `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
 
-### Observations
+The observed Claude composer is an enabled `AXTextArea` with description
+`Prompt` and exact `AXDOMClassList` value
+`tiptapProseMirrorProseMirror-focused`. Text recipes require that exact marker
+and an empty draft. The POC and product scripts perform two preflights and
+recheck the frontmost bundle, selected target, enabled input role, marker, and
+draft immediately before dispatch.
 
-- A non-archived Desktop session with the unique newest `lastFocusedAt` can be
-  treated as the selected Code target, subject to the schema limitations
-  already documented for focus.
-- Unique target selection and Claude foreground status do not prove that the
-  Code prompt owns keyboard input. Another Claude text field could be focused.
-- macOS Accessibility can expose the focused element's role and metadata. The
-  observed Claude composer is an enabled `AXTextArea` with description `Prompt`
-  and exact `AXDOMClassList` value
-  `tiptapProseMirrorProseMirror-focused`. The POC performs two preflights, and
-  both POC and product injection scripts recheck the frontmost bundle, enabled
-  input role, exact marker, and empty draft immediately before typing.
-- The POC reads bounded metadata prefixes, defaults to dry-run, submits at most
-  one explicitly supplied recipe in execute mode, and never retries.
-- A harmless `test` instruction was observed arriving as a submitted message
-  after one Return with a 500 ms delay.
-- Claude's `/compact` suggestion requires two delayed Return presses: one to
-  select the command and one to submit it. This sequence was observed
-  triggering compaction successfully. The implementation preserves this
-  operator-approved timed sequence; it does not claim to identify the
-  suggestion semantically.
-- `Cmd+Enter` was observed accepting a real open plan while the exact Claude
-  session was uniquely selected and Claude Desktop was frontmost. This is an
-  application-level shortcut and intentionally does not require composer focus.
+Provider mappings:
 
-### Product mappings
-
-- `accept`: send `Cmd+Enter` once.
+- `accept`: send `Cmd+Enter` once. This was observed accepting a real open plan.
+  It is an application-level shortcut and intentionally does not require
+  composer focus.
 - `create_pr`: submit `Open a pull request for the current branch.` as an agent
-  instruction.
+  instruction with two delayed Return presses.
 - `commit_push`: submit `Commit the current changes with a Conventional Commit
-  message and push the current branch.` as an agent instruction.
-- `compact`: submit `/compact` through the observed two-Return sequence.
+  message and push the current branch.` as an agent instruction with two
+  delayed Return presses.
+- `compact`: submit `/compact` with two delayed Return presses, one to select
+  the suggestion and one to submit it.
 
-`DISPATCH_SENT` proves only that one supplied recipe was injected while the
-exact Desktop target remained uniquely selected immediately afterward. It does
-not prove Claude understood or completed the semantic operation.
+A harmless `test` instruction remained displayed after the first Return and was
+submitted by the second. The `/compact` sequence also triggered compaction with
+two Returns. The implementation preserves this operator-approved timing but
+does not claim to identify the intermediate suggestion state semantically.
+
+`DISPATCH_SENT` proves only that one recipe was injected while the exact Desktop
+target remained uniquely selected immediately afterward. It does not prove
+Claude understood or completed the semantic operation.
+
+## Safety and target verification
+
+- Persistent metadata is parsed with bounded reads; conversation payloads are
+  not consumed.
+- Inventory, transcript, hook, and process identities are correlated only by
+  exact IDs.
+- Provider actions share one serialized native automation boundary with Cursor.
+- Every privileged action rechecks the exact selected session and frontmost
+  bundle immediately before dispatch.
+- Text dispatch additionally requires the enabled, empty, provider-specific
+  Accessibility target.
+- Shortcuts target the verified process. Text and submission events use the
+  global HID tap only after an atomic foreground, selected-session, and
+  exact-input preflight because the observed Electron editor ignored
+  PID-targeted Unicode events. Each recipe is sent at most once, with no
+  automatic retry.
+- Existing-session focus requires exact preflight and bounded shortcut
+  verification. A newly focused Claude target is not considered selected for
+  command eligibility until later inventory uniquely confirms it.
+- Surface requests carry semantic IDs, not arbitrary recipe text.
+
+## Degradation behavior
+
+Malformed records, absent metadata, ambiguous selection, missing sidebar order,
+failed Accessibility checks, and stale preflights reject the affected action.
+They do not disable Cursor or prevent the host from starting.
+
+Sessions without fresh hook evidence are gray with persisted confidence. A
+working or waiting signal older than ten minutes without a terminal event
+becomes unknown with explicit degraded detail. This conservative timeout is
+subject to revision after live hook testing.
+
+## Limitations and open questions
+
+- Live hooks have not yet confirmed that `session_id` equals Desktop
+  `cliSessionId`.
+- Persistent record creation and update latency remains unmeasured.
+- Stability of Desktop `sessionId` and `cliSessionId` across resume remains
+  unproven.
+- Live evidence is still needed for blue-to-green turn transitions, orange
+  waiting transitions and clearing, and native HTTP reachability.
+- Exact Claude Desktop and Claude Code versions were not captured.
+- Accessibility markers and undocumented sidebar configuration may change.
+- Semantic completion is not proven by successful dispatch.
+
+## POCs
+
+- `scripts/poc/claude/01_claude_code_session_inventory.py`: bounded persistent
+  inventory, IDs, workspace fields, transcripts, and process annotation.
+  Verdict: `INVENTORY_SUPPORTED` for the observed installation.
+- `scripts/poc/claude/02_claude_code_hook_probe.py`: generated hook
+  configuration, payload sanitization, and synthetic analysis. Verdict:
+  `UNPROVEN_REQUIRES_LIVE_HOOK_OBSERVATION`.
+- `scripts/poc/claude/03_claude_desktop_focus.py`: deep-link rejection and
+  verified native sidebar focus. Verdict: `FOCUS_VERIFIED` for tested positions
+  3 and 10.
+- `scripts/poc/claude/04_claude_command_dispatch.py`: dry-run-first,
+  exact-target, one-shot command dispatch. Verdict:
+  `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
 
 ## References
 

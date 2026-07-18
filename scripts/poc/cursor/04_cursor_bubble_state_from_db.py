@@ -29,11 +29,11 @@ install hooks. Payload hashes and byte counts reveal change without content.
 
 Examples
 ========
-    python scripts/poc/04_cursor_bubble_state_from_db.py
-    python scripts/poc/04_cursor_bubble_state_from_db.py --json
-    python scripts/poc/04_cursor_bubble_state_from_db.py --watch 120
-    python scripts/poc/04_cursor_bubble_state_from_db.py --watch 120 --interval 0.1
-    python scripts/poc/04_cursor_bubble_state_from_db.py --composer-id <uuid>
+    python scripts/poc/cursor/04_cursor_bubble_state_from_db.py
+    python scripts/poc/cursor/04_cursor_bubble_state_from_db.py --json
+    python scripts/poc/cursor/04_cursor_bubble_state_from_db.py --watch 120
+    python scripts/poc/cursor/04_cursor_bubble_state_from_db.py --watch 120 --interval 0.1
+    python scripts/poc/cursor/04_cursor_bubble_state_from_db.py --composer-id <uuid>
 
 Test protocol
 =============

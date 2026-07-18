@@ -4,210 +4,219 @@
   <img src="docs/assets/elchango-logo.png" alt="elChango cybernetic monkey logo" width="320">
 </p>
 
-elChango is a local web and Stream Deck command surface for native AI coding
-agent sessions.
+elChango is a local control deck for native AI coding sessions. A signed macOS
+menu bar app discovers Cursor and Claude Code sessions, reduces provider state
+to a shared 15-key deck, and serves that deck to a browser and Stream Deck
+hardware.
 
-The native macOS app reads real Cursor and Claude Desktop sessions and renders
-the same fixed 5-column by 3-row deck in a browser and on Stream Deck MK.2
-hardware. Both surfaces show live state, focus sessions with exact post-action
-verification, paginate independently, launch sessions, and dispatch bounded
-provider-owned commands.
+The project has completed its native Swift cutover. Cursor and Claude Code
+inventory, state, verified focus, neutral new-session launch, and bounded
+semantic commands are implemented. Provider integrations still depend on
+version-sensitive local schemas, native shortcuts, and Accessibility markers,
+so unsupported or ambiguous conditions fail closed.
+
+## Capabilities
+
+- Inventory persistent Cursor and Claude Code sessions across workspaces.
+- Show working, waiting, done, error, idle, and degraded state through a common
+  four-color deck model.
+- Keep web and Stream Deck pagination independent while sharing ordering,
+  preferences, provider selection, and action safety.
+- Focus an existing session through a provider-verified route. Cursor verifies
+  the exact selected target after dispatch; Claude verifies the exact sidebar
+  shortcut and requires a later inventory snapshot before commands are enabled.
+- Open Cursor's blank New Agent view or Claude Desktop's neutral new Code view
+  without submitting a prompt.
+- Dispatch Accept, Open PR, Commit Push, and Compact through provider-owned,
+  one-shot recipes after fresh target verification.
+- Persist curated session icons and action placement for both surfaces.
+
+## Architecture
+
+The macOS app is the only production host. Python is used only for executable
+provider reconnaissance.
+
+```text
+macos-app/                 Swift menu bar app, providers, deck service, HTTP API
+web/                       Svelte 5 browser surface bundled into the app
+plugins/cursor/            Cursor lifecycle hook marketplace plugin
+plugins/claude/            Claude Code HTTP hook marketplace plugin
+plugins/streamdeck/        Elgato plugin and generated MK.2 profile
+contracts/                 HTTP, preference, and provider fixtures
+docs/providers/            Evidence, safety boundaries, and limitations
+scripts/poc/cursor/        Cursor reconnaissance POCs 01 through 09
+scripts/poc/claude/        Claude Code reconnaissance POCs 01 through 04
+```
+
+The app binds only to `http://127.0.0.1:8765`. It owns provider inventory,
+sanitized hook state, serialized native automation, persistent preferences,
+bundled web assets, and the loopback API consumed by both surfaces.
 
 ## Requirements
 
-- macOS
-- Xcode 26 or newer for the native host
-- Node.js and npm
-- Cursor and/or Claude Desktop; unavailable harnesses are skipped independently
-- Stream Deck 7.1 or newer for the hardware surface
-- Python 3.11 or newer only when running reconnaissance POCs
+For normal use:
 
-## Build and run
+- macOS 14 or newer;
+- Cursor and/or Claude Desktop with Claude Code sessions;
+- the native elChango app;
+- Stream Deck 7.1 or newer only for the hardware surface.
 
-### Native macOS app
+For development:
 
-The menu bar app under `macos-app/` is the production host. It owns both native
-providers, shared deck state, hooks, Accessibility actions, persisted
-personalization, bundled web assets, and the loopback HTTP service.
+- Xcode 26 or newer;
+- Node.js 24 and npm;
+- Python 3 for POCs and provider plugin validation;
+- the Elgato Stream Deck CLI, installed through the plugin's npm dependencies.
+
+Python is not required to run the packaged app.
+
+## Install the macOS app
+
+Build from a clone:
 
 ```bash
-npm --prefix web install
-ELCHANGO_SIGN_MODE=adhoc macos-app/Scripts/package-app.sh
+make setup
+ELCHANGO_SIGN_MODE=adhoc make build-app-macos
 open macos-app/dist/elChango.app
 ```
 
-The menu bar shows service status, opens the web deck, and offers an explicit
-Accessibility permission request only when authorization is absent. Ad-hoc
-signing supports build and HTTP smoke testing only. Use
-`ELCHANGO_SIGN_MODE=identity ELCHANGO_CODESIGN_IDENTITY="..."` with a stable
-Apple Development or local development identity when testing TCC persistence.
-Keep the signed app at a stable path such as `/Applications/elChango.app` so
-Accessibility authorization survives normal upgrades. The native host binds
-only to <http://127.0.0.1:8765/>.
+Move `macos-app/dist/elChango.app` to `/Applications/elChango.app` before
+installing the Cursor plugin. The plugin intentionally uses that fixed path for
+its fail-open hook reporter.
 
-A missing or incompatible harness does not block the other provider or prevent
-elChango from starting. Unavailable providers are reported by `/api/health`.
-
-Long-press a session key to choose a persisted icon from the curated Phosphor
-set. Long-press any of the three center action keys to assign Accept, Open PR,
-Commit Push, or Compact. Preferences are shared by the web and Stream Deck
-surfaces and stored in
-`~/Library/Application Support/elChango/preferences.json`.
-
-Cursor and Claude Code Desktop enable Accept, Open PR, Commit Push, and Compact
-after live command-dispatch reconnaissance. Every action requires the uniquely
-selected session of the frontmost harness. Text and slash recipes additionally
-require an empty, enabled, provider-specific composer input. Claude Accept is
-an intentional application-level `Cmd+Enter` shortcut and does not require
-composer focus. Open PR and Commit Push instruct the native agent; elChango does
-not run host-side Git operations for these buttons.
-
-## Stream Deck MK.2
-
-Build, validate, and package the official Elgato plugin:
+Ad-hoc signing is suitable for builds and unprivileged HTTP smoke tests. For
+Accessibility testing and regular use, build with a stable Apple Development or
+local signing identity and keep the app at a stable path:
 
 ```bash
-npm --prefix plugins/streamdeck install
-npm --prefix plugins/streamdeck run check
-npm --prefix plugins/streamdeck run pack
+ELCHANGO_SIGN_MODE=identity \
+ELCHANGO_CODESIGN_IDENTITY="Your Signing Identity" \
+make build-app-macos
 ```
 
-Double-click `plugins/streamdeck/com.jychp.elchango.streamDeckPlugin`. The
-installer includes an automatically installed `elChango` MK.2 profile with all
-15 keys populated. Start the native elChango menu bar app; it serves the same
-loopback contract used by the web deck.
+Launch the app and grant Accessibility permission when prompted. The menu bar
+item reports service status and opens the browser deck.
 
-The plugin uses the sleeping monkey while the local service is offline and the
-knocked-out monkey for failed actions. To use the sleeping monkey on the locked
-or idle device screen, select
-`docs/assets/elchango-screensaver.png` in Stream Deck Settings, Devices, Set
-Screensaver. Stream Deck manages this setting outside the plugin SDK.
+## Install provider plugins
 
-For plugin development:
+Provider plugins add low-latency lifecycle hooks. They are fail-open: an absent
+app or unavailable loopback service does not block the coding agent.
+
+### Cursor marketplace plugin
+
+The repository contains `.cursor-plugin/marketplace.json`. In Cursor's Plugins
+settings, add or import `https://github.com/jychp/elchango` as a marketplace,
+then install the `elchango` plugin from that marketplace. For local development,
+register the cloned repository and select the same plugin.
+
+The plugin invokes
+`/Applications/elChango.app/Contents/MacOS/elChangoHookReporter`, so use the
+documented application path. See
+[plugins/cursor/README.md](plugins/cursor/README.md) for the reported events and
+privacy boundary.
+
+### Claude Code marketplace plugin
+
+Run these commands in a shell:
 
 ```bash
-npm --prefix plugins/streamdeck run link
-npm --prefix plugins/streamdeck run watch
+claude plugin marketplace add jychp/elchango
+claude plugin install elchango@elchango
 ```
 
-See [plugins/streamdeck/README.md](plugins/streamdeck/README.md) for runtime and uninstall
-details.
+For a local clone, replace `jychp/elchango` with its filesystem path. Start
+elChango before beginning or resuming a session. See
+[plugins/claude/README.md](plugins/claude/README.md) for hook coverage.
 
-## Live Cursor activity
+## Install the Stream Deck plugin
 
-SQLite provides session inventory, selection, and persisted results. Cursor
-lifecycle hooks provide the low-latency `working`, `done`, and `error`
-transitions. Add these fail-open user hooks to `~/.cursor/hooks.json`, replacing
-the application path if elChango is installed elsewhere:
+Build the installable distribution:
 
-```json
-{
-  "version": 1,
-  "hooks": {
-    "sessionStart": [
-      {
-        "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider cursor",
-        "timeout": 1,
-        "failClosed": false
-      }
-    ],
-    "beforeSubmitPrompt": [
-      {
-        "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider cursor",
-        "timeout": 1,
-        "failClosed": false
-      }
-    ],
-    "stop": [
-      {
-        "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider cursor",
-        "timeout": 1,
-        "failClosed": false
-      }
-    ],
-    "sessionEnd": [
-      {
-        "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider cursor",
-        "timeout": 1,
-        "failClosed": false
-      }
-    ]
-  }
-}
+```bash
+make build-plugin-streamdeck
 ```
 
-The reporter forwards only event name, conversation ID, generation ID, composer
-mode, and stop status to the loopback service. Prompt text, responses, tool
-data, email, and transcript paths are discarded. If the service is unavailable,
-the reporter
-returns immediately and never blocks Cursor.
+Double-click the generated
+`plugins/streamdeck/com.jychp.elchango.streamDeckPlugin`. It installs the plugin
+and an `elChango` Stream Deck MK.2 profile with all 15 keys populated. The
+profile stores deck positions, not session identities. The running plugin reads
+fresh button IDs and revisions from the local app before every action.
 
-## Live Claude Code activity
+For the locked or idle device screen, select
+`docs/assets/elchango-screensaver.png` in Stream Deck Settings under Devices,
+Set Screensaver. Stream Deck manages that setting outside the plugin.
 
-Claude Code can post its official hooks directly to the native loopback
-service. Add HTTP handlers in `~/.claude/settings.json` for `SessionStart`,
-`UserPromptSubmit`, `PermissionRequest`, `Notification`, `Elicitation`,
-`ElicitationResult`, `Stop`, `StopFailure`, and `SessionEnd` using:
+See [plugins/streamdeck/README.md](plugins/streamdeck/README.md) for development,
+runtime, and uninstall details.
 
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "http",
-            "url": "http://127.0.0.1:8765/api/hooks/claude-code",
-            "timeout": 1
-          }
-        ]
-      }
-    ]
-  }
-}
+## Safety and privacy
+
+- Provider databases are opened read-only, with Cursor additionally using
+  `PRAGMA query_only=ON`.
+- Hooks retain lifecycle metadata only. Prompt text, responses, tool content,
+  notification messages, email, and transcript content are discarded.
+- A hook affects state only when its native ID exactly matches a current
+  persistent session.
+- Surface requests contain opaque provider-qualified targets and stable semantic
+  command IDs, never arbitrary prompt text, shortcuts, scripts, or shell
+  commands.
+- Focus uses provider-specific verification and never enables commands from a
+  shortcut response alone.
+- Command dispatch rechecks the selected session, frontmost application, and,
+  for text recipes, the empty provider-specific composer immediately before one
+  dispatch.
+- Privileged actions are serialized across providers. Stale revisions,
+  ambiguous identity, schema drift, or failed Accessibility checks reject the
+  action instead of guessing.
+- One unavailable provider does not block the other provider or the local deck.
+
+## Development
+
+The root Makefile is the supported entry point:
+
+```bash
+make setup                    # install and resolve dependencies
+make                          # run all tests and diff checks
+make test-app-macos           # Swift tests
+make test-web                 # Svelte and TypeScript checks
+make test-plugins             # Cursor, Claude, and Stream Deck plugins
+make test-pocs                # compile every POC and exercise --help
+make build                    # package the app and all plugins
+make build-web                # build browser assets only
+make build-plugin-cursor      # validate and package the Cursor plugin
+make build-plugin-claude      # validate and package the Claude plugin
+make build-plugin-streamdeck  # validate and package the Stream Deck plugin
+make clean                    # remove generated distributions
 ```
 
-Add the same handler under `PreToolUse` and `PostToolUse` with matcher
-`AskUserQuestion|ExitPlanMode`. The native provider accepts hook evidence only
-when `session_id` exactly matches a current persistent Claude Code session.
-
-## Frontend development
-
-Build the web application once, then run the service and Vite in separate
-terminals:
+For live web development, run the native service and Vite separately:
 
 ```bash
 swift run --package-path macos-app ElChangoApp
 npm --prefix web run dev
 ```
 
-Vite proxies `/api` to the local service.
+Vite proxies `/api` to the loopback service. More frontend details are in
+[web/README.md](web/README.md).
 
-## Verification
+## Releases
 
-```bash
-npm --prefix web run check
-npm --prefix web run build
-npm --prefix plugins/streamdeck run check
-npm --prefix plugins/streamdeck run validate
-swift test --package-path macos-app
-macos-app/Scripts/package-app.sh
-```
+`make release VERSION=X.Y.Z` accepts strict semantic versions without a `v`
+prefix. The value must match the committed Stream Deck package and manifest
+version. The target requires a clean tracked worktree on `main`, fetches
+`origin/main`, verifies that local and remote `main` match, creates annotated
+tag `vX.Y.Z`, and pushes that tag.
 
-## Current safety boundary
+The tag workflow validates and packages the Stream Deck plugin on Linux, creates
+a SHA-256 checksum, and creates or updates the GitHub Release with generated
+notes. The current release workflow does not publish the macOS app or provider
+plugin archives.
 
-- Cursor SQLite access uses read-only mode and `PRAGMA query_only=ON`.
-- The HTTP server accepts loopback bind addresses only.
-- Hook events affect a session only when their conversation ID exactly matches a
-  session ID observed in SQLite. Unmatched events are ignored.
-- Session focus uses native Cursor shortcuts and requires exact post-action
-  verification.
-- Pagination intents never modify Cursor state.
-- New opens Cursor's blank New Agent view. It does not submit a prompt or claim
-  that a persisted composer exists before the user takes over.
-- Provider text dispatch verifies the exact selected session, foreground
-  application, and composer input before sending one bounded recipe.
-- Privileged actions are serialized across providers. Keyboard events target
-  the verified process ID, and stale command revisions cannot retarget a newly
-  selected session.
-- Undocumented Cursor schema changes fail explicitly instead of guessing.
+## Provider documentation
+
+- [Cursor provider findings](docs/providers/cursor.md)
+- [Claude Code provider findings](docs/providers/claude-code.md)
+
+These documents distinguish measured observations, conclusions, degradation,
+and unproven assumptions. The POCs under `scripts/poc/cursor/` and
+`scripts/poc/claude/` remain the executable evidence.

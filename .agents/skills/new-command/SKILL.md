@@ -1,12 +1,13 @@
 ---
 name: new-command
-description: Adds or researches a personalized agent command in elChango using stable semantic IDs, provider-specific evidence, exact target and input-focus verification, one-shot POCs, and conservative dispatch verdicts. Use when adding accept, create PR, commit and push, compact, or another privileged session command.
+description: Adds or researches a personalized agent command in elChango using stable semantic IDs, provider-specific evidence, exact session and command-target verification, one-shot POCs, and conservative dispatch verdicts. Use when adding accept, create PR, commit and push, compact, or another privileged session command.
 ---
 
 # Add a personalized command
 
 Treat every command as a privileged action. A focused application is not enough:
-prove the exact session and exact agent prompt input before injecting anything.
+prove the exact session and the provider-specific command target before
+dispatching anything.
 
 ## 1. Validate scope with the user
 
@@ -52,8 +53,9 @@ slash commands, keyboard shortcuts, shell commands, or scripts.
 ## 3. Build the POC first
 
 Create a numbered, self-documenting standard-library Python POC under
-`scripts/poc/` before defining a product contract or adapter method. Follow the
-POC standard in `AGENTS.md`.
+`scripts/poc/<provider>/` before defining a product contract or adapter method.
+Continue that provider directory's independent sequence. Follow the POC
+standard in `AGENTS.md`.
 
 The POC must:
 
@@ -64,7 +66,9 @@ The POC must:
 5. identify one exact provider-native session;
 6. verify the intended session is currently selected;
 7. verify the matching provider application is frontmost;
-8. verify the exact agent prompt input owns keyboard focus;
+8. verify the exact agent prompt input for text recipes, or the proven
+   application-level shortcut scope and command eligibility for shortcut
+   recipes;
 9. repeat all volatile checks immediately before injection;
 10. inject at most once;
 11. avoid coordinate clicks, broad paste targets, fallbacks, and retries;
@@ -90,16 +94,22 @@ Reject missing, archived, draft, ephemeral, subagent, duplicated, or otherwise
 ineligible targets. Never use a title, repository name, workspace path, screen
 position, or stale surface index as session identity.
 
-Immediately before dispatch, prove:
+Immediately before every dispatch, prove:
 
 - the provider's authoritative selected-session signal equals the target;
 - the provider application is frontmost;
-- the focused accessibility element belongs to that application;
-- the element is enabled and accepts text;
-- provider-specific evidence uniquely identifies it as the agent prompt.
+- provider-specific evidence uniquely identifies the intended command target.
 
-A generic `AXTextArea`, DOM text box, or editable role is insufficient without
-provider-specific identity evidence.
+For text recipes, also prove that the focused accessibility element belongs to
+that application, is enabled, accepts text, and has provider-specific evidence
+that uniquely identifies it as the agent prompt. A generic `AXTextArea`, DOM
+text box, or editable role is insufficient.
+
+An application-level shortcut may omit prompt-input verification only when
+focused-input state is irrelevant to the measured provider behavior and the
+shortcut mapping has been explicitly validated for that semantic command. It
+must still require exact selected-session, foreground-application, and
+command-eligibility evidence. Do not generalize this exception to text recipes.
 
 ## 5. Dispatch once
 
@@ -144,7 +154,8 @@ Update `docs/providers/<provider>.md` with:
 
 - exact observed version and environment;
 - official references;
-- measured target, foreground, and input-focus signals;
+- measured target, foreground, and command-target signals, including input
+  focus when the recipe types text;
 - recipe source and whether it is official or operator supplied;
 - dry-run and execute evidence;
 - verdicts and limitations;
@@ -176,8 +187,8 @@ Do not add provider-specific branches to shared surfaces or the deck service.
 For reconnaissance-only work, run:
 
 ```bash
-python3 -m py_compile scripts/poc/<number>_<provider>_command_dispatch.py
-python3 scripts/poc/<number>_<provider>_command_dispatch.py --help
+python3 -m py_compile scripts/poc/<provider>/<number>_<provider>_command_dispatch.py
+python3 scripts/poc/<provider>/<number>_<provider>_command_dispatch.py --help
 git diff --check
 ```
 
