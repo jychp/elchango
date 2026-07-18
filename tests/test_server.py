@@ -11,21 +11,32 @@ import urllib.request
 from pathlib import Path
 
 from elchango.activity import ActivityStore
+from elchango.claude_activity import ClaudeActivityStore
 from elchango.deck import DeckService
 from elchango.focus import FocusResult
 from elchango.launch import LaunchResult
 from elchango.models import AgentSession, ProviderSnapshot
+from elchango.providers.base import ProviderError
+from elchango.providers.cursor_adapter import CursorAdapter
 from elchango.server import DeckHTTPServer, DeckRequestHandler, serve
 
 
 class StaticProvider:
+    provider_id = "cursor"
+    display_name = "Cursor"
+    icon = "cursor"
+    capabilities = frozenset({"focus_session", "new_session"})
+
     def __init__(self, count: int = 1) -> None:
         self.count = count
 
     def snapshot(self) -> ProviderSnapshot:
         sessions = tuple(
             AgentSession(
-                id=f"session-{index}",
+                provider_id=self.provider_id,
+                native_id=f"session-{index}",
+                capabilities=self.capabilities,
+                icon="cursor",
                 title=f"Server test {index}",
                 workspace_id=f"workspace-{index}",
                 workspace_path="/tmp/server-test",
@@ -38,8 +49,10 @@ class StaticProvider:
             for index in range(1, self.count + 1)
         )
         return ProviderSnapshot(
+            provider_id=self.provider_id,
+            capabilities=self.capabilities,
             observed_at_ms=123,
-            selected_session_id="session-1",
+            selected_native_session_id="session-1",
             sessions=sessions,
             source="test",
         )
@@ -86,12 +99,25 @@ class DeckServerTests(unittest.TestCase):
         assets = Path(self.temporary_directory.name)
         (assets / "index.html").write_text("<main>deck</main>", encoding="utf-8")
         self.server = DeckHTTPServer(("127.0.0.1", 0), DeckRequestHandler)
-        self.server.deck_service = DeckService(StaticProvider())
         self.server.activity_store = ActivityStore()
+        self.claude_activity_store = ClaudeActivityStore()
+        self.server.hook_recorders = {
+            "cursor": self.server.activity_store.record,
+            "claude-code": self.claude_activity_store.record,
+        }
         self.focus_controller = FakeFocusController()
-        self.server.focus_controller = self.focus_controller
         self.launch_controller = FakeLaunchController()
-        self.server.launch_controller = self.launch_controller
+        self.cursor = CursorAdapter(
+            inventory=StaticProvider(),  # type: ignore[arg-type]
+            focus_controller=self.focus_controller,  # type: ignore[arg-type]
+            launch_controller=self.launch_controller,  # type: ignore[arg-type]
+            activity_store=self.server.activity_store,
+        )
+        self.server.deck_service = DeckService(self.cursor)
+        self.server.providers = {self.cursor.provider_id: self.cursor}
+        self.server.unavailable_providers = {
+            "claude-code": "Claude Desktop application is not installed"
+        }
         self.server.assets = assets
         self.server.api_only = False
         self.thread = threading.Thread(
@@ -117,8 +143,51 @@ class DeckServerTests(unittest.TestCase):
 
         self.assertEqual(response.status, 200)
         self.assertEqual(len(payload["buttons"]), 15)
-        self.assertEqual(payload["selected_session_id"], "session-1")
+        self.assertEqual(payload["selected_session_id"], "cursor:session-1")
+        self.assertEqual(payload["buttons"][0]["provider_id"], "cursor")
+        self.assertNotIn("native_session_id", payload["buttons"][0])
         self.assertEqual(response.headers["Cache-Control"], "no-store")
+
+    def test_health_reports_provider_capabilities(self) -> None:
+        with urllib.request.urlopen(
+            f"{self.base_url}/api/health",
+            timeout=2,
+        ) as response:
+            payload = json.load(response)
+
+        self.assertTrue(payload["focus_enabled"])
+        self.assertTrue(payload["launch_enabled"])
+        self.assertEqual(
+            payload["providers"]["cursor"],
+            ["focus_session", "new_session"],
+        )
+        self.assertEqual(
+            payload["unavailable_providers"],
+            {"claude-code": "Claude Desktop application is not installed"},
+        )
+
+    def test_health_reports_runtime_provider_failures(self) -> None:
+        class FailingProvider(StaticProvider):
+            provider_id = "failing"
+
+            def snapshot(self) -> ProviderSnapshot:
+                raise ProviderError("runtime inventory failure")
+
+        self.server.deck_service = DeckService(
+            {"cursor": self.cursor, "failing": FailingProvider()}
+        )
+        self.server.deck_service.snapshot()
+
+        with urllib.request.urlopen(
+            f"{self.base_url}/api/health",
+            timeout=2,
+        ) as response:
+            payload = json.load(response)
+
+        self.assertEqual(
+            payload["unavailable_providers"]["failing"],
+            "runtime inventory failure",
+        )
 
     def test_snapshot_clients_keep_independent_pages(self) -> None:
         self.server.deck_service = DeckService(StaticProvider(count=11))
@@ -156,8 +225,7 @@ class DeckServerTests(unittest.TestCase):
             serve(
                 self.server.deck_service,
                 self.server.activity_store,
-                self.focus_controller,
-                self.launch_controller,
+                self.server.providers,
                 Path(self.temporary_directory.name),
                 "0.0.0.0",
                 0,
@@ -215,6 +283,35 @@ class DeckServerTests(unittest.TestCase):
         self.assertIsNotNone(state)
         self.assertEqual(state[0], "working")
 
+    def test_claude_hook_endpoint_accepts_official_lifecycle_metadata(self) -> None:
+        request = urllib.request.Request(
+            f"{self.base_url}/api/hooks/claude-code",
+            data=json.dumps(
+                {
+                    "hook_event_name": "Notification",
+                    "session_id": "claude-session-1",
+                    "cwd": "/tmp/claude",
+                    "transcript_path": "/tmp/claude-session-1.jsonl",
+                    "notification_type": "permission_prompt",
+                    "message": "must not be stored",
+                }
+            ).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        with urllib.request.urlopen(request, timeout=2) as response:
+            payload = json.load(response)
+
+        self.assertEqual(response.status, 202)
+        self.assertEqual(payload["provider_id"], "claude-code")
+        state = self.claude_activity_store.state_for(
+            "claude-session-1",
+            observed_at_ms=time.time_ns() // 1_000_000,
+        )
+        self.assertIsNotNone(state)
+        self.assertEqual(state[0], "waiting")
+
     def test_focus_endpoint_verifies_current_session_button(self) -> None:
         now = time.time_ns() // 1_000_000
         self.server.activity_store.record(
@@ -229,7 +326,7 @@ class DeckServerTests(unittest.TestCase):
             f"{self.base_url}/api/focus",
             data=json.dumps(
                 {
-                    "session_id": "session-1",
+                    "session_id": "cursor:session-1",
                     "revision": 1,
                 }
             ).encode(),
@@ -255,7 +352,7 @@ class DeckServerTests(unittest.TestCase):
             f"{self.base_url}/api/focus",
             data=json.dumps(
                 {
-                    "session_id": "session-1",
+                    "session_id": "cursor:session-1",
                     "revision": 0,
                 }
             ).encode(),
@@ -301,12 +398,14 @@ class DeckServerTests(unittest.TestCase):
         self.assertEqual(next_payload["snapshot"]["page"], 2)
         self.assertEqual(previous_payload["snapshot"]["page"], 1)
 
-    def test_available_session_slot_requests_new_agent_view_once(self) -> None:
+    def test_available_session_slot_opens_provider_chooser(self) -> None:
         payload = self._post_intent("empty:1")
 
         self.assertTrue(payload["accepted"])
-        self.assertEqual(payload["action"], "new_session")
-        self.assertEqual(self.launch_controller.open_count, 1)
+        self.assertEqual(payload["action"], "choose_new_provider")
+        self.assertEqual(payload["snapshot"]["buttons"][7]["id"], "provider:cursor")
+        self.assertEqual(payload["snapshot"]["buttons"][10]["action"], "cancel_new_session")
+        self.assertEqual(self.launch_controller.open_count, 0)
 
     def test_unified_activate_focuses_session_and_acknowledges_completion(
         self,
@@ -321,7 +420,7 @@ class DeckServerTests(unittest.TestCase):
             observed_at_ms=now,
         )
 
-        payload = self._post_activate("hardware", "session:session-1")
+        payload = self._post_activate("hardware", "session:cursor:session-1")
 
         self.assertTrue(payload["accepted"])
         self.assertEqual(payload["action"], "focus_session")
@@ -336,18 +435,30 @@ class DeckServerTests(unittest.TestCase):
 
     def test_unified_activate_dispatches_refresh_and_new_controls(self) -> None:
         refreshed = self._post_activate("hardware", "control:refresh")
-        launched = self._post_activate("hardware", "control:new")
-        launched_from_empty = self._post_activate("hardware", "empty:1")
+        chooser = self._post_activate("hardware", "control:new")
+        launched = self._post_activate("hardware", "provider:cursor")
+        empty_chooser = self._post_activate("hardware", "empty:1")
+        launched_from_empty = self._post_activate("hardware", "provider:cursor")
 
         self.assertTrue(refreshed["accepted"])
         self.assertEqual(refreshed["action"], "refresh_sessions")
         self.assertEqual(refreshed["snapshot"]["page"], 1)
+        self.assertEqual(chooser["action"], "choose_new_provider")
         self.assertTrue(launched["accepted"])
         self.assertEqual(launched["action"], "new_session")
         self.assertEqual(launched["launch"]["verdict"], "NEW_AGENT_VIEW_REQUESTED")
+        self.assertEqual(empty_chooser["action"], "choose_new_provider")
         self.assertTrue(launched_from_empty["accepted"])
         self.assertEqual(launched_from_empty["action"], "new_session")
         self.assertEqual(self.launch_controller.open_count, 2)
+
+    def test_cancel_provider_chooser_returns_to_sessions(self) -> None:
+        chooser = self._post_activate("hardware", "control:new")
+        cancelled = self._post_activate("hardware", "control:cancel-new")
+
+        self.assertEqual(chooser["snapshot"]["buttons"][7]["id"], "provider:cursor")
+        self.assertEqual(cancelled["action"], "cancel_new_session")
+        self.assertEqual(cancelled["snapshot"]["buttons"][0]["kind"], "session")
 
     def test_unified_activate_rejects_invalid_client_id(self) -> None:
         request = urllib.request.Request(

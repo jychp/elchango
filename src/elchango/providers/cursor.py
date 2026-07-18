@@ -7,16 +7,18 @@ import sqlite3
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, ClassVar
 from urllib.parse import unquote, urlparse
 
 from elchango.activity import ActivityStore
 from elchango.models import (
     AgentSession,
+    ProviderCapability,
     ProviderSnapshot,
     SessionState,
     StateConfidence,
 )
+from elchango.providers.base import ProviderError
 
 
 DEFAULT_CURSOR_ROOT = Path.home() / "Library/Application Support/Cursor/User"
@@ -32,7 +34,7 @@ def _now_ms() -> int:
     return time.time_ns() // 1_000_000
 
 
-class CursorProviderError(RuntimeError):
+class CursorProviderError(ProviderError):
     """Cursor data could not be read conservatively."""
 
 
@@ -40,6 +42,10 @@ class CursorProviderError(RuntimeError):
 class CursorProvider:
     """Normalize native local Cursor sessions without modifying Cursor state."""
 
+    provider_id: ClassVar[str] = "cursor"
+    capabilities: ClassVar[frozenset[ProviderCapability]] = frozenset(
+        {"focus_session", "new_session"}
+    )
     database: Path = DEFAULT_DATABASE
     workspace_storage: Path = DEFAULT_WORKSPACE_STORAGE
     active_signal_ttl_ms: int = ACTIVE_SIGNAL_TTL_MS
@@ -72,8 +78,10 @@ class CursorProvider:
             connection.close()
 
         return ProviderSnapshot(
+            provider_id=self.provider_id,
+            capabilities=self.capabilities,
             observed_at_ms=observed_at_ms,
-            selected_session_id=selected_id,
+            selected_native_session_id=selected_id,
             sessions=tuple(sessions),
             source=str(self.database),
             read_only=True,
@@ -168,7 +176,10 @@ class CursorProvider:
                         detail = hook_detail
             sessions.append(
                 AgentSession(
-                    id=composer_id,
+                    provider_id=self.provider_id,
+                    native_id=composer_id,
+                    capabilities=self.capabilities,
+                    icon="cursor",
                     title=_string_or_none(header.get("name")) or "Untitled session",
                     workspace_id=workspace_id,
                     workspace_path=(

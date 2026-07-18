@@ -8,11 +8,7 @@ import {
   type DeckButton,
   type DeckSnapshot,
 } from "../src/contracts.js";
-import {
-  positionFromCoordinates,
-  renderButton,
-  renderOffline,
-} from "../src/render.js";
+import { positionFromCoordinates, renderButton } from "../src/render.js";
 import {
   StreamDeckSurface,
   type KeyPort,
@@ -40,7 +36,32 @@ test("button rendering centers only the icon and title with state color", () => 
   assert.doesNotMatch(image, /stroke=/);
   assert.doesNotMatch(image, /<svg[^>]+<svg/);
   assert.match(image, /transform="translate\(42 20\) scale/);
-  assert.match(decodeSvg(renderOffline()), /Offline/);
+});
+
+test("button rendering supports Claude Code session icons", () => {
+  const image = decodeSvg(renderButton({
+    ...buttonAt(0),
+    icon: "claude",
+    label: "Claude",
+    color: "idle",
+  }));
+
+  assert.match(image, /Claude/);
+  assert.match(image, /fill="#77818b"/);
+  assert.match(image, /m19\.6 66\.5 19\.7-11/);
+});
+
+test("button rendering leaves disabled empty keys visually blank", () => {
+  const image = decodeSvg(renderButton({
+    ...buttonAt(10),
+    label: "",
+    detail: "",
+    enabled: false,
+  }));
+
+  assert.match(image, /fill="#111315"/);
+  assert.doesNotMatch(image, /<path/);
+  assert.doesNotMatch(image, /<text/);
 });
 
 test("snapshot parser requires the full fixed deck", () => {
@@ -188,6 +209,66 @@ test("surface renders once and activates the button at its position", async () =
   surface.unregister("key-1");
 });
 
+test("surface replaces native warning feedback with the KO logo", async () => {
+  const images: string[] = [];
+  const feedback: string[] = [];
+  const surface = new StreamDeckSurface(
+    {
+      async snapshot() {
+        return snapshot(1);
+      },
+      async activate() {
+        throw new Error("focus failed");
+      },
+    },
+    { error() {} },
+    0,
+  );
+  const key = recordingKey(images, feedback);
+  surface.register(key);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  await surface.activate(key.id);
+
+  assert.deepEqual(feedback, []);
+  assert.ok(
+    images.includes("static/imgs/actions/key/failure.png"),
+    "custom KO logo should replace native showAlert feedback",
+  );
+  assert.match(decodeSvg(images.at(-1)!), /Agent 0/);
+  surface.unregister(key.id);
+});
+
+test("surface preserves KO feedback while polling", async () => {
+  const images: string[] = [];
+  const surface = new StreamDeckSurface(
+    {
+      async snapshot() {
+        return snapshot(1);
+      },
+      async activate() {
+        throw new Error("focus failed");
+      },
+    },
+    { error() {} },
+    30,
+  );
+  const key = recordingKey(images, []);
+  surface.register(key);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  const activation = surface.activate(key.id);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(images.at(-1), "static/imgs/actions/key/failure.png");
+
+  await surface.refreshNow();
+  assert.equal(images.at(-1), "static/imgs/actions/key/failure.png");
+
+  await activation;
+  assert.match(decodeSvg(images.at(-1)!), /Agent 0/);
+  surface.unregister(key.id);
+});
+
 test("surface rejects stale responses but accepts a newer service epoch", async () => {
   const snapshots = [
     snapshotWith(5, 200, "Current"),
@@ -239,7 +320,10 @@ test("surface renders offline and recovers after service failure", async () => {
 
   surface.register(key);
   await new Promise((resolve) => setTimeout(resolve, 10));
-  assert.match(decodeSvg(images.at(-1)!), /Offline/);
+  assert.equal(
+    images.at(-1),
+    "static/imgs/actions/key/offline.png",
+  );
   assert.deepEqual(errors, ["connection refused"]);
 
   available = true;
@@ -254,6 +338,7 @@ test("surface serializes key activations", async () => {
     release = resolve;
   });
   let activations = 0;
+  const images: string[] = [];
   const feedback: string[] = [];
   const surface = new StreamDeckSurface(
     {
@@ -269,7 +354,7 @@ test("surface serializes key activations", async () => {
     { error: assert.fail },
     0,
   );
-  const key = recordingKey([], feedback);
+  const key = recordingKey(images, feedback);
   surface.register(key);
   await new Promise((resolve) => setTimeout(resolve, 10));
 
@@ -280,7 +365,8 @@ test("surface serializes key activations", async () => {
   await first;
 
   assert.equal(activations, 1);
-  assert.deepEqual(feedback, ["alert"]);
+  assert.deepEqual(feedback, []);
+  assert.ok(images.includes("static/imgs/actions/key/failure.png"));
   surface.unregister(key.id);
 });
 
@@ -343,6 +429,7 @@ function buttonAt(position: number): DeckButton {
       selected: position === 0,
       enabled: true,
       confidence: "observed",
+      provider_id: "cursor",
       session_id: `session-${position}`,
     };
   }
@@ -357,6 +444,7 @@ function buttonAt(position: number): DeckButton {
     selected: false,
     enabled: position === 10 || position === 14,
     confidence: "observed",
+    provider_id: position === 14 ? "cursor" : null,
     action: position === 14 ? "new_session" : "refresh_sessions",
   };
 }

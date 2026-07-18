@@ -2,6 +2,7 @@ export type DeckButtonKind = 'session' | 'control' | 'empty'
 
 export type DeckIconName =
   | 'cursor'
+  | 'claude'
   | 'plus'
   | 'arrow-left'
   | 'arrow-right'
@@ -19,6 +20,8 @@ export type DeckButtonColor =
 export type DeckButtonConfidence = 'observed' | 'candidate' | 'persisted' | 'unknown'
 
 export type DeckAction =
+  | 'choose_new_provider'
+  | 'cancel_new_session'
   | 'new_session'
   | 'refresh_sessions'
   | 'previous_page'
@@ -35,6 +38,7 @@ export interface DeckButton {
   selected: boolean
   enabled: boolean
   confidence: DeckButtonConfidence
+  provider_id: string | null
   session_id?: string | null
   action?: DeckAction | null
 }

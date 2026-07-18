@@ -9,6 +9,7 @@ export type DeckButtonColor =
   | "control";
 export type DeckIconName =
   | "cursor"
+  | "claude"
   | "plus"
   | "arrow-left"
   | "arrow-right"
@@ -19,6 +20,8 @@ export type DeckButtonConfidence =
   | "persisted"
   | "unknown";
 export type DeckAction =
+  | "choose_new_provider"
+  | "cancel_new_session"
   | "new_session"
   | "refresh_sessions"
   | "previous_page"
@@ -36,6 +39,7 @@ export interface DeckButton {
   selected: boolean;
   enabled: boolean;
   confidence: DeckButtonConfidence;
+  provider_id: string | null;
   session_id?: string | null;
   action?: DeckAction | null;
 }
@@ -77,6 +81,7 @@ const BUTTON_COLORS = new Set<DeckButtonColor>([
 ]);
 const ICON_NAMES = new Set<DeckIconName>([
   "cursor",
+  "claude",
   "plus",
   "arrow-left",
   "arrow-right",
@@ -89,6 +94,8 @@ const CONFIDENCE_VALUES = new Set<DeckButtonConfidence>([
   "unknown",
 ]);
 const ACTION_VALUES = new Set<DeckAction>([
+  "choose_new_provider",
+  "cancel_new_session",
   "new_session",
   "refresh_sessions",
   "previous_page",
@@ -194,6 +201,10 @@ function parseDeckButton(value: unknown, index: number): DeckButton {
     selected: booleanValue(button.selected, `button ${index}.selected`),
     enabled: booleanValue(button.enabled, `button ${index}.enabled`),
     confidence: confidence as DeckButtonConfidence,
+    provider_id: nullableString(
+      button.provider_id,
+      `button ${index}.provider_id`,
+    ),
     ...(button.session_id === undefined
       ? {}
       : {

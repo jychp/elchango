@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
 import sys
 from pathlib import Path
 
 from elchango.activity import ActivityStore
+from elchango.claude_activity import ClaudeActivityStore
 from elchango.deck import DeckService
 from elchango.focus import CursorFocusController
 from elchango.hook_reporter import DEFAULT_HOOK_ENDPOINT, report_hook
@@ -18,7 +20,18 @@ from elchango.providers.cursor import (
     CursorProvider,
     CursorProviderError,
 )
+from elchango.providers.cursor_adapter import CursorAdapter
+from elchango.providers.claude_code import (
+    DEFAULT_CLAUDE_DESKTOP_CONFIG,
+    DEFAULT_CLAUDE_PROJECTS,
+    DEFAULT_DESKTOP_SESSIONS_ROOT,
+    ClaudeCodeProvider,
+    ClaudeCodeProviderError,
+)
 from elchango.server import serve
+
+CURSOR_BUNDLE_ID = "com.todesktop.230313mzl4w4u92"
+CLAUDE_BUNDLE_ID = "com.anthropic.claudefordesktop"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -65,6 +78,27 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_WORKSPACE_STORAGE,
         help=f"Cursor workspace metadata (default: {DEFAULT_WORKSPACE_STORAGE}).",
     )
+    serve_parser.add_argument(
+        "--claude-desktop-sessions",
+        type=Path,
+        default=DEFAULT_DESKTOP_SESSIONS_ROOT,
+        help=(
+            "Claude Desktop persistent Code sessions "
+            f"(default: {DEFAULT_DESKTOP_SESSIONS_ROOT})."
+        ),
+    )
+    serve_parser.add_argument(
+        "--claude-projects",
+        type=Path,
+        default=DEFAULT_CLAUDE_PROJECTS,
+        help=f"Claude Code transcript root (default: {DEFAULT_CLAUDE_PROJECTS}).",
+    )
+    serve_parser.add_argument(
+        "--claude-desktop-config",
+        type=Path,
+        default=DEFAULT_CLAUDE_DESKTOP_CONFIG,
+        help=f"Claude Desktop config (default: {DEFAULT_CLAUDE_DESKTOP_CONFIG}).",
+    )
     hook_parser = subparsers.add_parser(
         "report-hook",
         help="Forward one Cursor lifecycle hook to a running deck.",
@@ -99,43 +133,130 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
+    providers = {}
+    unavailable_providers: dict[str, str] = {}
+    hook_recorders = {}
     activity_store = ActivityStore()
-    provider = CursorProvider(
-        database=args.database,
-        workspace_storage=args.workspace_storage,
-        activity_store=activity_store,
-    )
-    try:
-        provider.snapshot()
-    except CursorProviderError as error:
-        print(f"ERROR: {error}", file=sys.stderr)
-        return 2
+    if _application_bundle_available("Cursor", CURSOR_BUNDLE_ID):
+        provider = CursorProvider(
+            database=args.database,
+            workspace_storage=args.workspace_storage,
+            activity_store=activity_store,
+        )
+        try:
+            provider.snapshot()
+        except CursorProviderError as error:
+            unavailable_providers["cursor"] = str(error)
+        else:
+            focus_controller = CursorFocusController(
+                database=args.database,
+                workspace_storage=args.workspace_storage,
+            )
+            launch_controller = CursorLaunchController()
+            cursor = CursorAdapter(
+                inventory=provider,
+                focus_controller=focus_controller,
+                launch_controller=launch_controller,
+                activity_store=activity_store,
+            )
+            providers[cursor.provider_id] = cursor
+            hook_recorders[cursor.provider_id] = activity_store.record
+    else:
+        unavailable_providers["cursor"] = "Cursor application is not installed"
 
-    service = DeckService(provider)
-    focus_controller = CursorFocusController(
-        database=args.database,
-        workspace_storage=args.workspace_storage,
-    )
-    launch_controller = CursorLaunchController()
+    claude_activity_store = ClaudeActivityStore()
+    if _application_bundle_available("Claude", CLAUDE_BUNDLE_ID):
+        claude = ClaudeCodeProvider(
+            desktop_sessions_root=args.claude_desktop_sessions,
+            projects_root=args.claude_projects,
+            desktop_config=args.claude_desktop_config,
+            activity_store=claude_activity_store,
+        )
+        try:
+            claude.snapshot()
+        except ClaudeCodeProviderError as error:
+            unavailable_providers["claude-code"] = str(error)
+        else:
+            providers[claude.provider_id] = claude
+            hook_recorders[claude.provider_id] = claude.record_hook
+    else:
+        unavailable_providers["claude-code"] = (
+            "Claude Desktop application is not installed"
+        )
+
+    service = DeckService(providers)
     url = f"http://{args.host}:{args.port}/"
     print("elChango v0.2")
     print(f"Deck: {url}")
     print(f"Cursor database: {args.database}")
-    print("Session focus: enabled with exact post-action verification")
-    print("New Agent view: enabled; prompt submission remains manual")
+    print(f"Claude Desktop sessions: {args.claude_desktop_sessions}")
+    for provider_id, reason in unavailable_providers.items():
+        print(f"Provider unavailable: {provider_id}: {reason}")
+    focus_providers = sorted(
+        provider_id
+        for provider_id, provider in providers.items()
+        if "focus_session" in provider.capabilities
+    )
+    launch_providers = sorted(
+        provider_id
+        for provider_id, provider in providers.items()
+        if "new_session" in provider.capabilities
+    )
+    print(
+        "Session focus: "
+        + (
+            f"enabled for {', '.join(focus_providers)} with exact verification"
+            if focus_providers
+            else "disabled; no available provider supports focus"
+        )
+    )
+    print(
+        "New Agent view: "
+        + (
+            f"enabled for {', '.join(launch_providers)}; submission remains manual"
+            if launch_providers
+            else "disabled; no available provider supports launch"
+        )
+    )
     print("Agent actions: disabled")
     print("Press Ctrl-C to stop.")
     try:
         serve(
             service,
             activity_store,
-            focus_controller,
-            launch_controller,
+            providers,
             assets,
             args.host,
             args.port,
             args.api_only,
+            hook_recorders=hook_recorders,
+            unavailable_providers=unavailable_providers,
         )
     except KeyboardInterrupt:
         print("\nStopped.")
     return 0
+
+
+def _application_bundle_available(
+    application_name: str,
+    expected_bundle_id: str,
+) -> bool:
+    """Return whether Launch Services resolves the expected macOS application."""
+
+    if sys.platform != "darwin":
+        return False
+    try:
+        result = subprocess.run(
+            [
+                "/usr/bin/osascript",
+                "-e",
+                f'id of application "{application_name}"',
+            ],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0 and result.stdout.strip() == expected_bundle_id

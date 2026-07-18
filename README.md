@@ -17,7 +17,7 @@ independently, and open a blank New Agent view for manual prompt entry.
 - macOS
 - Python 3.11 or newer
 - Node.js and npm
-- Cursor with at least one local agent session
+- Cursor and/or Claude Desktop; unavailable harnesses are skipped independently
 - Stream Deck 7.1 or newer for the hardware surface
 
 ## Build and run
@@ -34,7 +34,9 @@ chango serve
 Open <http://127.0.0.1:8765/>.
 
 The production command serves both the compiled Svelte application and the
-Cursor-backed loopback API from one process. All SQLite access remains
+provider-neutral loopback API from one process. A missing or incompatible
+harness does not block other providers or prevent elChango from starting.
+Unavailable providers are reported by `/api/health`. All SQLite access remains
 read-only.
 
 ## Stream Deck MK.2
@@ -50,6 +52,12 @@ npm --prefix streamdeck run pack
 Double-click `streamdeck/com.jychp.elchango.streamDeckPlugin` and accept the
 bundled `elChango` MK.2 profile. Start `chango serve` normally, or use
 `chango serve --api-only` when only the hardware surface is needed.
+
+The plugin uses the sleeping monkey while the local service is offline and the
+knocked-out monkey for failed actions. To use the sleeping monkey on the locked
+or idle device screen, select
+`docs/assets/elchango-screensaver.png` in Stream Deck Settings, Devices, Set
+Screensaver. Stream Deck manages this setting outside the plugin SDK.
 
 For plugin development:
 

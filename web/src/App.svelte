@@ -67,10 +67,15 @@
       const body = (await response.json()) as unknown
 
       if (body && typeof body === 'object') {
-        const { error, message } = body as Record<string, unknown>
+        const { error, message, details } = body as Record<string, unknown>
 
         if (typeof error === 'string' && error.trim()) return error
         if (typeof message === 'string' && message.trim()) return message
+        if (details && typeof details === 'object') {
+          const { message: detailsMessage } = details as Record<string, unknown>
+
+          if (typeof detailsMessage === 'string' && detailsMessage.trim()) return detailsMessage
+        }
       }
     } catch {
       // Use the status fallback when the response body is not JSON.

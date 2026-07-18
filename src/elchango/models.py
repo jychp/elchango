@@ -15,9 +15,11 @@ SessionState = Literal[
     "unknown",
 ]
 StateConfidence = Literal["observed", "candidate", "persisted", "unknown"]
+ProviderCapability = Literal["focus_session", "new_session"]
 ButtonKind = Literal["session", "control", "empty"]
 ButtonIcon = Literal[
     "cursor",
+    "claude",
     "plus",
     "arrow-left",
     "arrow-right",
@@ -33,6 +35,8 @@ ButtonColor = Literal[
     "control",
 ]
 DeckAction = Literal[
+    "choose_new_provider",
+    "cancel_new_session",
     "new_session",
     "refresh_sessions",
     "previous_page",
@@ -47,7 +51,10 @@ DeckAction = Literal[
 class AgentSession:
     """Normalized session data that the deck is allowed to consume."""
 
-    id: str
+    provider_id: str
+    native_id: str
+    capabilities: frozenset[ProviderCapability]
+    icon: ButtonIcon
     title: str
     workspace_id: str
     workspace_path: str | None
@@ -57,16 +64,35 @@ class AgentSession:
     selected: bool
     last_activity_at_ms: int
 
+    @property
+    def id(self) -> str:
+        """Return the opaque provider-qualified public session identifier."""
+
+        return qualify_session_id(self.provider_id, self.native_id)
+
 
 @dataclass(frozen=True, slots=True)
 class ProviderSnapshot:
     """One atomic read from an agent provider."""
 
+    provider_id: str
+    capabilities: frozenset[ProviderCapability]
     observed_at_ms: int
-    selected_session_id: str | None
+    selected_native_session_id: str | None
     sessions: tuple[AgentSession, ...]
     source: str
     read_only: bool = True
+
+    @property
+    def selected_session_id(self) -> str | None:
+        """Return the selected session as an opaque qualified identifier."""
+
+        if self.selected_native_session_id is None:
+            return None
+        return qualify_session_id(
+            self.provider_id,
+            self.selected_native_session_id,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +111,15 @@ class DeckButton:
     confidence: StateConfidence
     session_id: str | None = None
     action: DeckAction | None = None
+    provider_id: str | None = None
+    native_session_id: str | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        """Return the public button contract without native provider IDs."""
+
+        payload = asdict(self)
+        payload.pop("native_session_id")
+        return payload
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,4 +140,25 @@ class DeckSnapshot:
     def to_dict(self) -> dict[str, object]:
         """Return a JSON-ready snapshot."""
 
-        return asdict(self)
+        return {
+            "revision": self.revision,
+            "observed_at_ms": self.observed_at_ms,
+            "source": self.source,
+            "read_only": self.read_only,
+            "selected_session_id": self.selected_session_id,
+            "page": self.page,
+            "page_count": self.page_count,
+            "has_previous": self.has_previous,
+            "has_next": self.has_next,
+            "buttons": [button.to_dict() for button in self.buttons],
+        }
+
+
+def qualify_session_id(provider_id: str, native_id: str) -> str:
+    """Build an opaque public ID while retaining structured identity internally."""
+
+    if not provider_id or ":" in provider_id:
+        raise ValueError("provider_id must be non-empty and cannot contain ':'")
+    if not native_id:
+        raise ValueError("native session ID must be non-empty")
+    return f"{provider_id}:{native_id}"
