@@ -1,0 +1,191 @@
+import Foundation
+
+public enum DeckButtonKind: String, Codable, Sendable {
+    case session
+    case control
+    case empty
+}
+
+public enum DeckIcon: String, Codable, Sendable {
+    case plus
+    case arrowsClockwise = "arrows-clockwise"
+    case check
+    case gitCommit = "git-commit"
+    case gitPullRequest = "git-pull-request"
+}
+
+public enum DeckColor: String, Codable, Sendable {
+    case control
+}
+
+public enum DeckConfidence: String, Codable, Sendable {
+    case observed
+}
+
+public enum DeckAction: String, Codable, Sendable {
+    case chooseNewProvider = "choose_new_provider"
+    case refreshSessions = "refresh_sessions"
+    case executeCommand = "execute_command"
+}
+
+public enum CommandID: String, Codable, Sendable {
+    case accept
+    case commitPush = "commit_push"
+    case createPR = "create_pr"
+}
+
+public struct DeckButton: Codable, Equatable, Sendable {
+    public let id: String
+    public let position: Int
+    public let kind: DeckButtonKind
+    public let label: String
+    public let detail: String
+    public let icon: DeckIcon
+    public let color: DeckColor
+    public let selected: Bool
+    public let enabled: Bool
+    public let confidence: DeckConfidence
+    public let sessionID: String?
+    public let action: DeckAction?
+    public let providerID: String?
+    public let commandID: CommandID?
+    public let optionID: String?
+
+    public init(
+        id: String,
+        position: Int,
+        kind: DeckButtonKind,
+        label: String,
+        detail: String,
+        icon: DeckIcon,
+        color: DeckColor = .control,
+        selected: Bool = false,
+        enabled: Bool,
+        confidence: DeckConfidence = .observed,
+        sessionID: String? = nil,
+        action: DeckAction? = nil,
+        providerID: String? = nil,
+        commandID: CommandID? = nil,
+        optionID: String? = nil
+    ) {
+        self.id = id
+        self.position = position
+        self.kind = kind
+        self.label = label
+        self.detail = detail
+        self.icon = icon
+        self.color = color
+        self.selected = selected
+        self.enabled = enabled
+        self.confidence = confidence
+        self.sessionID = sessionID
+        self.action = action
+        self.providerID = providerID
+        self.commandID = commandID
+        self.optionID = optionID
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case position
+        case kind
+        case label
+        case detail
+        case icon
+        case color
+        case selected
+        case enabled
+        case confidence
+        case sessionID = "session_id"
+        case action
+        case providerID = "provider_id"
+        case commandID = "command_id"
+        case optionID = "option_id"
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(position, forKey: .position)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(label, forKey: .label)
+        try container.encode(detail, forKey: .detail)
+        try container.encode(icon, forKey: .icon)
+        try container.encode(color, forKey: .color)
+        try container.encode(selected, forKey: .selected)
+        try container.encode(enabled, forKey: .enabled)
+        try container.encode(confidence, forKey: .confidence)
+        try container.encode(sessionID, forKey: .sessionID)
+        try container.encode(action, forKey: .action)
+        try container.encode(providerID, forKey: .providerID)
+        try container.encode(commandID, forKey: .commandID)
+        try container.encode(optionID, forKey: .optionID)
+    }
+}
+
+public struct DeckSnapshot: Codable, Equatable, Sendable {
+    public let revision: Int
+    public let observedAtMilliseconds: Int64
+    public let source: String
+    public let readOnly: Bool
+    public let selectedSessionID: String?
+    public let page: Int
+    public let pageCount: Int
+    public let hasPrevious: Bool
+    public let hasNext: Bool
+    public let buttons: [DeckButton]
+
+    public init(
+        revision: Int,
+        observedAtMilliseconds: Int64,
+        source: String,
+        readOnly: Bool,
+        selectedSessionID: String?,
+        page: Int,
+        pageCount: Int,
+        hasPrevious: Bool,
+        hasNext: Bool,
+        buttons: [DeckButton]
+    ) {
+        self.revision = revision
+        self.observedAtMilliseconds = observedAtMilliseconds
+        self.source = source
+        self.readOnly = readOnly
+        self.selectedSessionID = selectedSessionID
+        self.page = page
+        self.pageCount = pageCount
+        self.hasPrevious = hasPrevious
+        self.hasNext = hasNext
+        self.buttons = buttons
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case revision
+        case observedAtMilliseconds = "observed_at_ms"
+        case source
+        case readOnly = "read_only"
+        case selectedSessionID = "selected_session_id"
+        case page
+        case pageCount = "page_count"
+        case hasPrevious = "has_previous"
+        case hasNext = "has_next"
+        case buttons
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(revision, forKey: .revision)
+        try container.encode(
+            observedAtMilliseconds,
+            forKey: .observedAtMilliseconds
+        )
+        try container.encode(source, forKey: .source)
+        try container.encode(readOnly, forKey: .readOnly)
+        try container.encode(selectedSessionID, forKey: .selectedSessionID)
+        try container.encode(page, forKey: .page)
+        try container.encode(pageCount, forKey: .pageCount)
+        try container.encode(hasPrevious, forKey: .hasPrevious)
+        try container.encode(hasNext, forKey: .hasNext)
+        try container.encode(buttons, forKey: .buttons)
+    }
+}

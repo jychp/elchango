@@ -15,12 +15,35 @@ independently, and open a blank New Agent view for manual prompt entry.
 ## Requirements
 
 - macOS
+- Xcode 26 or newer for the native host
 - Python 3.11 or newer
 - Node.js and npm
 - Cursor and/or Claude Desktop; unavailable harnesses are skipped independently
 - Stream Deck 7.1 or newer for the hardware surface
 
 ## Build and run
+
+### Native foundation
+
+The native migration starts with a menu bar host under `macos-app/`. It serves
+the existing web deck and a contract-compatible disabled snapshot while Cursor
+and Claude providers are ported. The Python backend remains the functional
+provider host during this transition.
+
+```bash
+npm --prefix web install
+ELCHANGO_SIGN_MODE=adhoc macos-app/Scripts/package-app.sh
+open macos-app/dist/elChango.app
+```
+
+The menu bar shows service and Accessibility status, opens the web deck, and
+offers an explicit Accessibility permission request. Ad-hoc signing supports
+build and HTTP smoke testing only. Use
+`ELCHANGO_SIGN_MODE=identity ELCHANGO_CODESIGN_IDENTITY="..."` with a stable
+Apple Development or local development identity when testing TCC persistence.
+The native host binds only to <http://127.0.0.1:8765/>.
+
+### Python provider host
 
 ```bash
 npm --prefix web install
@@ -58,12 +81,12 @@ not run host-side Git operations for these buttons.
 Build, validate, and package the official Elgato plugin:
 
 ```bash
-npm --prefix streamdeck install
-npm --prefix streamdeck run check
-npm --prefix streamdeck run pack
+npm --prefix plugins/streamdeck install
+npm --prefix plugins/streamdeck run check
+npm --prefix plugins/streamdeck run pack
 ```
 
-Double-click `streamdeck/com.jychp.elchango.streamDeckPlugin` and accept the
+Double-click `plugins/streamdeck/com.jychp.elchango.streamDeckPlugin` and accept the
 bundled `elChango` MK.2 profile. Start `chango serve` normally, or use
 `chango serve --api-only` when only the hardware surface is needed.
 
@@ -76,11 +99,11 @@ Screensaver. Stream Deck manages this setting outside the plugin SDK.
 For plugin development:
 
 ```bash
-npm --prefix streamdeck run link
-npm --prefix streamdeck run watch
+npm --prefix plugins/streamdeck run link
+npm --prefix plugins/streamdeck run watch
 ```
 
-See [streamdeck/README.md](streamdeck/README.md) for runtime and uninstall
+See [plugins/streamdeck/README.md](plugins/streamdeck/README.md) for runtime and uninstall
 details.
 
 ## Live Cursor activity
@@ -150,8 +173,10 @@ Vite proxies `/api` to the local service.
 PYTHONPATH=src python -m unittest discover -s tests
 npm --prefix web run check
 npm --prefix web run build
-npm --prefix streamdeck run check
-npm --prefix streamdeck run validate
+npm --prefix plugins/streamdeck run check
+npm --prefix plugins/streamdeck run validate
+swift test --package-path macos-app
+macos-app/Scripts/package-app.sh
 ```
 
 ## Current safety boundary

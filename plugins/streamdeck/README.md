@@ -18,24 +18,24 @@ do not need Node.js to install the packaged plugin.
 ## Development
 
 ```bash
-npm --prefix streamdeck install
-npm --prefix streamdeck run check
-npm --prefix streamdeck run validate
-npm --prefix streamdeck run link
-npm --prefix streamdeck run restart
+npm --prefix plugins/streamdeck install
+npm --prefix plugins/streamdeck run check
+npm --prefix plugins/streamdeck run validate
+npm --prefix plugins/streamdeck run link
+npm --prefix plugins/streamdeck run restart
 ```
 
-`npm --prefix streamdeck run watch` rebuilds the plugin and restarts it after
+`npm --prefix plugins/streamdeck run watch` rebuilds the plugin and restarts it after
 each successful build.
 
 ## Installable package
 
 ```bash
-npm --prefix streamdeck run pack
+npm --prefix plugins/streamdeck run pack
 ```
 
 The command validates the manifest and writes a `.streamDeckPlugin` installer
-under `streamdeck/`. Double-click that file to install the plugin and accept the
+under `plugins/streamdeck/`. Double-click that file to install the plugin and accept the
 bundled `elChango` MK.2 profile.
 
 The profile assigns the same elChango action to every key. Runtime key

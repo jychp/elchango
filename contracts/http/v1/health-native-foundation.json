@@ -1,0 +1,12 @@
+{
+  "accessibility_trusted": false,
+  "actions_enabled": false,
+  "focus_enabled": false,
+  "launch_enabled": false,
+  "providers": {},
+  "status": "ok",
+  "unavailable_providers": {
+    "claude-code": "provider not migrated to native host",
+    "cursor": "provider not migrated to native host"
+  }
+}

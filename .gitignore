@@ -3,3 +3,5 @@ __pycache__/
 .venv/
 *.egg-info/
 .coverage
+macos-app/.build/
+macos-app/dist/

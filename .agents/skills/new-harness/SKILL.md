@@ -171,8 +171,8 @@ If the provider needs a new icon:
 2. extend `DeckIconName` in `web/src/lib/contracts.ts`;
 3. render it in `web/src/lib/DeckIcon.svelte`;
 4. extend `DeckIconName` and parser validation in
-   `streamdeck/src/contracts.ts`;
-5. render it in `streamdeck/src/render.ts`.
+   `plugins/streamdeck/src/contracts.ts`;
+5. render it in `plugins/streamdeck/src/render.ts`.
 
 Use official artwork with a documented source. When editing Svelte, follow the
 Svelte skills and run the Svelte autofixer until clean.
@@ -211,8 +211,8 @@ Run:
 PYTHONPATH=src python3 -m unittest discover -s tests
 npm --prefix web run check
 npm --prefix web run build
-npm --prefix streamdeck run check
-npm --prefix streamdeck run validate
+npm --prefix plugins/streamdeck run check
+npm --prefix plugins/streamdeck run validate
 git diff --check
 ```
 
