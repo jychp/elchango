@@ -27,8 +27,9 @@ Use these sources according to their role:
 - Prefer evidence from a focused experiment over premature abstractions.
 - Keep provider, surface, and bridge contracts minimal until experiments justify
   them or a second adapter demonstrates the need.
-- Keep session identity structured as provider ID plus native session ID inside
-  the service. Expose only an opaque provider-qualified ID to surfaces.
+- Keep session identity structured as provider ID plus native session ID.
+  Surfaces may receive the provider-qualified ID as a local routing value, but
+  it is never an authorization capability.
 - Resolve privileged actions from a freshly rebuilt button, then dispatch the
   native ID through the matching provider adapter and preserve exact
   post-action verification.

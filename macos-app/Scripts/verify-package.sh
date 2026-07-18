@@ -2,6 +2,9 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+EXPECTED_VERSION="$(tr -d '[:space:]' < "${REPO_DIR}/VERSION")"
 APP_DIR="${1:-}"
 if [[ -z "${APP_DIR}" ]]; then
   echo "Usage: $0 /path/to/elChango.app" >&2
@@ -13,6 +16,9 @@ EXECUTABLE="${APP_DIR}/Contents/MacOS/elChango"
 HOOK_REPORTER="${APP_DIR}/Contents/MacOS/elChangoHookReporter"
 APP_ICON="${APP_DIR}/Contents/Resources/elChango.icns"
 WEB_INDEX="${APP_DIR}/Contents/Resources/Web/index.html"
+LICENSE="${APP_DIR}/Contents/Resources/LICENSE"
+THIRD_PARTY_NOTICES="${APP_DIR}/Contents/Resources/THIRD_PARTY_NOTICES.md"
+TRADEMARKS="${APP_DIR}/Contents/Resources/TRADEMARKS.md"
 
 [[ -f "${PLIST}" ]] || {
   echo "ERROR: missing Info.plist." >&2
@@ -34,6 +40,18 @@ WEB_INDEX="${APP_DIR}/Contents/Resources/Web/index.html"
   echo "ERROR: missing bundled web deck." >&2
   exit 1
 }
+[[ -f "${LICENSE}" ]] || {
+  echo "ERROR: missing project license." >&2
+  exit 1
+}
+[[ -f "${THIRD_PARTY_NOTICES}" ]] || {
+  echo "ERROR: missing third-party notices." >&2
+  exit 1
+}
+[[ -f "${TRADEMARKS}" ]] || {
+  echo "ERROR: missing trademark notice." >&2
+  exit 1
+}
 
 plutil -lint "${PLIST}" >/dev/null
 
@@ -50,6 +68,11 @@ plutil -lint "${PLIST}" >/dev/null
 [[ "$(plutil -extract CFBundleIconFile raw -o - "${PLIST}")" == \
   "elChango" ]] || {
   echo "ERROR: unexpected application icon." >&2
+  exit 1
+}
+[[ "$(plutil -extract CFBundleShortVersionString raw -o - "${PLIST}")" == \
+  "${EXPECTED_VERSION}" ]] || {
+  echo "ERROR: application version does not match root VERSION." >&2
   exit 1
 }
 [[ "$(plutil -extract LSUIElement raw -o - "${PLIST}")" == "true" ]] || {

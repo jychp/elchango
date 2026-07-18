@@ -8,13 +8,18 @@ REPO_DIR="$(cd "${MACOS_DIR}/.." && pwd)"
 
 SIGN_MODE="${ELCHANGO_SIGN_MODE:-adhoc}"
 CONFIGURATION="${ELCHANGO_CONFIGURATION:-release}"
-APP_VERSION="${ELCHANGO_VERSION:-0.1.0}"
+APP_VERSION="$(tr -d '[:space:]' < "${REPO_DIR}/VERSION")"
 APP_BUILD="${ELCHANGO_BUILD:-1}"
 APP_DIR="${MACOS_DIR}/dist/elChango.app"
 CONTENTS_DIR="${APP_DIR}/Contents"
 MACOS_CONTENTS_DIR="${CONTENTS_DIR}/MacOS"
 RESOURCES_DIR="${CONTENTS_DIR}/Resources"
 ICON_SOURCE="${REPO_DIR}/docs/assets/elchango-logo.png"
+
+if [[ ! "${APP_VERSION}" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+  echo "ERROR: VERSION must contain strict SemVer in X.Y.Z form." >&2
+  exit 2
+fi
 
 case "${SIGN_MODE}" in
   adhoc)
@@ -85,6 +90,11 @@ cp \
   "${BIN_DIR}/ElChangoHookReporter" \
   "${MACOS_CONTENTS_DIR}/elChangoHookReporter"
 cp "${ICON_WORK_DIR}/elChango.icns" "${RESOURCES_DIR}/elChango.icns"
+cp "${REPO_DIR}/LICENSE" "${RESOURCES_DIR}/LICENSE"
+cp \
+  "${REPO_DIR}/THIRD_PARTY_NOTICES.md" \
+  "${RESOURCES_DIR}/THIRD_PARTY_NOTICES.md"
+cp "${REPO_DIR}/TRADEMARKS.md" "${RESOURCES_DIR}/TRADEMARKS.md"
 cp -R "${REPO_DIR}/web/dist/." "${RESOURCES_DIR}/Web/"
 
 cat > "${CONTENTS_DIR}/Info.plist" <<PLIST

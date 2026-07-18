@@ -165,6 +165,8 @@ test("API client sends client identity and button actions", async () => {
     "streamdeck",
     "http://127.0.0.1:8765",
     fetcher,
+    2_000,
+    async () => "test-control-token",
   );
 
   await client.snapshot();
@@ -172,6 +174,10 @@ test("API client sends client identity and button actions", async () => {
   await client.longPress("session:one", 4);
 
   assert.match(requests[0]!.url, /client_id=streamdeck/);
+  assert.equal(
+    new Headers(requests[0]!.init!.headers).get("Authorization"),
+    "Bearer test-control-token",
+  );
   assert.equal(requests[1]!.url, "http://127.0.0.1:8765/api/activate");
   assert.deepEqual(JSON.parse(requests[1]!.init!.body as string), {
     client_id: "streamdeck",
@@ -246,6 +252,7 @@ test("API client keeps its timeout active while reading the body", async () => {
     "http://127.0.0.1:8765",
     fetcher,
     10,
+    async () => "test-control-token",
   );
 
   await assert.rejects(client.snapshot(), /request timed out/);

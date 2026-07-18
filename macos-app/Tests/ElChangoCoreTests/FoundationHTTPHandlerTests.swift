@@ -5,6 +5,9 @@ import Testing
 
 @Suite("Native foundation HTTP handler")
 struct FoundationHTTPHandlerTests {
+    private let authority = "127.0.0.1:8765"
+    private let controlToken = "test-control-token"
+
     @Test("health exposes degradation without blocking the host")
     func health() async throws {
         let handler = try makeHandler(
@@ -85,13 +88,167 @@ struct FoundationHTTPHandlerTests {
             version: .http11,
             path: "/api/snapshot",
             query: [.init(name: "client_id", value: "has space")],
-            headers: [:],
+            headers: [
+                .host: authority,
+                .authorization: "Bearer \(controlToken)",
+            ],
             body: Data()
         )
 
         let response = try await handler.handleRequest(invalid)
 
         #expect(response.statusCode == .badRequest)
+    }
+
+    @Test("API routes require the expected host and authentication")
+    func apiAuthorization() async throws {
+        let handler = try makeHandler(
+            assetRoot: nil,
+            accessibility: StubAccessibility(isTrusted: false)
+        )
+        let missingAuthentication = try await handler.handleRequest(
+            HTTPRequest(
+                method: .GET,
+                version: .http11,
+                path: "/api/snapshot",
+                query: [],
+                headers: [.host: authority],
+                body: Data()
+            )
+        )
+        let wrongHost = try await handler.handleRequest(
+            request(
+                path: "/api/snapshot",
+                headers: [.host: "attacker.example"]
+            )
+        )
+        let foreignOrigin = try await handler.handleRequest(
+            request(
+                path: "/api/snapshot",
+                headers: [HTTPHeader("Origin"): "https://attacker.example"]
+            )
+        )
+
+        #expect(missingAuthentication.statusCode == .unauthorized)
+        #expect(wrongHost.statusCode == .misdirectedRequest)
+        #expect(foreignOrigin.statusCode == .forbidden)
+    }
+
+    @Test("production handler accepts only a real loopback peer")
+    func loopbackPeer() async throws {
+        let handler = try makeHandler(
+            assetRoot: nil,
+            accessibility: StubAccessibility(isTrusted: false),
+            requireLoopbackPeer: true
+        )
+        let missingPeer = try await handler.handleRequest(
+            request(path: "/api/snapshot")
+        )
+        var loopback = request(path: "/api/snapshot")
+        loopback.remoteAddress = .ip4("127.0.0.1", port: 54_321)
+        let accepted = try await handler.handleRequest(loopback)
+        var remote = request(path: "/api/snapshot")
+        remote.remoteAddress = .ip4("192.0.2.10", port: 54_321)
+        let rejected = try await handler.handleRequest(remote)
+
+        #expect(missingPeer.statusCode == .forbidden)
+        #expect(accepted.statusCode == .ok)
+        #expect(rejected.statusCode == .forbidden)
+    }
+
+    @Test("web bootstrap is single-use and authorizes an HTTP-only cookie")
+    func webBootstrap() async throws {
+        let authorization = LoopbackAuthorization(
+            controlToken: controlToken
+        )
+        let handler = try makeHandler(
+            assetRoot: nil,
+            accessibility: StubAccessibility(isTrusted: false),
+            authorization: authorization
+        )
+        let bootstrap = await authorization.issueBootstrap()
+        let bootstrapRequest = HTTPRequest(
+            method: .GET,
+            version: .http11,
+            path: "/",
+            query: [.init(name: "bootstrap", value: bootstrap)],
+            headers: [.host: authority],
+            body: Data()
+        )
+
+        let exchange = try await handler.handleRequest(bootstrapRequest)
+        let setCookie = try #require(exchange.headers[.setCookie])
+        let cookie = setCookie
+            .split(separator: ";", maxSplits: 1)[0]
+        let snapshot = try await handler.handleRequest(
+            HTTPRequest(
+                method: .GET,
+                version: .http11,
+                path: "/api/snapshot",
+                query: [],
+                headers: [
+                    .host: authority,
+                    .cookie: String(cookie),
+                ],
+                body: Data()
+            )
+        )
+        let replay = try await handler.handleRequest(bootstrapRequest)
+
+        #expect(exchange.statusCode == .seeOther)
+        #expect(exchange.headers[.location] == "/")
+        #expect(setCookie.contains("HttpOnly"))
+        #expect(setCookie.contains("SameSite=Strict"))
+        #expect(snapshot.statusCode == .ok)
+        #expect(replay.statusCode == .unauthorized)
+    }
+
+    @Test("cookie-authenticated browser actions require the exact Origin")
+    func browserActionOrigin() async throws {
+        let authorization = LoopbackAuthorization(
+            controlToken: controlToken
+        )
+        let handler = try makeHandler(
+            assetRoot: nil,
+            accessibility: StubAccessibility(isTrusted: false),
+            authorization: authorization
+        )
+        let bootstrap = await authorization.issueBootstrap()
+        let session = try #require(
+            await authorization.consumeBootstrap(bootstrap)
+        )
+        let body = Data("{}".utf8)
+        let baseHeaders: [HTTPHeader: String] = [
+            .host: authority,
+            .cookie: "elchango_session=\(session)",
+            .contentType: "application/json",
+            .contentLength: String(body.count),
+        ]
+        let missingOrigin = try await handler.handleRequest(
+            HTTPRequest(
+                method: .POST,
+                version: .http11,
+                path: "/api/focus",
+                query: [],
+                headers: baseHeaders,
+                body: body
+            )
+        )
+        var validHeaders = baseHeaders
+        validHeaders[HTTPHeader("Origin")] = "http://\(authority)"
+        let validOrigin = try await handler.handleRequest(
+            HTTPRequest(
+                method: .POST,
+                version: .http11,
+                path: "/api/focus",
+                query: [],
+                headers: validHeaders,
+                body: body
+            )
+        )
+
+        #expect(missingOrigin.statusCode == .forbidden)
+        #expect(validOrigin.statusCode == .badRequest)
     }
 
     @Test("provider actions reject malformed requests")
@@ -205,6 +362,78 @@ struct FoundationHTTPHandlerTests {
 
         #expect(response.statusCode == .serviceUnavailable)
         #expect(error.retryable == false)
+    }
+
+    @Test("hook endpoints reject browser origins and rate-limit providers")
+    func hookBoundary() async throws {
+        let limiter = HookRateLimiter(limit: 1, window: 60)
+        let handler = try makeHandler(
+            assetRoot: nil,
+            accessibility: StubAccessibility(isTrusted: true),
+            providers: [ActionProvider()],
+            hookRateLimiter: limiter
+        )
+        let hookBody = try JSONEncoder().encode(
+            ProviderHookPayload(
+                hookEventName: "stop",
+                conversationID: "target",
+                status: "completed"
+            )
+        )
+        let headers: [HTTPHeader: String] = [
+            .contentType: "application/json",
+            .contentLength: String(hookBody.count),
+        ]
+        let accepted = try await handler.handleRequest(
+            request(
+                method: .POST,
+                path: "/api/hooks/test",
+                headers: headers,
+                body: hookBody
+            )
+        )
+        let limited = try await handler.handleRequest(
+            request(
+                method: .POST,
+                path: "/api/hooks/test",
+                headers: headers,
+                body: hookBody
+            )
+        )
+        let unknownProvider = try await handler.handleRequest(
+            request(
+                method: .POST,
+                path: "/api/hooks/unknown",
+                headers: headers,
+                body: hookBody
+            )
+        )
+        var foreignHeaders = headers
+        foreignHeaders[HTTPHeader("Origin")] = "https://attacker.example"
+        let foreignOrigin = try await handler.handleRequest(
+            request(
+                method: .POST,
+                path: "/api/hooks/other",
+                headers: foreignHeaders,
+                body: hookBody
+            )
+        )
+        var loopbackOriginHeaders = headers
+        loopbackOriginHeaders[HTTPHeader("Origin")] = "http://\(authority)"
+        let loopbackOrigin = try await handler.handleRequest(
+            request(
+                method: .POST,
+                path: "/api/hooks/test",
+                headers: loopbackOriginHeaders,
+                body: hookBody
+            )
+        )
+
+        #expect(accepted.statusCode == .accepted)
+        #expect(limited.statusCode == .tooManyRequests)
+        #expect(unknownProvider.statusCode == .notFound)
+        #expect(foreignOrigin.statusCode == .forbidden)
+        #expect(loopbackOrigin.statusCode == .forbidden)
     }
 
     @Test("long press customization is client-scoped and persists")
@@ -433,12 +662,17 @@ struct FoundationHTTPHandlerTests {
         headers: [HTTPHeader: String] = [:],
         body: Data = Data()
     ) -> HTTPRequest {
-        HTTPRequest(
+        var mergedHeaders: [HTTPHeader: String] = [
+            .host: authority,
+            .authorization: "Bearer \(controlToken)",
+        ]
+        mergedHeaders.merge(headers) { _, new in new }
+        return HTTPRequest(
             method: method,
             version: .http11,
             path: path,
             query: [],
-            headers: headers,
+            headers: mergedHeaders,
             body: body
         )
     }
@@ -477,7 +711,10 @@ struct FoundationHTTPHandlerTests {
                 version: .http11,
                 path: "/api/snapshot",
                 query: [.init(name: "client_id", value: clientID)],
-                headers: [:],
+                headers: [
+                    .host: authority,
+                    .authorization: "Bearer \(controlToken)",
+                ],
                 body: Data()
             )
         )
@@ -494,7 +731,10 @@ struct FoundationHTTPHandlerTests {
     private func makeHandler(
         assetRoot: URL?,
         accessibility: any AccessibilityChecking,
-        providers: [any AgentProvider] = []
+        providers: [any AgentProvider] = [],
+        authorization: LoopbackAuthorization? = nil,
+        hookRateLimiter: HookRateLimiter = HookRateLimiter(),
+        requireLoopbackPeer: Bool = false
     ) throws -> FoundationHTTPHandler {
         let preferences = try PreferencesStore(
             url: FileManager.default.temporaryDirectory
@@ -508,7 +748,16 @@ struct FoundationHTTPHandlerTests {
         return FoundationHTTPHandler(
             assetRoot: assetRoot,
             accessibility: accessibility,
-            deckService: deckService
+            deckService: deckService,
+            authorization: authorization ?? LoopbackAuthorization(
+                controlToken: controlToken
+            ),
+            hookRateLimiter: hookRateLimiter,
+            expectedAuthority: authority,
+            allowedHookProviderIDs: Set(
+                providers.map { $0.descriptor.id }
+            ).union(["cursor", "claude-code"]),
+            requireLoopbackPeer: requireLoopbackPeer
         )
     }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@elchango/surface-streamdeck",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -33,5 +33,6 @@
     "tsx": "^4.23.1",
     "typescript": "^5.9.3",
     "uuid": "^14.0.1"
-  }
+  },
+  "license": "MIT"
 }
