@@ -56,7 +56,7 @@ test("button rendering supports Claude Code session icons", () => {
   assert.match(image, /m19\.6 66\.5 19\.7-11/);
 });
 
-test("button rendering supports every command icon", () => {
+test("button rendering supports every Phosphor icon", () => {
   const icons: DeckIconName[] = [
     "robot",
     "terminal",
@@ -74,6 +74,15 @@ test("button rendering supports every command icon", () => {
     "git-pull-request",
     "git-commit",
     "article",
+    "fire",
+    "fire-extinguisher",
+    "fire-truck",
+    "magnifying-glass",
+    "bell",
+    "test-tube",
+    "checks",
+    "eye",
+    "shield-check",
   ];
 
   for (const icon of icons) {

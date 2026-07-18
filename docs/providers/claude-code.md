@@ -8,6 +8,20 @@ the numbered POCs under `scripts/poc/`.
 The target is Claude Code sessions opened by Claude Desktop on macOS. Claude
 Cowork and ordinary Claude chats are outside this provider's scope.
 
+## Native migration status
+
+The Swift provider ports bounded metadata inventory, exact transcript
+correlation, unique `lastFocusedAt` selection, official hook state, verified
+sidebar focus, the `claude://code/new` launch, and all four semantic commands.
+Malformed Claude records degrade only this provider.
+
+The Python and Swift implementations share fixtures under
+`contracts/providers/claude-code/v1/`. Native HTTP hooks post directly to the
+loopback service. Privileged actions are serialized with Cursor and recheck the
+exact selected session and foreground bundle immediately before dispatch.
+Composer text additionally requires the observed enabled, empty
+provider-specific Accessibility target.
+
 ## V3.2 reconnaissance
 
 ### Observations
@@ -169,18 +183,21 @@ The native keyboard probe then established that:
   `FOCUS_VERIFIED`.
 
 Production focus now derives the exact shortcut index from this persisted
-order, emits native macOS keyboard events, and accepts success only when the
-target has a strictly newer and uniquely maximal `lastFocusedAt` while Claude
-Desktop is frontmost. Any absent order entry or failed verification keeps the
-action rejected. The probe and production action do not submit prompts or alter
-conversation content.
+order and emits native macOS keyboard events only after rechecking that the
+order, selected session, and foreground application have not changed. A
+success response means the exact sidebar shortcut dispatch was verified.
+Claude can persist `lastFocusedAt` several seconds after its UI changes, so
+that delayed value is not used for immediate surface feedback. Commands remain
+disabled until a later inventory snapshot uniquely confirms the selected
+session. Any absent order entry or failed preflight keeps the action rejected.
+The probe and production action do not submit prompts or alter conversation
+content.
 
 When the target is already Claude Desktop's uniquely most recently focused
 session, focus activates Claude without sending a navigation shortcut and
 verifies that the same target remains uniquely selected. This avoids a false
 warning when Claude correctly opens an already-selected session without
-changing `lastFocusedAt`. Verified focus also acknowledges a green completion,
-returning it to gray.
+changing `lastFocusedAt`.
 
 New-session launch uses the documented `claude://code/new` deep link without a
 folder parameter, so Claude Desktop opens its neutral new Code session screen.

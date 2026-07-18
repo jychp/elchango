@@ -16,9 +16,7 @@ public struct FoundationHTTPHandler: HTTPHandler {
         assetRoot: URL?,
         accessibility: any AccessibilityChecking,
         deckService: DeckService,
-        unavailableProviders: [String: String] = [
-            "claude-code": "provider not migrated to native host",
-        ]
+        unavailableProviders: [String: String] = [:]
     ) {
         self.assetRoot = assetRoot?.standardizedFileURL
         self.accessibility = accessibility
@@ -135,26 +133,36 @@ public struct FoundationHTTPHandler: HTTPHandler {
             )
         }
         if isHook {
-            return try jsonResponse(
-                .notFound,
-                APIErrorResponse(error: "unknown hook provider")
+            let providerID = String(
+                request.path.dropFirst("/api/hooks/".count)
+            )
+            return try await receiveHook(
+                providerID: providerID,
+                body: body
             )
         }
-        guard request.path == "/api/activate"
-                || request.path == "/api/long-press"
-        else {
-            return try jsonResponse(
-                .serviceUnavailable,
-                APIErrorResponse(
-                    error: "native provider actions are not available yet",
-                    retryable: false
-                )
-            )
+        if request.path == "/api/focus" {
+            return try await focus(body: body)
         }
 
         let payload: DeckActionRequest
         do {
-            payload = try decoder.decode(DeckActionRequest.self, from: body)
+            if request.path == "/api/intent" {
+                let intent = try decoder.decode(
+                    DeckIntentRequest.self,
+                    from: body
+                )
+                payload = DeckActionRequest(
+                    clientID: DeckService.defaultClientID,
+                    buttonID: intent.buttonID,
+                    revision: intent.revision
+                )
+            } else {
+                payload = try decoder.decode(
+                    DeckActionRequest.self,
+                    from: body
+                )
+            }
             try DeckService.validateClientID(payload.clientID)
             guard !payload.buttonID.isEmpty else {
                 throw DeckServiceError.invalidAction(
@@ -183,7 +191,119 @@ public struct FoundationHTTPHandler: HTTPHandler {
                 .serviceUnavailable,
                 APIErrorResponse(
                     error: error.localizedDescription,
-                    retryable: true
+                    retryable: false
+                )
+            )
+        } catch let error as ProviderOperationError {
+            return try jsonResponse(
+                .serviceUnavailable,
+                APIErrorResponse(
+                    error: error.localizedDescription,
+                    retryable: false
+                )
+            )
+        } catch {
+            return try jsonResponse(
+                .serviceUnavailable,
+                APIErrorResponse(
+                    error: error.localizedDescription,
+                    retryable: false
+                )
+            )
+        }
+    }
+
+    private func receiveHook(
+        providerID: String,
+        body: Data
+    ) async throws -> HTTPResponse {
+        let payload: ProviderHookPayload
+        do {
+            payload = try decoder.decode(
+                ProviderHookPayload.self,
+                from: body
+            )
+        } catch {
+            return try jsonResponse(
+                .badRequest,
+                APIErrorResponse(error: error.localizedDescription)
+            )
+        }
+        do {
+            let observation = try await deckService.recordHook(
+                providerID: providerID,
+                payload: payload,
+                observedAtMilliseconds: Int64(
+                    Date().timeIntervalSince1970 * 1_000
+                )
+            )
+            return try jsonResponse(
+                .accepted,
+                JSONValue.object([
+                    "accepted": .boolean(true),
+                    "provider_id": .string(providerID),
+                    "session_id": .string(observation.sessionID),
+                ])
+            )
+        } catch let error as ProviderOperationError {
+            let status: HTTPStatusCode
+            switch error {
+            case .unsupported:
+                status = .notFound
+            case .invalidHook:
+                status = .badRequest
+            case .targetUnverified, .system:
+                status = .serviceUnavailable
+            }
+            return try jsonResponse(
+                status,
+                APIErrorResponse(error: error.localizedDescription)
+            )
+        } catch {
+            return try jsonResponse(
+                .serviceUnavailable,
+                APIErrorResponse(
+                    error: error.localizedDescription,
+                    retryable: false
+                )
+            )
+        }
+    }
+
+    private func focus(body: Data) async throws -> HTTPResponse {
+        let request: FocusRequest
+        do {
+            request = try decoder.decode(FocusRequest.self, from: body)
+            guard !request.sessionID.isEmpty else {
+                throw DeckServiceError.invalidAction(
+                    "session_id must be a non-empty string"
+                )
+            }
+        } catch {
+            return try jsonResponse(
+                .badRequest,
+                APIErrorResponse(error: error.localizedDescription)
+            )
+        }
+        do {
+            let result = try await deckService.focusSession(
+                sessionID: request.sessionID
+            )
+            return try jsonResponse(
+                result.accepted ? .ok : .conflict,
+                JSONValue.object(result.details)
+            )
+        } catch let error as DeckServiceError {
+            return try jsonResponse(
+                .conflict,
+                APIErrorResponse(error: error.localizedDescription)
+            )
+        } catch {
+            return try jsonResponse(
+                .serviceUnavailable,
+                APIErrorResponse(
+                    error: error.localizedDescription,
+                    retryable: false
                 )
             )
         }
@@ -197,7 +317,25 @@ public struct FoundationHTTPHandler: HTTPHandler {
         )
         guard let button = snapshot.buttons.first(
             where: { $0.id == request.buttonID && $0.enabled }
-        ), let action = button.action else {
+        ) else {
+            throw DeckServiceError.invalidAction(
+                "button is not actionable in the current snapshot"
+            )
+        }
+        if button.kind == .session, let sessionID = button.sessionID {
+            let focus = try await deckService.focusSession(
+                sessionID: sessionID
+            )
+            return try jsonResponse(
+                focus.accepted ? .ok : .conflict,
+                JSONValue.object([
+                    "accepted": .boolean(focus.accepted),
+                    "action": .string("focus_session"),
+                    "focus": .object(focus.details),
+                ])
+            )
+        }
+        guard let action = button.action else {
             throw DeckServiceError.invalidAction(
                 "button is not actionable in the current snapshot"
             )
@@ -257,13 +395,56 @@ public struct FoundationHTTPHandler: HTTPHandler {
             updated = try await deckService.nextPickerPage(
                 clientID: request.clientID
             )
-        case .newSession, .executeCommand:
-            return try jsonResponse(
-                .serviceUnavailable,
-                APIErrorResponse(
-                    error: "native provider actions are not available yet",
-                    retryable: false
+        case .newSession:
+            guard let providerID = button.providerID else {
+                throw DeckServiceError.invalidAction(
+                    "new session button has no provider target"
                 )
+            }
+            let launch = try await deckService.openNew(
+                providerID: providerID
+            )
+            let completed = launch.accepted
+                ? try await deckService.completeNewSession(
+                    clientID: request.clientID
+                )
+                : nil
+            var response: [String: JSONValue] = [
+                "accepted": .boolean(launch.accepted),
+                "action": .string(action.rawValue),
+                "launch": .object(launch.details),
+            ]
+            if let completed {
+                response["snapshot"] = try jsonValue(completed)
+            }
+            return try jsonResponse(
+                launch.accepted ? .ok : .conflict,
+                JSONValue.object(response)
+            )
+        case .executeCommand:
+            guard request.revision == snapshot.revision else {
+                throw DeckServiceError.invalidAction(
+                    "stale command target must be refreshed before dispatch"
+                )
+            }
+            guard let sessionID = button.sessionID,
+                let commandID = button.commandID
+            else {
+                throw DeckServiceError.invalidAction(
+                    "command button has no verified target"
+                )
+            }
+            let command = try await deckService.executeCommand(
+                sessionID: sessionID,
+                commandID: commandID
+            )
+            return try jsonResponse(
+                command.accepted ? .ok : .conflict,
+                JSONValue.object([
+                    "accepted": .boolean(command.accepted),
+                    "action": .string(action.rawValue),
+                    "command": .object(command.details),
+                ])
             )
         case .chooseSessionIcon, .chooseSlotCommand:
             throw DeckServiceError.invalidAction(
@@ -419,6 +600,15 @@ public struct FoundationHTTPHandler: HTTPHandler {
             statusCode: status,
             headers: headers,
             body: try encoder.encode(value)
+        )
+    }
+
+    private func jsonValue<Value: Encodable>(
+        _ value: Value
+    ) throws -> JSONValue {
+        try decoder.decode(
+            JSONValue.self,
+            from: encoder.encode(value)
         )
     }
 

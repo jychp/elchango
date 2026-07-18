@@ -54,7 +54,13 @@
       throw new Error('Snapshot response is invalid')
     }
 
-    if (snapshot && nextSnapshot.revision < snapshot.revision) return
+    if (
+      snapshot &&
+      nextSnapshot.revision < snapshot.revision &&
+      nextSnapshot.observed_at_ms <= snapshot.observed_at_ms
+    ) {
+      return
+    }
 
     snapshot = nextSnapshot
     connectionState =
@@ -191,7 +197,7 @@
 </script>
 
 <svelte:head>
-  <title>elChango control surface</title>
+  <title>elChango</title>
   <meta
     name="description"
     content="Local control surface for monitored AI coding agent sessions."

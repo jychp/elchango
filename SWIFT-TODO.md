@@ -133,7 +133,7 @@ Bind only to loopback and preserve the existing API security constraints.
 
 ## Open technical decisions
 
-- Decide whether automatic launch uses `SMAppService`.
+- Automatic launch is deferred until a permission-minimal design is proven.
 - Define signing, notarization, update, and development-certificate workflows.
 - Determine whether the current preferences schema remains byte-compatible or
   needs a versioned migration.
@@ -142,8 +142,8 @@ Bind only to loopback and preserve the existing API security constraints.
 
 - Keep the SwiftPM package isolated under `macos-app/`, with `ElChangoCore`,
   `ElChangoProviders`, and `ElChangoApp` targets.
-- Move the hardware integration to `plugins/streamdeck/`. Keep the web deck and
-  Python backend in their current locations during migration.
+- Keep the hardware integration under `plugins/streamdeck/` and the web deck
+  under `web/`.
 - Compile Cursor and Claude provider modules into the signed application
   process. They are provider adapters, not separately loaded plugins.
 - Use a menu bar-only `LSUIElement` application with bundle identifier
@@ -168,6 +168,21 @@ Bind only to loopback and preserve the existing API security constraints.
   exact selected-session detection through a strict read-only SQLite
   transaction. Cursor is registered independently and reports schema or data
   failures without blocking the host.
-- Next: port Claude Code Desktop inventory and exact selected-session detection.
-  Cursor focus, launch, hooks, and commands remain fail-closed until their
-  native action boundaries are ported and verified separately.
+- Complete: native Claude Desktop inventory, transcript correlation, unique
+  selected-session detection, and provider-isolated degradation.
+- Complete: native hook state, exact focus, new-session launch, semantic
+  commands, Accessibility composer checks, loopback action routes, and the
+  bundled fail-open Cursor hook reporter. Cursor and Claude share one serialized
+  native automation boundary; keyboard events target the verified process ID,
+  and selection is rechecked immediately before each dispatch.
+- Complete: the packaged menu bar application is the only runtime. Python is
+  retained only for executable reconnaissance POCs.
+- Complete: the native implementation passed final parity checks against the
+  retired Python runtime before the legacy package and tests were removed.
+- Validation remaining: run explicit live focus and command tests for both
+  harnesses, then verify Accessibility authorization survives an identity-signed
+  application replacement at the same install path.
+- Deferred: automatic launch. Querying `SMAppService.mainApp` caused macOS to
+  expose the unrelated App Management permission during native validation.
+  elChango must require only Accessibility, so login-item support remains out
+  until a permission-minimal design is proven.

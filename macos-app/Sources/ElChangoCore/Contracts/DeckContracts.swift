@@ -29,6 +29,15 @@ public enum DeckIcon: String, Codable, Sendable {
     case gitCommit = "git-commit"
     case gitPullRequest = "git-pull-request"
     case article
+    case fire
+    case fireExtinguisher = "fire-extinguisher"
+    case fireTruck = "fire-truck"
+    case magnifyingGlass = "magnifying-glass"
+    case bell
+    case testTube = "test-tube"
+    case checks
+    case eye
+    case shieldCheck = "shield-check"
 
     public static let personalizationOptions: [DeckIcon] = [
         .cursor,
@@ -37,7 +46,12 @@ public enum DeckIcon: String, Codable, Sendable {
         .terminal,
         .code,
         .bug,
+        .magnifyingGlass,
+        .bell,
         .wrench,
+        .fire,
+        .fireExtinguisher,
+        .fireTruck,
         .rocket,
         .shield,
         .database,
@@ -45,6 +59,11 @@ public enum DeckIcon: String, Codable, Sendable {
         .package,
         .gitBranch,
         .flask,
+        .testTube,
+        .checks,
+        .gitPullRequest,
+        .eye,
+        .shieldCheck,
     ]
 }
 

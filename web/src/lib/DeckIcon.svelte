@@ -3,21 +3,30 @@
   import ArrowLeftIcon from 'phosphor-svelte/lib/ArrowLeftIcon'
   import ArrowRightIcon from 'phosphor-svelte/lib/ArrowRightIcon'
   import ArrowsClockwiseIcon from 'phosphor-svelte/lib/ArrowsClockwiseIcon'
+  import BellIcon from 'phosphor-svelte/lib/BellIcon'
   import BugIcon from 'phosphor-svelte/lib/BugIcon'
   import CheckIcon from 'phosphor-svelte/lib/CheckIcon'
+  import ChecksIcon from 'phosphor-svelte/lib/ChecksIcon'
   import CodeIcon from 'phosphor-svelte/lib/CodeIcon'
   import DatabaseIcon from 'phosphor-svelte/lib/DatabaseIcon'
+  import EyeIcon from 'phosphor-svelte/lib/EyeIcon'
+  import FireIcon from 'phosphor-svelte/lib/FireIcon'
+  import FireExtinguisherIcon from 'phosphor-svelte/lib/FireExtinguisherIcon'
+  import FireTruckIcon from 'phosphor-svelte/lib/FireTruckIcon'
   import FlaskIcon from 'phosphor-svelte/lib/FlaskIcon'
   import GitBranchIcon from 'phosphor-svelte/lib/GitBranchIcon'
   import GitCommitIcon from 'phosphor-svelte/lib/GitCommitIcon'
   import GitPullRequestIcon from 'phosphor-svelte/lib/GitPullRequestIcon'
   import GlobeIcon from 'phosphor-svelte/lib/GlobeIcon'
+  import MagnifyingGlassIcon from 'phosphor-svelte/lib/MagnifyingGlassIcon'
   import PackageIcon from 'phosphor-svelte/lib/PackageIcon'
   import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
   import RobotIcon from 'phosphor-svelte/lib/RobotIcon'
   import RocketIcon from 'phosphor-svelte/lib/RocketIcon'
+  import ShieldCheckIcon from 'phosphor-svelte/lib/ShieldCheckIcon'
   import ShieldIcon from 'phosphor-svelte/lib/ShieldIcon'
   import TerminalIcon from 'phosphor-svelte/lib/TerminalIcon'
+  import TestTubeIcon from 'phosphor-svelte/lib/TestTubeIcon'
   import WrenchIcon from 'phosphor-svelte/lib/WrenchIcon'
   import type { DeckIconName } from './contracts'
 
@@ -44,6 +53,15 @@
     'git-pull-request': GitPullRequestIcon,
     'git-commit': GitCommitIcon,
     article: ArticleIcon,
+    fire: FireIcon,
+    'fire-extinguisher': FireExtinguisherIcon,
+    'fire-truck': FireTruckIcon,
+    'magnifying-glass': MagnifyingGlassIcon,
+    bell: BellIcon,
+    'test-tube': TestTubeIcon,
+    checks: ChecksIcon,
+    eye: EyeIcon,
+    'shield-check': ShieldCheckIcon,
   } satisfies Record<PhosphorIconName, typeof PlusIcon>
 
   interface Props {

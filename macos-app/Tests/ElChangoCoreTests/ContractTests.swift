@@ -35,9 +35,7 @@ struct ContractTests {
             launchEnabled: false,
             actionsEnabled: false,
             providers: [:],
-            unavailableProviders: [
-                "claude-code": "provider not migrated to native host",
-            ],
+            unavailableProviders: [:],
             accessibilityTrusted: false
         )
         let encoded = try sortedJSON(health)

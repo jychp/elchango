@@ -134,4 +134,48 @@ public protocol AgentProvider: Sendable {
     var descriptor: ProviderDescriptor { get }
     func snapshot() async throws -> ProviderSnapshot
     func isFrontmost() async throws -> Bool
+    func focus(nativeSessionID: String) async throws -> ProviderActionResult
+    func openNew() async throws -> ProviderActionResult
+    func executeCommand(
+        nativeSessionID: String,
+        commandID: CommandID
+    ) async throws -> ProviderActionResult
+    func recordHook(
+        _ payload: ProviderHookPayload,
+        observedAtMilliseconds: Int64
+    ) async throws -> ActivityObservation
+}
+
+public extension AgentProvider {
+    func focus(
+        nativeSessionID: String
+    ) async throws -> ProviderActionResult {
+        throw ProviderOperationError.unsupported(
+            "\(descriptor.displayName) does not support session focus"
+        )
+    }
+
+    func openNew() async throws -> ProviderActionResult {
+        throw ProviderOperationError.unsupported(
+            "\(descriptor.displayName) does not support new sessions"
+        )
+    }
+
+    func executeCommand(
+        nativeSessionID: String,
+        commandID: CommandID
+    ) async throws -> ProviderActionResult {
+        throw ProviderOperationError.unsupported(
+            "\(descriptor.displayName) does not support \(commandID.rawValue)"
+        )
+    }
+
+    func recordHook(
+        _ payload: ProviderHookPayload,
+        observedAtMilliseconds: Int64
+    ) async throws -> ActivityObservation {
+        throw ProviderOperationError.unsupported(
+            "\(descriptor.displayName) does not accept hooks"
+        )
+    }
 }

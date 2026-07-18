@@ -12,7 +12,7 @@
     "link": "streamdeck link com.jychp.elchango.sdPlugin",
     "restart": "streamdeck restart com.jychp.elchango",
     "pack": "npm run validate && streamdeck pack com.jychp.elchango.sdPlugin --force",
-    "profile": "python3 scripts/build_profile.py"
+    "profile": "tsx scripts/build-profile.ts"
   },
   "dependencies": {
     "@elgato/streamdeck": "^2.1.0"
@@ -27,9 +27,11 @@
     "@rollup/plugin-typescript": "^12.3.0",
     "@tsconfig/node20": "^20.1.9",
     "@types/node": "^26.1.1",
+    "fflate": "^0.8.3",
     "rollup": "^4.62.2",
     "tslib": "^2.8.1",
     "tsx": "^4.23.1",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "uuid": "^14.0.1"
   }
 }

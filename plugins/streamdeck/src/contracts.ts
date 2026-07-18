@@ -29,7 +29,16 @@ export type DeckIconName =
   | "check"
   | "git-pull-request"
   | "git-commit"
-  | "article";
+  | "article"
+  | "fire"
+  | "fire-extinguisher"
+  | "fire-truck"
+  | "magnifying-glass"
+  | "bell"
+  | "test-tube"
+  | "checks"
+  | "eye"
+  | "shield-check";
 export type DeckButtonConfidence =
   | "observed"
   | "candidate"
@@ -126,6 +135,15 @@ const ICON_NAMES = new Set<DeckIconName>([
   "git-pull-request",
   "git-commit",
   "article",
+  "fire",
+  "fire-extinguisher",
+  "fire-truck",
+  "magnifying-glass",
+  "bell",
+  "test-tube",
+  "checks",
+  "eye",
+  "shield-check",
 ]);
 const CONFIDENCE_VALUES = new Set<DeckButtonConfidence>([
   "observed",

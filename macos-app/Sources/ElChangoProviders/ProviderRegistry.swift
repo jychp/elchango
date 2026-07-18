@@ -5,12 +5,25 @@ public struct ProviderRegistry: Sendable {
     public let unavailableProviders: [String: String]
 
     public init(
-        providers: [any AgentProvider] = [CursorProvider()],
-        unavailableProviders: [String: String] = [
-            "claude-code": "provider not migrated to native host",
-        ]
+        providers: [any AgentProvider]? = nil,
+        unavailableProviders: [String: String] = [:]
     ) {
-        self.providers = providers
+        if let providers {
+            self.providers = providers
+        } else {
+            let automation = NativeAutomation()
+            let actionGate = PrivilegedActionGate()
+            self.providers = [
+                CursorProvider(
+                    automation: automation,
+                    actionGate: actionGate
+                ),
+                ClaudeCodeProvider(
+                    automation: automation,
+                    actionGate: actionGate
+                ),
+            ]
+        }
         self.unavailableProviders = unavailableProviders
     }
 }

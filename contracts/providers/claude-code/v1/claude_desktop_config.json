@@ -1,0 +1,20 @@
+{
+  "preferences": {
+    "epitaxyPrefs": {
+      "dframe-local-slice": {
+        "customGroupAssignments": {
+          "code:local_beta": "group-beta"
+        },
+        "customGroupOrder": {
+          "group-beta": [
+            "code:local_beta"
+          ]
+        }
+      },
+      "starred-local-code-sessions": [
+        "local_alpha",
+        "local_beta"
+      ]
+    }
+  }
+}
