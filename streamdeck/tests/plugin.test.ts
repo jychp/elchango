@@ -51,6 +51,19 @@ test("button rendering supports Claude Code session icons", () => {
   assert.match(image, /m19\.6 66\.5 19\.7-11/);
 });
 
+test("button rendering leaves disabled empty keys visually blank", () => {
+  const image = decodeSvg(renderButton({
+    ...buttonAt(10),
+    label: "",
+    detail: "",
+    enabled: false,
+  }));
+
+  assert.match(image, /fill="#111315"/);
+  assert.doesNotMatch(image, /<path/);
+  assert.doesNotMatch(image, /<text/);
+});
+
 test("snapshot parser requires the full fixed deck", () => {
   assert.throws(
     () => parseDeckSnapshot({ ...snapshot(1), buttons: [] }),

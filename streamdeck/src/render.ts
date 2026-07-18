@@ -45,12 +45,15 @@ export function renderButton(
       ? SIGNAL_COLORS[button.color]
       : CONTROL_ICON_COLOR);
   const label = escapeXml(truncate(button.label, 16));
+  const content = blank
+    ? ""
+    : `${iconSvg(button.icon, iconColor)}
+    ${label ? `<text x="72" y="126" text-anchor="middle" fill="#f2f3f4" font-family="-apple-system,system-ui,sans-serif" font-size="14" font-weight="650">${label}</text>` : ""}`;
 
   return svgDataUri(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
   <rect width="144" height="144" fill="${background}"/>
   <g opacity="${opacity}">
-    ${iconSvg(button.icon, iconColor)}
-    ${label ? `<text x="72" y="126" text-anchor="middle" fill="#f2f3f4" font-family="-apple-system,system-ui,sans-serif" font-size="14" font-weight="650">${label}</text>` : ""}
+    ${content}
   </g>
 </svg>`);
 }
