@@ -95,7 +95,9 @@ make build-app-macos
 ```
 
 Launch the app and grant Accessibility permission when prompted. The menu bar
-item reports service status and opens the browser deck.
+item reports service status and opens the browser deck. Open the web deck from
+that menu: the app uses a short-lived bootstrap URL to create an authenticated
+browser session.
 
 ## Install provider plugins
 
@@ -160,15 +162,21 @@ runtime, and uninstall details.
 
 ## Safety and privacy
 
+- The loopback API requires a per-install control token stored in an owner-only
+  file. Stream Deck uses Bearer authentication; the web deck receives an
+  `HttpOnly`, `SameSite=Strict` session cookie through a single-use URL.
+- Requests must use the expected loopback `Host`; foreign browser origins are
+  rejected. Hook routes are nonprivileged, bounded, sanitized, inventory-gated,
+  and rate-limited.
 - Provider databases are opened read-only, with Cursor additionally using
   `PRAGMA query_only=ON`.
 - Hooks retain lifecycle metadata only. Prompt text, responses, tool content,
   notification messages, email, and transcript content are discarded.
 - A hook affects state only when its native ID exactly matches a current
   persistent session.
-- Surface requests contain opaque provider-qualified targets and stable semantic
+- Surface requests contain provider-qualified targets and stable semantic
   command IDs, never arbitrary prompt text, shortcuts, scripts, or shell
-  commands.
+  commands. Those local identifiers are not authorization secrets.
 - Focus uses provider-specific verification and never enables commands from a
   shortcut response alone.
 - Command dispatch rechecks the selected session, frontmost application, and,
@@ -178,6 +186,10 @@ runtime, and uninstall details.
   ambiguous identity, schema drift, or failed Accessibility checks reject the
   action instead of guessing.
 - One unavailable provider does not block the other provider or the local deck.
+
+The complete threat model, permission details, disclosure process, known
+limitations, and token-rotation procedure are in
+[SECURITY.md](SECURITY.md).
 
 ## Development
 
@@ -206,13 +218,19 @@ npm --prefix web run dev
 ```
 
 Vite proxies `/api` to the loopback service. More frontend details are in
-[web/README.md](web/README.md).
+[web/README.md](web/README.md). Start the native app first so Vite can read the
+local control token without exposing it to browser JavaScript.
 
 ## Releases
 
+`VERSION` is the single source of truth for the monorepo release train. The
+macOS app, bundled web surface, Cursor plugin, Claude plugin, and Stream Deck
+package all use that version. Elgato's four-part manifest expresses the same
+release with a trailing `.0`. `make test-versions` and CI reject any divergence.
+
 `make release VERSION=X.Y.Z` accepts strict semantic versions without a `v`
-prefix. The value must match the committed Stream Deck package and manifest
-version. The target requires a clean tracked worktree on `main`, fetches
+prefix. The value must match the committed root `VERSION` and every component.
+The target requires a clean tracked worktree on `main`, fetches
 `origin/main`, verifies that local and remote `main` match, creates annotated
 tag `vX.Y.Z`, and pushes that tag.
 
@@ -220,6 +238,17 @@ The tag workflow validates and packages the Stream Deck plugin on Linux, creates
 a SHA-256 checksum, and creates or updates the GitHub Release with generated
 notes. The current release workflow does not publish the macOS app or provider
 plugin archives.
+
+## License and trademarks
+
+The software and documentation are available under the
+[MIT License](LICENSE). Bundled dependency licenses are recorded in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+The elChango name, monkey logo, application icon, screensaver artwork, and
+other project branding are not licensed under MIT. See
+[TRADEMARKS.md](TRADEMARKS.md) for permitted use and the third-party
+non-affiliation statement.
 
 ## Provider documentation
 

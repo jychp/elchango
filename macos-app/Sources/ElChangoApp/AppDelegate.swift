@@ -76,6 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         rebuildMenu()
 
         do {
+            let controlToken = try ControlTokenStore().loadOrCreate()
             let preferences = try PreferencesStore()
             let registry = ProviderRegistry()
             let enabledProviderIDs = Set(
@@ -102,6 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 assetRoot: Self.webAssetRoot,
                 accessibility: accessibility,
                 deckService: deckService,
+                controlToken: controlToken,
                 unavailableProviders: registry.unavailableProviders
             )
             self.service = service
@@ -227,10 +229,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc
     private func openWebDeck() {
-        guard let url = URL(
-            string: "http://127.0.0.1:\(LoopbackService.defaultPort)/"
-        ) else { return }
-        NSWorkspace.shared.open(url)
+        guard let service else { return }
+        Task {
+            guard let url = await service.webDeckURL() else { return }
+            NSWorkspace.shared.open(url)
+        }
     }
 
     @objc

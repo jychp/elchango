@@ -38,7 +38,7 @@ jobs:
             echo "::error::Tagged commit is not an ancestor of origin/main"
             exit 1
           fi
-          python3 scripts/validate_streamdeck_version.py "${RELEASE_TAG#v}"
+          python3 scripts/validate_versions.py "${RELEASE_TAG#v}"
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0

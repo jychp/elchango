@@ -6,7 +6,7 @@ DIST_DIR ?= dist
 
 .PHONY: \
 	setup \
-	test test-app-macos test-web test-plugins test-plugin-cursor \
+	test test-versions test-app-macos test-web test-plugins test-plugin-cursor \
 	test-plugin-claude test-plugin-streamdeck test-pocs \
 	build build-app-macos build-web build-plugins build-plugin-cursor \
 	build-plugin-claude build-plugin-streamdeck \
@@ -17,21 +17,24 @@ setup:
 	npm --prefix plugins/streamdeck ci
 	swift package --package-path macos-app resolve
 
-test: test-app-macos test-web test-plugins test-pocs
+test: test-versions test-app-macos test-web test-plugins test-pocs
 	git diff --check
 
-test-app-macos:
+test-versions:
+	$(PYTHON) scripts/validate_versions.py
+
+test-app-macos: test-versions
 	swift test --package-path macos-app
 
-test-web:
+test-web: test-versions
 	npm --prefix web run check
 
 test-plugins: test-plugin-cursor test-plugin-claude test-plugin-streamdeck
 
-test-plugin-cursor:
+test-plugin-cursor: test-versions
 	$(PYTHON) scripts/validate_provider_plugins.py cursor
 
-test-plugin-claude:
+test-plugin-claude: test-versions
 	$(PYTHON) scripts/validate_provider_plugins.py claude
 	@if command -v claude >/dev/null 2>&1; then \
 		claude plugin validate ./plugins/claude --strict && \
@@ -40,8 +43,10 @@ test-plugin-claude:
 		echo "Claude CLI not found; custom strict validation completed."; \
 	fi
 
-test-plugin-streamdeck:
-	$(PYTHON) scripts/validate_streamdeck_version.py
+test-plugin-streamdeck: test-versions
+	cmp LICENSE plugins/streamdeck/com.jychp.elchango.sdPlugin/LICENSE
+	test -s plugins/streamdeck/com.jychp.elchango.sdPlugin/THIRD_PARTY_NOTICES.md
+	test -s plugins/streamdeck/com.jychp.elchango.sdPlugin/TRADEMARKS.md
 	npm --prefix plugins/streamdeck run check
 	npm --prefix plugins/streamdeck run validate
 
@@ -54,10 +59,10 @@ test-pocs:
 
 build: build-app-macos build-plugins
 
-build-app-macos:
+build-app-macos: test-versions
 	./macos-app/Scripts/package-app.sh
 
-build-web:
+build-web: test-versions
 	npm --prefix web run build
 
 build-plugins: \
@@ -84,7 +89,7 @@ release:
 		echo "ERROR: releases must be created from main." >&2; \
 		exit 2; \
 	}
-	@$(PYTHON) scripts/validate_streamdeck_version.py "$(VERSION)"
+	@$(PYTHON) scripts/validate_versions.py "$(VERSION)"
 	@git diff --quiet && git diff --cached --quiet || { \
 		echo "ERROR: tracked files contain uncommitted changes." >&2; \
 		exit 2; \

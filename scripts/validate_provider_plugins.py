@@ -11,7 +11,7 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "1.0.0"
+VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 REPORTER_COMMAND = (
     "/Applications/elChango.app/Contents/MacOS/"

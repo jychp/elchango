@@ -116,6 +116,7 @@
       }
       const response = await fetch(endpoint, {
         method: 'POST',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
       })
@@ -160,6 +161,7 @@
         const response = await fetch(
           `/api/snapshot?client_id=${encodeURIComponent(WEB_CLIENT_ID)}`,
           {
+            credentials: 'same-origin',
             headers: { Accept: 'application/json' },
             signal: activeRequest.signal,
           },
