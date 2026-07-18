@@ -2,6 +2,7 @@ export type DeckButtonKind = 'session' | 'control' | 'empty'
 
 export type DeckIconName =
   | 'cursor'
+  | 'claude'
   | 'plus'
   | 'arrow-left'
   | 'arrow-right'

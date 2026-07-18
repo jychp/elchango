@@ -236,6 +236,79 @@ class DeckServiceTests(unittest.TestCase):
             ["test:session-1", "test:session-2"],
         )
 
+    def test_sessions_from_multiple_providers_share_sorting_and_pagination(self) -> None:
+        cursor = FakeProvider(
+            ProviderSnapshot(
+                provider_id="cursor",
+                capabilities=FakeProvider.capabilities,
+                observed_at_ms=100,
+                selected_native_session_id="cursor-1",
+                sessions=(
+                    AgentSession(
+                        provider_id="cursor",
+                        native_id="cursor-1",
+                        capabilities=FakeProvider.capabilities,
+                        icon="cursor",
+                        title="Cursor",
+                        workspace_id="cursor-workspace",
+                        workspace_path="/tmp/cursor",
+                        state="working",
+                        confidence="observed",
+                        state_detail="test",
+                        selected=True,
+                        last_activity_at_ms=100,
+                    ),
+                ),
+                source="cursor-test",
+            )
+        )
+        cursor.provider_id = "cursor"
+        claude = FakeProvider(
+            ProviderSnapshot(
+                provider_id="claude-code",
+                capabilities=frozenset(),
+                observed_at_ms=200,
+                selected_native_session_id=None,
+                sessions=tuple(
+                    AgentSession(
+                        provider_id="claude-code",
+                        native_id=f"claude-{index}",
+                        capabilities=frozenset(),
+                        icon="claude",
+                        title=f"Claude {index}",
+                        workspace_id=f"claude-workspace-{index}",
+                        workspace_path=f"/tmp/claude-{index}",
+                        state="idle",
+                        confidence="persisted",
+                        state_detail="test",
+                        selected=False,
+                        last_activity_at_ms=200 - index,
+                    )
+                    for index in range(10)
+                ),
+                source="claude-test",
+            )
+        )
+        claude.provider_id = "claude-code"
+        claude.capabilities = frozenset()
+        service = DeckService(
+            {"cursor": cursor, "claude-code": claude},
+            default_provider_id="cursor",
+        )
+
+        first = service.snapshot()
+        second = service.next_page()
+
+        self.assertEqual(first.page_count, 2)
+        self.assertTrue(
+            all(button.provider_id == "claude-code" for button in first.buttons[:10])
+        )
+        self.assertEqual(first.buttons[0].icon, "claude")
+        self.assertFalse(first.buttons[0].enabled)
+        self.assertEqual(second.buttons[0].session_id, "cursor:cursor-1")
+        self.assertEqual(second.selected_session_id, "cursor:cursor-1")
+        self.assertEqual(second.buttons[1].provider_id, "cursor")
+
     def test_new_sessions_append_without_reordering_existing_slots(self) -> None:
         provider = FakeProvider(make_snapshot(2))
         service = DeckService(provider)

@@ -103,6 +103,37 @@ testing is deferred while ongoing sessions must not be disturbed.
 - Official new-session launch: documented separately for V3.4 using
   `claude://code/new`.
 
+## V3.3 provider implementation
+
+The read-only provider uses Desktop `sessionId` as its persistent native
+identity and `cliSessionId` to correlate official hook events and transcripts.
+It excludes archived records, caches unchanged metadata by file modification
+time and size, and sorts sessions by `lastActivityAt`.
+
+Measured on July 17, 2026:
+
+- first snapshot of 711 persistent records: 126.2 ms;
+- cached snapshot: 12.4 ms;
+- resulting non-archived session inventory: 17 sessions.
+
+Sessions without fresh hook evidence are gray with persisted confidence.
+Documented hook transitions map as follows:
+
+- `UserPromptSubmit`: blue, working;
+- waiting `Notification` types: orange, waiting;
+- `Stop`: green, done;
+- `StopFailure`: error, rendered orange by the four-color deck;
+- `SessionStart` and `SessionEnd`: gray, idle.
+
+A working or waiting signal older than ten minutes without a terminal event
+becomes unknown with explicit degraded detail. This timeout is conservative and
+will be revisited with live hook evidence. The provider retains no prompt,
+assistant, notification message, or transcript content.
+
+Claude session buttons remain disabled because exact existing-session focus is
+not verified. Empty and New buttons continue to target Cursor until V3.4 adds
+explicit provider selection.
+
 ## References
 
 - [Claude Code hooks reference](https://docs.anthropic.com/en/docs/claude-code/hooks)

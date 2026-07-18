@@ -19,6 +19,7 @@ ProviderCapability = Literal["focus_session", "new_session"]
 ButtonKind = Literal["session", "control", "empty"]
 ButtonIcon = Literal[
     "cursor",
+    "claude",
     "plus",
     "arrow-left",
     "arrow-right",

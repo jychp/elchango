@@ -11,6 +11,7 @@ import urllib.request
 from pathlib import Path
 
 from elchango.activity import ActivityStore
+from elchango.claude_activity import ClaudeActivityStore
 from elchango.deck import DeckService
 from elchango.focus import FocusResult
 from elchango.launch import LaunchResult
@@ -96,6 +97,11 @@ class DeckServerTests(unittest.TestCase):
         (assets / "index.html").write_text("<main>deck</main>", encoding="utf-8")
         self.server = DeckHTTPServer(("127.0.0.1", 0), DeckRequestHandler)
         self.server.activity_store = ActivityStore()
+        self.claude_activity_store = ClaudeActivityStore()
+        self.server.hook_recorders = {
+            "cursor": self.server.activity_store.record,
+            "claude-code": self.claude_activity_store.record,
+        }
         self.focus_controller = FakeFocusController()
         self.launch_controller = FakeLaunchController()
         self.cursor = CursorAdapter(
@@ -243,6 +249,35 @@ class DeckServerTests(unittest.TestCase):
         )
         self.assertIsNotNone(state)
         self.assertEqual(state[0], "working")
+
+    def test_claude_hook_endpoint_accepts_official_lifecycle_metadata(self) -> None:
+        request = urllib.request.Request(
+            f"{self.base_url}/api/hooks/claude-code",
+            data=json.dumps(
+                {
+                    "hook_event_name": "Notification",
+                    "session_id": "claude-session-1",
+                    "cwd": "/tmp/claude",
+                    "transcript_path": "/tmp/claude-session-1.jsonl",
+                    "notification_type": "permission_prompt",
+                    "message": "must not be stored",
+                }
+            ).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        with urllib.request.urlopen(request, timeout=2) as response:
+            payload = json.load(response)
+
+        self.assertEqual(response.status, 202)
+        self.assertEqual(payload["provider_id"], "claude-code")
+        state = self.claude_activity_store.state_for(
+            "claude-session-1",
+            observed_at_ms=time.time_ns() // 1_000_000,
+        )
+        self.assertIsNotNone(state)
+        self.assertEqual(state[0], "waiting")
 
     def test_focus_endpoint_verifies_current_session_button(self) -> None:
         now = time.time_ns() // 1_000_000

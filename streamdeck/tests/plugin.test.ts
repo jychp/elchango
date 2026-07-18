@@ -43,6 +43,19 @@ test("button rendering centers only the icon and title with state color", () => 
   assert.match(decodeSvg(renderOffline()), /Offline/);
 });
 
+test("button rendering supports Claude Code session icons", () => {
+  const image = decodeSvg(renderButton({
+    ...buttonAt(0),
+    icon: "claude",
+    label: "Claude",
+    color: "idle",
+  }));
+
+  assert.match(image, /Claude/);
+  assert.match(image, /fill="#77818b"/);
+  assert.match(image, /m19\.6 66\.5 19\.7-11/);
+});
+
 test("snapshot parser requires the full fixed deck", () => {
   assert.throws(
     () => parseDeckSnapshot({ ...snapshot(1), buttons: [] }),

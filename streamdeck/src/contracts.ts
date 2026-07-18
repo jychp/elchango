@@ -9,6 +9,7 @@ export type DeckButtonColor =
   | "control";
 export type DeckIconName =
   | "cursor"
+  | "claude"
   | "plus"
   | "arrow-left"
   | "arrow-right"
@@ -78,6 +79,7 @@ const BUTTON_COLORS = new Set<DeckButtonColor>([
 ]);
 const ICON_NAMES = new Set<DeckIconName>([
   "cursor",
+  "claude",
   "plus",
   "arrow-left",
   "arrow-right",

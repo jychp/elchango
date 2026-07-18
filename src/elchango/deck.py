@@ -7,7 +7,7 @@ import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Mapping
 
 from elchango.models import (
     AgentSession,
@@ -15,7 +15,6 @@ from elchango.models import (
     DeckButton,
     DeckSnapshot,
     ProviderCapability,
-    ProviderSnapshot,
     SessionState,
 )
 from elchango.providers.base import AgentProvider
@@ -54,13 +53,23 @@ class _ClientState:
     last_accessed: float
 
 
+@dataclass(frozen=True, slots=True)
+class _CombinedSnapshot:
+    observed_at_ms: int
+    selected_session_id: str | None
+    sessions: tuple[AgentSession, ...]
+    source: str
+    read_only: bool
+
+
 class DeckService:
-    """Build stable, versioned render snapshots from one provider adapter."""
+    """Build stable, versioned render snapshots across provider adapters."""
 
     def __init__(
         self,
-        provider: AgentProvider,
+        providers: AgentProvider | Mapping[str, AgentProvider],
         *,
+        default_provider_id: str | None = None,
         max_client_states: int = DEFAULT_MAX_CLIENT_STATES,
         client_state_ttl_seconds: float = DEFAULT_CLIENT_STATE_TTL_SECONDS,
         clock: Callable[[], float] = time.monotonic,
@@ -69,7 +78,21 @@ class DeckService:
             raise ValueError("max_client_states must be positive")
         if client_state_ttl_seconds <= 0:
             raise ValueError("client_state_ttl_seconds must be positive")
-        self._provider = provider
+        if isinstance(providers, Mapping):
+            self._providers = dict(providers)
+        else:
+            self._providers = {providers.provider_id: providers}
+        if not self._providers:
+            raise ValueError("at least one provider is required")
+        for provider_id, provider in self._providers.items():
+            if provider_id != provider.provider_id:
+                raise ValueError("provider registry key must match provider_id")
+        self._default_provider_id = (
+            default_provider_id or next(iter(self._providers))
+        )
+        if self._default_provider_id not in self._providers:
+            raise ValueError("default_provider_id is not registered")
+        self._default_provider = self._providers[self._default_provider_id]
         self._lock = threading.Lock()
         self._session_order: list[str | None] = []
         self._refresh_requested = True
@@ -80,7 +103,7 @@ class DeckService:
 
     def snapshot(self, client_id: str = DEFAULT_CLIENT_ID) -> DeckSnapshot:
         client_id = validate_client_id(client_id)
-        provider_snapshot = self._provider.snapshot()
+        provider_snapshot = self._combined_snapshot()
         with self._lock:
             state = self._client_state(client_id)
             sessions_by_id = self._update_session_order(provider_snapshot)
@@ -110,8 +133,8 @@ class DeckService:
             visible_sessions,
             page=page,
             has_next=has_next,
-            default_provider_id=self._provider.provider_id,
-            default_capabilities=self._provider.capabilities,
+            default_provider_id=self._default_provider.provider_id,
+            default_capabilities=self._default_provider.capabilities,
         )
         if len(buttons) != TOTAL_BUTTONS:
             raise RuntimeError(
@@ -129,6 +152,33 @@ class DeckService:
             has_previous=has_previous,
             has_next=has_next,
             buttons=tuple(buttons),
+        )
+
+    def _combined_snapshot(self) -> _CombinedSnapshot:
+        snapshots = tuple(
+            provider.snapshot() for provider in self._providers.values()
+        )
+        selected_session_id = next(
+            (
+                snapshot.selected_session_id
+                for snapshot in snapshots
+                if snapshot.selected_session_id is not None
+            ),
+            None,
+        )
+        return _CombinedSnapshot(
+            observed_at_ms=max(snapshot.observed_at_ms for snapshot in snapshots),
+            selected_session_id=selected_session_id,
+            sessions=tuple(
+                session
+                for snapshot in snapshots
+                for session in snapshot.sessions
+            ),
+            source=";".join(
+                f"{snapshot.provider_id}={snapshot.source}"
+                for snapshot in snapshots
+            ),
+            read_only=all(snapshot.read_only for snapshot in snapshots),
         )
 
     def refresh(self, client_id: str = DEFAULT_CLIENT_ID) -> DeckSnapshot:
@@ -195,7 +245,7 @@ class DeckService:
 
     def _update_session_order(
         self,
-        snapshot: ProviderSnapshot,
+        snapshot: _CombinedSnapshot,
     ) -> dict[str, AgentSession]:
         sessions_by_id = {session.id: session for session in snapshot.sessions}
         ordered_sessions = sorted(

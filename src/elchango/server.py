@@ -9,7 +9,7 @@ import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
 
 from elchango.activity import ActivityStore
@@ -23,6 +23,7 @@ class DeckHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
     deck_service: DeckService
     activity_store: ActivityStore
+    hook_recorders: dict[str, Callable[[dict[str, Any], int], object]]
     providers: dict[str, AgentProvider]
     assets: Path
     api_only: bool = False
@@ -66,16 +67,17 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
         self._serve_asset(parsed.path)
 
     def do_POST(self) -> None:
-        if urlparse(self.path).path == "/api/hooks/cursor":
-            self._receive_cursor_hook()
+        path = urlparse(self.path).path
+        if path.startswith("/api/hooks/"):
+            self._receive_provider_hook(path.removeprefix("/api/hooks/"))
             return
-        if urlparse(self.path).path == "/api/focus":
+        if path == "/api/focus":
             self._focus_session()
             return
-        if urlparse(self.path).path == "/api/intent":
+        if path == "/api/intent":
             self._activate_intent()
             return
-        if urlparse(self.path).path == "/api/activate":
+        if path == "/api/activate":
             self._activate_button()
             return
         self._send_json(
@@ -351,12 +353,24 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
             return None
         return payload
 
-    def _receive_cursor_hook(self) -> None:
+    def _receive_provider_hook(self, provider_id: str) -> None:
         payload = self._read_json_payload(max_bytes=65_536)
         if payload is None:
             return
+        recorders = getattr(
+            self.server,
+            "hook_recorders",
+            {"cursor": self.server.activity_store.record},
+        )
+        recorder = recorders.get(provider_id)
+        if recorder is None:
+            self._send_json(
+                HTTPStatus.NOT_FOUND,
+                {"error": f"provider does not accept hooks: {provider_id}"},
+            )
+            return
         try:
-            signal = self.server.activity_store.record(
+            signal = recorder(
                 payload,
                 time.time_ns() // 1_000_000,
             )
@@ -368,7 +382,11 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
             return
         self._send_json(
             HTTPStatus.ACCEPTED,
-            {"accepted": True, "session_id": signal.session_id},
+            {
+                "accepted": True,
+                "provider_id": provider_id,
+                "session_id": getattr(signal, "session_id"),
+            },
         )
 
     def _serve_snapshot(self, query: str) -> None:
@@ -490,6 +508,10 @@ def serve(
     host: str,
     port: int,
     api_only: bool = False,
+    hook_recorders: dict[
+        str,
+        Callable[[dict[str, Any], int], object],
+    ] | None = None,
 ) -> None:
     """Serve until interrupted."""
 
@@ -503,6 +525,9 @@ def serve(
     server = DeckHTTPServer((host, port), DeckRequestHandler)
     server.deck_service = service
     server.activity_store = activity_store
+    server.hook_recorders = hook_recorders or {
+        "cursor": activity_store.record,
+    }
     server.providers = providers
     server.assets = assets
     server.api_only = api_only

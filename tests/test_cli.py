@@ -14,6 +14,7 @@ class CLITests(unittest.TestCase):
             missing_assets = Path(directory) / "missing"
             with (
                 patch("elchango.cli.CursorProvider") as provider_class,
+                patch("elchango.cli.ClaudeCodeProvider") as claude_provider_class,
                 patch("elchango.cli.CursorFocusController"),
                 patch("elchango.cli.CursorLaunchController"),
                 patch("elchango.cli.serve") as serve,
@@ -29,6 +30,7 @@ class CLITests(unittest.TestCase):
 
         self.assertEqual(result, 0)
         provider_class.return_value.snapshot.assert_called_once_with()
+        claude_provider_class.return_value.snapshot.assert_called_once_with()
         self.assertTrue(serve.call_args.args[-1])
 
 

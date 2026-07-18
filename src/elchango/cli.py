@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from elchango.activity import ActivityStore
+from elchango.claude_activity import ClaudeActivityStore
 from elchango.deck import DeckService
 from elchango.focus import CursorFocusController
 from elchango.hook_reporter import DEFAULT_HOOK_ENDPOINT, report_hook
@@ -19,6 +20,12 @@ from elchango.providers.cursor import (
     CursorProviderError,
 )
 from elchango.providers.cursor_adapter import CursorAdapter
+from elchango.providers.claude_code import (
+    DEFAULT_CLAUDE_PROJECTS,
+    DEFAULT_DESKTOP_SESSIONS_ROOT,
+    ClaudeCodeProvider,
+    ClaudeCodeProviderError,
+)
 from elchango.server import serve
 
 
@@ -65,6 +72,21 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=DEFAULT_WORKSPACE_STORAGE,
         help=f"Cursor workspace metadata (default: {DEFAULT_WORKSPACE_STORAGE}).",
+    )
+    serve_parser.add_argument(
+        "--claude-desktop-sessions",
+        type=Path,
+        default=DEFAULT_DESKTOP_SESSIONS_ROOT,
+        help=(
+            "Claude Desktop persistent Code sessions "
+            f"(default: {DEFAULT_DESKTOP_SESSIONS_ROOT})."
+        ),
+    )
+    serve_parser.add_argument(
+        "--claude-projects",
+        type=Path,
+        default=DEFAULT_CLAUDE_PROJECTS,
+        help=f"Claude Code transcript root (default: {DEFAULT_CLAUDE_PROJECTS}).",
     )
     hook_parser = subparsers.add_parser(
         "report-hook",
@@ -123,11 +145,27 @@ def main(argv: list[str] | None = None) -> int:
         launch_controller=launch_controller,
         activity_store=activity_store,
     )
-    service = DeckService(cursor)
+    claude_activity_store = ClaudeActivityStore()
+    claude = ClaudeCodeProvider(
+        desktop_sessions_root=args.claude_desktop_sessions,
+        projects_root=args.claude_projects,
+        activity_store=claude_activity_store,
+    )
+    try:
+        claude.snapshot()
+    except ClaudeCodeProviderError as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 2
+    providers = {
+        cursor.provider_id: cursor,
+        claude.provider_id: claude,
+    }
+    service = DeckService(providers, default_provider_id=cursor.provider_id)
     url = f"http://{args.host}:{args.port}/"
     print("elChango v0.2")
     print(f"Deck: {url}")
     print(f"Cursor database: {args.database}")
+    print(f"Claude Desktop sessions: {args.claude_desktop_sessions}")
     print("Session focus: enabled with exact post-action verification")
     print("New Agent view: enabled; prompt submission remains manual")
     print("Agent actions: disabled")
@@ -136,11 +174,15 @@ def main(argv: list[str] | None = None) -> int:
         serve(
             service,
             activity_store,
-            {cursor.provider_id: cursor},
+            providers,
             assets,
             args.host,
             args.port,
             args.api_only,
+            hook_recorders={
+                cursor.provider_id: activity_store.record,
+                claude.provider_id: claude_activity_store.record,
+            },
         )
     except KeyboardInterrupt:
         print("\nStopped.")
