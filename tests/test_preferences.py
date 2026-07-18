@@ -22,7 +22,7 @@ class PreferencesStoreTests(unittest.TestCase):
             self.assertEqual(reloaded.session_icons, {"cursor:session-1": "robot"})
             self.assertEqual(
                 reloaded.action_slots,
-                ("compact", "create_pr", "commit_push"),
+                ("compact", "commit_push", "create_pr"),
             )
             self.assertEqual(tuple(path.parent.glob("*.tmp")), ())
 

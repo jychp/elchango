@@ -33,7 +33,7 @@ DEFAULT_CLIENT_STATE_TTL_SECONDS = 30 * 60
 _CLIENT_ID_PATTERN = re.compile(r"[A-Za-z0-9._:-]+")
 COMMAND_PRESENTATION: dict[CommandId, tuple[str, ButtonIcon]] = {
     "accept": ("Accept", "check"),
-    "create_pr": ("Create PR", "git-pull-request"),
+    "create_pr": ("Open PR", "git-pull-request"),
     "commit_push": ("Commit Push", "git-commit"),
     "compact": ("Compact", "article"),
 }

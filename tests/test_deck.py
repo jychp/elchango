@@ -185,7 +185,7 @@ class DeckServiceTests(unittest.TestCase):
         )
         self.assertEqual(
             [button.label for button in snapshot.buttons[11:14]],
-            ["Accept", "Create PR", "Commit Push"],
+            ["Accept", "Commit Push", "Open PR"],
         )
         self.assertTrue(all(not button.enabled for button in snapshot.buttons[11:14]))
         self.assertEqual(snapshot.buttons[10].action, "refresh_sessions")

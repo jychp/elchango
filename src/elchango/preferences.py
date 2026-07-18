@@ -18,8 +18,8 @@ DEFAULT_PREFERENCES_PATH = (
 )
 DEFAULT_ACTION_SLOTS: tuple[CommandId, CommandId, CommandId] = (
     "accept",
-    "create_pr",
     "commit_push",
+    "create_pr",
 )
 
 

@@ -323,7 +323,7 @@ class DeckServerTests(unittest.TestCase):
 
         self.assertTrue(response["accepted"])
         self.assertEqual(response["action"], "execute_command")
-        self.assertEqual(provider.executed, ("session-1", "create_pr"))
+        self.assertEqual(provider.executed, ("session-1", "commit_push"))
 
     def test_snapshot_rejects_invalid_client_ids(self) -> None:
         for client_id in ("", "has space", "é", "x" * 129):

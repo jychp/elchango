@@ -83,6 +83,28 @@ class CursorAdapterCommandTests(unittest.TestCase):
             submit_count=2,
         )
 
+    def test_open_pr_uses_cursor_instruction_text(self) -> None:
+        with (
+            mock.patch(
+                "elchango.providers.cursor_adapter.frontmost_bundle_id",
+                return_value=self.adapter.bundle_id,
+            ),
+            mock.patch(
+                "elchango.providers.cursor_adapter.dispatch_text",
+                return_value=self.dispatched,
+            ) as dispatch,
+        ):
+            result = self.adapter.execute_command("target", "create_pr")
+
+        self.assertTrue(result.accepted)
+        dispatch.assert_called_once_with(
+            "Open a pull request for the current branch.",
+            self.adapter.bundle_id,
+            expected_input_marker=self.adapter.input_marker,
+            focus_shortcut="l",
+            submit_count=1,
+        )
+
     def test_accept_uses_command_enter_without_text(self) -> None:
         with (
             mock.patch(

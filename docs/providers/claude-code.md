@@ -191,7 +191,7 @@ web and Stream Deck.
 
 POC: `scripts/poc/13_claude_command_dispatch.py`
 
-Current verdict: `UNPROVEN_REQUIRES_FOCUSED_INPUT_OBSERVATION`.
+Current verdict: `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
 
 ### Observations
 
@@ -201,25 +201,32 @@ Current verdict: `UNPROVEN_REQUIRES_FOCUSED_INPUT_OBSERVATION`.
 - Unique target selection and Claude foreground status do not prove that the
   Code prompt owns keyboard input. Another Claude text field could be focused.
 - macOS Accessibility can expose the focused element's role and metadata. The
-  POC requires an explicit metadata marker from a focused local observation,
-  and refuses dispatch unless the target, frontmost bundle, enabled text-input
-  role, and marker all match twice.
+  observed Claude composer is an enabled `AXTextArea` with description `Prompt`
+  and exact `AXDOMClassList` value
+  `tiptapProseMirrorProseMirror-focused`. Text dispatch refuses unless the
+  target, frontmost bundle, enabled text-input role, and marker all match twice.
 - The POC reads bounded metadata prefixes, defaults to dry-run, submits at most
   one explicitly supplied recipe in execute mode, and never retries.
+- A harmless `test` instruction was observed arriving as a submitted message
+  after one Return with a 500 ms delay.
+- Claude's `/compact` suggestion requires two delayed Return presses: one to
+  select the command and one to submit it. This sequence was observed
+  triggering compaction successfully.
+- `Cmd+Enter` was observed accepting a real open plan while the exact Claude
+  session was uniquely selected and Claude Desktop was frontmost.
 
-### Unproven command mappings
+### Product mappings
 
-No official Claude Code evidence collected for this project maps elChango's
-stable semantic IDs `accept`, `create_pr`, `commit_push`, or `compact` to a
-native command, shortcut, slash command, or prompt. The POC therefore requires
-either `--recipe-text` or `--recipe-command`; it does not infer defaults from a
-semantic ID.
+- `accept`: send `Cmd+Enter` once.
+- `create_pr`: submit `Open a pull request for the current branch.` as an agent
+  instruction.
+- `commit_push`: submit `Commit the current changes with a Conventional Commit
+  message and push the current branch.` as an agent instruction.
+- `compact`: submit `/compact` through the observed two-Return sequence.
 
 `DISPATCH_SENT` proves only that one supplied recipe was injected while the
 exact Desktop target remained uniquely selected immediately afterward. It does
-not prove Claude understood, accepted, or completed the semantic operation. No
-product command capability should be declared until focused-input evidence and
-per-command behavior are observed directly.
+not prove Claude understood or completed the semantic operation.
 
 ## References
 

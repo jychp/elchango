@@ -12,7 +12,11 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from elchango.claude_activity import ClaudeActivityStore
-from elchango.command_dispatch import dispatch_text, frontmost_bundle_id
+from elchango.command_dispatch import (
+    dispatch_command_enter,
+    dispatch_text,
+    frontmost_bundle_id,
+)
 from elchango.models import (
     AgentSession,
     ButtonIcon,
@@ -68,6 +72,12 @@ class _CachedRecord:
     record: _DesktopRecord
 
 
+@dataclass(frozen=True, slots=True)
+class ClaudeCommandRecipe:
+    text: str | None
+    submit_count: int = 1
+
+
 class ClaudeCodeProvider:
     """Expose persistent Claude Desktop Code sessions without native actions."""
 
@@ -75,9 +85,22 @@ class ClaudeCodeProvider:
     display_name: ClassVar[str] = "Claude"
     icon: ClassVar[ButtonIcon] = "claude"
     capabilities: ClassVar[frozenset[ProviderCapability]] = frozenset(
-        {"focus_session", "new_session"}
+        {"focus_session", "new_session", "execute_command"}
     )
-    command_recipes: ClassVar[dict[CommandId, str]] = {}
+    input_marker: ClassVar[str] = "tiptapProseMirrorProseMirror-focused"
+    command_recipes: ClassVar[dict[CommandId, ClaudeCommandRecipe]] = {
+        "accept": ClaudeCommandRecipe(text=None),
+        "create_pr": ClaudeCommandRecipe(
+            text="Open a pull request for the current branch."
+        ),
+        "commit_push": ClaudeCommandRecipe(
+            text=(
+                "Commit the current changes with a Conventional Commit message "
+                "and push the current branch."
+            )
+        ),
+        "compact": ClaudeCommandRecipe(text="/compact", submit_count=2),
+    }
 
     def __init__(
         self,
@@ -360,7 +383,15 @@ class ClaudeCodeProvider:
                     "message": "Claude target is not uniquely selected and frontmost."
                 },
             )
-        result = dispatch_text(recipe, CLAUDE_BUNDLE_ID)
+        if recipe.text is None:
+            result = dispatch_command_enter(CLAUDE_BUNDLE_ID)
+        else:
+            result = dispatch_text(
+                recipe.text,
+                CLAUDE_BUNDLE_ID,
+                expected_input_marker=self.input_marker,
+                submit_count=recipe.submit_count,
+            )
         after = self.snapshot()
         accepted = (
             result.verdict == "DISPATCH_VERIFIED"

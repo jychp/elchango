@@ -52,7 +52,7 @@ class CursorAdapter:
     command_recipes: ClassVar[dict[CommandId, CursorCommandRecipe]] = {
         "accept": CursorCommandRecipe(text=None),
         "create_pr": CursorCommandRecipe(
-            text="Create a pull request for the current changes."
+            text="Open a pull request for the current branch."
         ),
         "commit_push": CursorCommandRecipe(
             text=(

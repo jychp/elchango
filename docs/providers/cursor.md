@@ -245,7 +245,7 @@ Current verdict: `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
   verifies the selected composer, foreground Cursor application, and exact
   composer input before sending the shortcut. Semantic completion has not yet
   been observed against a live pending approval.
-- `create_pr`: submit `Create a pull request for the current changes.` as an
+- `create_pr`: submit `Open a pull request for the current branch.` as an
   agent instruction.
 - `commit_push`: submit `Commit the current changes with a Conventional Commit
   message and push the current branch.` as an agent instruction.
