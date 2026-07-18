@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import unittest
 
-from elchango.deck import DeckService
+from elchango.deck import DeckService, provider_positions
 from elchango.models import AgentSession, ProviderSnapshot
 
 
 class FakeProvider:
     provider_id = "test"
+    display_name = "Test"
+    icon = "cursor"
     capabilities = frozenset({"focus_session", "new_session"})
 
     def __init__(self, snapshot: ProviderSnapshot) -> None:
@@ -95,9 +97,9 @@ class DeckServiceTests(unittest.TestCase):
         )
         self.assertEqual(snapshot.buttons[10].action, "refresh_sessions")
         self.assertEqual(snapshot.buttons[10].icon, "arrows-clockwise")
-        self.assertEqual(snapshot.buttons[14].action, "new_session")
+        self.assertEqual(snapshot.buttons[14].action, "choose_new_provider")
         self.assertEqual(snapshot.buttons[14].icon, "plus")
-        self.assertEqual(snapshot.buttons[14].provider_id, "test")
+        self.assertIsNone(snapshot.buttons[14].provider_id)
         payload = snapshot.to_dict()
         self.assertNotIn("native_session_id", payload["buttons"][0])
 
@@ -204,14 +206,14 @@ class DeckServiceTests(unittest.TestCase):
         self.assertEqual((third.page, third.page_count), (3, 3))
         self.assertEqual(first.buttons[14].action, "next_page")
         self.assertEqual(second.buttons[10].action, "previous_page")
-        self.assertEqual(third.buttons[14].action, "new_session")
+        self.assertEqual(third.buttons[14].action, "choose_new_provider")
 
     def test_exactly_ten_sessions_offer_new_not_next(self) -> None:
         snapshot = DeckService(FakeProvider(make_snapshot(10))).snapshot()
 
         self.assertEqual(snapshot.page_count, 1)
         self.assertFalse(snapshot.has_next)
-        self.assertEqual(snapshot.buttons[14].action, "new_session")
+        self.assertEqual(snapshot.buttons[14].action, "choose_new_provider")
         self.assertTrue(snapshot.buttons[14].enabled)
 
     def test_equal_activity_dates_use_session_id_tie_breaker(self) -> None:
@@ -307,7 +309,7 @@ class DeckServiceTests(unittest.TestCase):
         self.assertFalse(first.buttons[0].enabled)
         self.assertEqual(second.buttons[0].session_id, "cursor:cursor-1")
         self.assertEqual(second.selected_session_id, "cursor:cursor-1")
-        self.assertEqual(second.buttons[1].provider_id, "cursor")
+        self.assertIsNone(second.buttons[1].provider_id)
 
     def test_new_sessions_append_without_reordering_existing_slots(self) -> None:
         provider = FakeProvider(make_snapshot(2))
@@ -353,7 +355,7 @@ class DeckServiceTests(unittest.TestCase):
         refreshed = service.refresh()
 
         self.assertIsNone(with_hole.buttons[1].session_id)
-        self.assertEqual(with_hole.buttons[1].action, "new_session")
+        self.assertEqual(with_hole.buttons[1].action, "choose_new_provider")
         self.assertTrue(with_hole.buttons[1].enabled)
         self.assertEqual(
             [button.session_id for button in refreshed.buttons[:2]],
@@ -414,6 +416,54 @@ class DeckServiceTests(unittest.TestCase):
             hardware_first.revision + 1,
         )
 
+    def test_new_session_provider_chooser_is_client_scoped(self) -> None:
+        cursor = FakeProvider(make_snapshot(1))
+        cursor.provider_id = "cursor"
+        cursor.display_name = "Cursor"
+        cursor.icon = "cursor"
+        claude = FakeProvider(
+            ProviderSnapshot(
+                provider_id="claude-code",
+                capabilities=FakeProvider.capabilities,
+                observed_at_ms=123,
+                selected_native_session_id=None,
+                sessions=(),
+                source="claude",
+            )
+        )
+        claude.provider_id = "claude-code"
+        claude.display_name = "Claude"
+        claude.icon = "claude"
+        service = DeckService({"cursor": cursor, "claude-code": claude})
+
+        chooser = service.choose_new_provider("web")
+        hardware = service.snapshot("streamdeck")
+
+        self.assertEqual(
+            [
+                (button.position, button.provider_id, button.action)
+                for button in chooser.buttons
+                if button.enabled and button.provider_id is not None
+            ],
+            [
+                (6, "cursor", "new_session"),
+                (8, "claude-code", "new_session"),
+            ],
+        )
+        self.assertEqual(chooser.buttons[10].action, "cancel_new_session")
+        self.assertEqual(hardware.buttons[0].kind, "session")
+        restored = service.cancel_new_session("web")
+        self.assertEqual(restored.buttons[0].kind, "session")
+
+    def test_provider_positions_follow_centered_dynamic_layout(self) -> None:
+        self.assertEqual(provider_positions(1), (7,))
+        self.assertEqual(provider_positions(2), (6, 8))
+        self.assertEqual(provider_positions(3), (6, 7, 8))
+        self.assertEqual(provider_positions(4), (5, 6, 8, 9))
+        self.assertEqual(provider_positions(5), (5, 6, 7, 8, 9))
+        with self.assertRaisesRegex(ValueError, "one and five"):
+            provider_positions(6)
+
     def test_client_state_expires_and_returns_to_first_page(self) -> None:
         clock = FakeClock()
         service = DeckService(
@@ -459,6 +509,8 @@ class DeckServiceTests(unittest.TestCase):
             service.refresh,
             service.previous_page,
             service.next_page,
+            service.choose_new_provider,
+            service.cancel_new_session,
         ):
             with self.subTest(operation=operation.__name__):
                 with self.assertRaisesRegex(ValueError, "client_id"):

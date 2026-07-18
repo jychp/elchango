@@ -20,6 +20,8 @@ export type DeckButtonColor =
 export type DeckButtonConfidence = 'observed' | 'candidate' | 'persisted' | 'unknown'
 
 export type DeckAction =
+  | 'choose_new_provider'
+  | 'cancel_new_session'
   | 'new_session'
   | 'refresh_sessions'
   | 'previous_page'

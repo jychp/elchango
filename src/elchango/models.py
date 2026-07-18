@@ -35,6 +35,8 @@ ButtonColor = Literal[
     "control",
 ]
 DeckAction = Literal[
+    "choose_new_provider",
+    "cancel_new_session",
     "new_session",
     "refresh_sessions",
     "previous_page",

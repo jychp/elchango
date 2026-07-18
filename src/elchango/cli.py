@@ -95,6 +95,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_CLAUDE_DESKTOP_CONFIG,
         help=f"Claude Desktop config (default: {DEFAULT_CLAUDE_DESKTOP_CONFIG}).",
     )
+    serve_parser.add_argument(
+        "--claude-new-session-folder",
+        type=Path,
+        default=Path.cwd(),
+        help="Folder prefilled for new Claude Code sessions (default: current directory).",
+    )
     hook_parser = subparsers.add_parser(
         "report-hook",
         help="Forward one Cursor lifecycle hook to a running deck.",
@@ -157,6 +163,7 @@ def main(argv: list[str] | None = None) -> int:
         desktop_sessions_root=args.claude_desktop_sessions,
         projects_root=args.claude_projects,
         desktop_config=args.claude_desktop_config,
+        launch_folder=args.claude_new_session_folder,
         activity_store=claude_activity_store,
     )
     try:

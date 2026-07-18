@@ -22,6 +22,8 @@ from elchango.server import DeckHTTPServer, DeckRequestHandler, serve
 
 class StaticProvider:
     provider_id = "cursor"
+    display_name = "Cursor"
+    icon = "cursor"
     capabilities = frozenset({"focus_session", "new_session"})
 
     def __init__(self, count: int = 1) -> None:
@@ -365,12 +367,14 @@ class DeckServerTests(unittest.TestCase):
         self.assertEqual(next_payload["snapshot"]["page"], 2)
         self.assertEqual(previous_payload["snapshot"]["page"], 1)
 
-    def test_available_session_slot_requests_new_agent_view_once(self) -> None:
+    def test_available_session_slot_opens_provider_chooser(self) -> None:
         payload = self._post_intent("empty:1")
 
         self.assertTrue(payload["accepted"])
-        self.assertEqual(payload["action"], "new_session")
-        self.assertEqual(self.launch_controller.open_count, 1)
+        self.assertEqual(payload["action"], "choose_new_provider")
+        self.assertEqual(payload["snapshot"]["buttons"][7]["id"], "provider:cursor")
+        self.assertEqual(payload["snapshot"]["buttons"][10]["action"], "cancel_new_session")
+        self.assertEqual(self.launch_controller.open_count, 0)
 
     def test_unified_activate_focuses_session_and_acknowledges_completion(
         self,
@@ -400,18 +404,30 @@ class DeckServerTests(unittest.TestCase):
 
     def test_unified_activate_dispatches_refresh_and_new_controls(self) -> None:
         refreshed = self._post_activate("hardware", "control:refresh")
-        launched = self._post_activate("hardware", "control:new")
-        launched_from_empty = self._post_activate("hardware", "empty:1")
+        chooser = self._post_activate("hardware", "control:new")
+        launched = self._post_activate("hardware", "provider:cursor")
+        empty_chooser = self._post_activate("hardware", "empty:1")
+        launched_from_empty = self._post_activate("hardware", "provider:cursor")
 
         self.assertTrue(refreshed["accepted"])
         self.assertEqual(refreshed["action"], "refresh_sessions")
         self.assertEqual(refreshed["snapshot"]["page"], 1)
+        self.assertEqual(chooser["action"], "choose_new_provider")
         self.assertTrue(launched["accepted"])
         self.assertEqual(launched["action"], "new_session")
         self.assertEqual(launched["launch"]["verdict"], "NEW_AGENT_VIEW_REQUESTED")
+        self.assertEqual(empty_chooser["action"], "choose_new_provider")
         self.assertTrue(launched_from_empty["accepted"])
         self.assertEqual(launched_from_empty["action"], "new_session")
         self.assertEqual(self.launch_controller.open_count, 2)
+
+    def test_cancel_provider_chooser_returns_to_sessions(self) -> None:
+        chooser = self._post_activate("hardware", "control:new")
+        cancelled = self._post_activate("hardware", "control:cancel-new")
+
+        self.assertEqual(chooser["snapshot"]["buttons"][7]["id"], "provider:cursor")
+        self.assertEqual(cancelled["action"], "cancel_new_session")
+        self.assertEqual(cancelled["snapshot"]["buttons"][0]["kind"], "session")
 
     def test_unified_activate_rejects_invalid_client_id(self) -> None:
         request = urllib.request.Request(

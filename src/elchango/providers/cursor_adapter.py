@@ -9,7 +9,7 @@ from typing import ClassVar
 from elchango.activity import ActivityStore
 from elchango.focus import CursorFocusController
 from elchango.launch import CursorLaunchController
-from elchango.models import ProviderCapability, ProviderSnapshot
+from elchango.models import ButtonIcon, ProviderCapability, ProviderSnapshot
 from elchango.providers.base import ProviderActionResult
 from elchango.providers.cursor import CursorProvider
 
@@ -24,6 +24,8 @@ class CursorAdapter:
     activity_store: ActivityStore
 
     provider_id: ClassVar[str] = "cursor"
+    display_name: ClassVar[str] = "Cursor"
+    icon: ClassVar[ButtonIcon] = "cursor"
     capabilities: ClassVar[frozenset[ProviderCapability]] = frozenset(
         {"focus_session", "new_session"}
     )

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from elchango.models import ProviderCapability, ProviderSnapshot
+from elchango.models import ButtonIcon, ProviderCapability, ProviderSnapshot
 
 
 class ProviderError(RuntimeError):
@@ -25,6 +25,8 @@ class AgentProvider(Protocol):
     """Read and safely act on one native agent provider."""
 
     provider_id: str
+    display_name: str
+    icon: ButtonIcon
     capabilities: frozenset[ProviderCapability]
 
     def snapshot(self) -> ProviderSnapshot:

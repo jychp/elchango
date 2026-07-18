@@ -170,6 +170,13 @@ Desktop is frontmost. Any absent order entry or failed verification keeps the
 action rejected. The probe and production action do not submit prompts or alter
 conversation content.
 
+New-session launch uses the documented `claude://code/new` deep link with an
+absolute `folder` query parameter. The default folder is the directory where
+the elChango service starts and can be overridden with
+`--claude-new-session-folder`. Claude Desktop retains its official manual folder
+confirmation. Launch selection is exposed through the same client-scoped
+provider chooser on web and Stream Deck.
+
 ## References
 
 - [Claude Code hooks reference](https://docs.anthropic.com/en/docs/claude-code/hooks)

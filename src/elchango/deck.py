@@ -14,7 +14,6 @@ from elchango.models import (
     ButtonColor,
     DeckButton,
     DeckSnapshot,
-    ProviderCapability,
     SessionState,
 )
 from elchango.providers.base import AgentProvider
@@ -48,6 +47,7 @@ def validate_client_id(client_id: str) -> str:
 @dataclass(slots=True)
 class _ClientState:
     page_index: int
+    provider_picker_open: bool
     revision: int
     signature: object | None
     last_accessed: float
@@ -92,7 +92,6 @@ class DeckService:
         )
         if self._default_provider_id not in self._providers:
             raise ValueError("default_provider_id is not registered")
-        self._default_provider = self._providers[self._default_provider_id]
         self._lock = threading.Lock()
         self._session_order: list[str | None] = []
         self._refresh_requested = True
@@ -121,6 +120,15 @@ class DeckService:
                 provider_snapshot.sessions,
                 tuple(self._session_order),
                 state.page_index,
+                state.provider_picker_open,
+                tuple(
+                    (
+                        provider.provider_id,
+                        provider.display_name,
+                        provider.icon,
+                    )
+                    for provider in self._new_session_providers()
+                ),
                 provider_snapshot.source,
                 provider_snapshot.read_only,
             )
@@ -128,14 +136,23 @@ class DeckService:
                 state.revision += 1
                 state.signature = signature
             revision = state.revision
+            provider_picker_open = state.provider_picker_open
 
-        buttons = _build_buttons(
-            visible_sessions,
-            page=page,
-            has_next=has_next,
-            default_provider_id=self._default_provider.provider_id,
-            default_capabilities=self._default_provider.capabilities,
-        )
+        if provider_picker_open:
+            buttons = _build_provider_picker_buttons(
+                self._new_session_providers()
+            )
+            page = 1
+            page_count = 1
+            has_previous = False
+            has_next = False
+        else:
+            buttons = _build_buttons(
+                visible_sessions,
+                page=page,
+                has_next=has_next,
+                launch_enabled=bool(self._new_session_providers()),
+            )
         if len(buttons) != TOTAL_BUTTONS:
             raise RuntimeError(
                 f"Deck invariant violated: expected {TOTAL_BUTTONS} buttons, "
@@ -206,6 +223,43 @@ class DeckService:
             state.page_index += 1
         return self.snapshot(client_id)
 
+    def choose_new_provider(
+        self,
+        client_id: str = DEFAULT_CLIENT_ID,
+    ) -> DeckSnapshot:
+        """Replace one client's session deck with the provider chooser."""
+
+        client_id = validate_client_id(client_id)
+        providers = self._new_session_providers()
+        if not providers:
+            raise ValueError("no provider supports new sessions")
+        provider_positions(len(providers))
+        with self._lock:
+            self._client_state(client_id).provider_picker_open = True
+        return self.snapshot(client_id)
+
+    def cancel_new_session(
+        self,
+        client_id: str = DEFAULT_CLIENT_ID,
+    ) -> DeckSnapshot:
+        """Return one client from the provider chooser to its session page."""
+
+        client_id = validate_client_id(client_id)
+        with self._lock:
+            state = self._client_state(client_id)
+            if not state.provider_picker_open:
+                raise ValueError("new session provider chooser is not open")
+            state.provider_picker_open = False
+        return self.snapshot(client_id)
+
+    def complete_new_session(
+        self,
+        client_id: str = DEFAULT_CLIENT_ID,
+    ) -> DeckSnapshot:
+        """Close the provider chooser after an accepted native launch."""
+
+        return self.cancel_new_session(client_id)
+
     @property
     def active_client_count(self) -> int:
         """Return the number of unexpired client render states."""
@@ -223,6 +277,7 @@ class DeckService:
                 self._client_states.popitem(last=False)
             state = _ClientState(
                 page_index=0,
+                provider_picker_open=False,
                 revision=0,
                 signature=None,
                 last_accessed=now,
@@ -287,14 +342,20 @@ class DeckService:
     def _page_count(self) -> int:
         return max(1, (len(self._session_order) + SESSION_SLOTS - 1) // SESSION_SLOTS)
 
+    def _new_session_providers(self) -> tuple[AgentProvider, ...]:
+        return tuple(
+            provider
+            for provider in self._providers.values()
+            if "new_session" in provider.capabilities
+        )
+
 
 def _build_buttons(
     sessions: tuple[AgentSession | None, ...],
     *,
     page: int,
     has_next: bool,
-    default_provider_id: str,
-    default_capabilities: frozenset[ProviderCapability],
+    launch_enabled: bool,
 ) -> list[DeckButton]:
     buttons: list[DeckButton] = []
     for position, session in enumerate(sessions):
@@ -309,10 +370,9 @@ def _build_buttons(
                     icon="plus",
                     color="control",
                     selected=False,
-                    enabled="new_session" in default_capabilities,
+                    enabled=launch_enabled,
                     confidence="observed",
-                    action="new_session",
-                    provider_id=default_provider_id,
+                    action="choose_new_provider",
                 )
             )
             continue
@@ -402,10 +462,9 @@ def _build_buttons(
             icon="plus",
             color="control",
             selected=False,
-            enabled="new_session" in default_capabilities,
+            enabled=launch_enabled,
             confidence="observed",
-            action="new_session",
-            provider_id=default_provider_id,
+            action="choose_new_provider",
         )
     )
     controls = (
@@ -415,6 +474,76 @@ def _build_buttons(
     )
     buttons.extend(controls)
     return buttons
+
+
+def provider_positions(count: int) -> tuple[int, ...]:
+    """Return centered row-two positions for one through five providers."""
+
+    positions = {
+        1: (7,),
+        2: (6, 8),
+        3: (6, 7, 8),
+        4: (5, 6, 8, 9),
+        5: (5, 6, 7, 8, 9),
+    }
+    try:
+        return positions[count]
+    except KeyError as error:
+        raise ValueError("provider chooser supports between one and five providers") from error
+
+
+def _build_provider_picker_buttons(
+    providers: tuple[AgentProvider, ...],
+) -> list[DeckButton]:
+    positions = provider_positions(len(providers))
+    buttons = [
+        _blank_button(position)
+        for position in range(TOTAL_BUTTONS)
+    ]
+    for position, provider in zip(positions, providers, strict=True):
+        buttons[position] = DeckButton(
+            id=f"provider:{provider.provider_id}",
+            position=position,
+            kind="control",
+            label=provider.display_name,
+            detail="Create agent",
+            icon=provider.icon,
+            color="control",
+            selected=False,
+            enabled=True,
+            confidence="observed",
+            action="new_session",
+            provider_id=provider.provider_id,
+        )
+    buttons[10] = DeckButton(
+        id="control:cancel-new",
+        position=10,
+        kind="control",
+        label="Cancel",
+        detail="Return to sessions",
+        icon="arrow-left",
+        color="control",
+        selected=False,
+        enabled=True,
+        confidence="observed",
+        action="cancel_new_session",
+    )
+    return buttons
+
+
+def _blank_button(position: int) -> DeckButton:
+    return DeckButton(
+        id=f"empty:{position}",
+        position=position,
+        kind="empty",
+        label="",
+        detail="",
+        icon="arrows-clockwise",
+        color="unknown",
+        selected=False,
+        enabled=False,
+        confidence="unknown",
+    )
 
 
 def _display_color(state: SessionState) -> ButtonColor:

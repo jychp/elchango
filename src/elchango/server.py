@@ -282,17 +282,31 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
                 updated = self.server.deck_service.previous_page(client_id)
             elif action == "next_page":
                 updated = self.server.deck_service.next_page(client_id)
+            elif action == "choose_new_provider":
+                updated = self.server.deck_service.choose_new_provider(client_id)
+            elif action == "cancel_new_session":
+                updated = self.server.deck_service.cancel_new_session(client_id)
             elif action == "new_session":
                 if provider_id is None:
                     raise ValueError("new session button has no provider target")
                 launch = self.server.providers[provider_id].open_new()
                 status = HTTPStatus.OK if launch.accepted else HTTPStatus.CONFLICT
+                updated = (
+                    self.server.deck_service.complete_new_session(client_id)
+                    if launch.accepted
+                    else None
+                )
                 self._send_json(
                     status,
                     {
                         "accepted": status == HTTPStatus.OK,
                         "action": action,
                         "launch": launch.details,
+                        **(
+                            {"snapshot": updated.to_dict()}
+                            if updated is not None
+                            else {}
+                        ),
                     },
                 )
                 return

@@ -7,6 +7,7 @@ import json
 import subprocess
 import threading
 import time
+import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar
@@ -14,6 +15,7 @@ from typing import Any, ClassVar
 from elchango.claude_activity import ClaudeActivityStore
 from elchango.models import (
     AgentSession,
+    ButtonIcon,
     ProviderCapability,
     ProviderSnapshot,
 )
@@ -69,8 +71,10 @@ class ClaudeCodeProvider:
     """Expose persistent Claude Desktop Code sessions without native actions."""
 
     provider_id: ClassVar[str] = "claude-code"
+    display_name: ClassVar[str] = "Claude"
+    icon: ClassVar[ButtonIcon] = "claude"
     capabilities: ClassVar[frozenset[ProviderCapability]] = frozenset(
-        {"focus_session"}
+        {"focus_session", "new_session"}
     )
 
     def __init__(
@@ -78,15 +82,18 @@ class ClaudeCodeProvider:
         desktop_sessions_root: Path = DEFAULT_DESKTOP_SESSIONS_ROOT,
         projects_root: Path = DEFAULT_CLAUDE_PROJECTS,
         desktop_config: Path = DEFAULT_CLAUDE_DESKTOP_CONFIG,
+        launch_folder: Path | None = None,
         activity_store: ClaudeActivityStore | None = None,
     ) -> None:
         self._desktop_sessions_root = desktop_sessions_root
         self._projects_root = projects_root
         self._desktop_config = desktop_config
+        self._launch_folder = (launch_folder or Path.cwd()).resolve()
         self.activity_store = activity_store or ClaudeActivityStore()
         self._cache: dict[Path, _CachedRecord] = {}
         self._lock = threading.Lock()
         self._focus_lock = threading.Lock()
+        self._launch_lock = threading.Lock()
 
     def snapshot(self) -> ProviderSnapshot:
         """Read persistent non-archived sessions and overlay fresh hook signals."""
@@ -268,15 +275,42 @@ class ClaudeCodeProvider:
         )
 
     def open_new(self) -> ProviderActionResult:
-        """Reject launch until provider selection and deep linking land in V3.4."""
+        """Open Claude Desktop's official new Code session deep link."""
 
-        return ProviderActionResult(
-            accepted=False,
-            verdict="NEW_SESSION_UNSUPPORTED",
-            details={
-                "message": "Claude Desktop launch is deferred to V3.4.",
-            },
-        )
+        with self._launch_lock:
+            if not self._launch_folder.is_dir():
+                raise ClaudeCodeProviderError(
+                    f"Claude launch folder is not a directory: {self._launch_folder}"
+                )
+            query = urllib.parse.urlencode({"folder": str(self._launch_folder)})
+            deep_link = f"claude://code/new?{query}"
+            started = time.monotonic()
+            completed = subprocess.run(
+                ["/usr/bin/open", deep_link],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            if completed.returncode != 0:
+                raise ClaudeCodeProviderError(
+                    "cannot open Claude Desktop new session link: "
+                    f"{completed.stderr.strip()}"
+                )
+            return ProviderActionResult(
+                accepted=True,
+                verdict="NEW_SESSION_REQUESTED",
+                details={
+                    "executed": True,
+                    "deep_link": deep_link,
+                    "folder": str(self._launch_folder),
+                    "elapsed_ms": round((time.monotonic() - started) * 1_000),
+                    "message": (
+                        "Claude Desktop new Code session requested; "
+                        "folder confirmation remains manual."
+                    ),
+                },
+            )
 
     def _records(self) -> tuple[_DesktopRecord, ...]:
         if not self._desktop_sessions_root.is_dir():

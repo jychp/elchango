@@ -22,8 +22,10 @@ class ClaudeCodeProviderTests(unittest.TestCase):
         self.projects_root = root / "projects"
         self.records = self.desktop_root / "account" / "workspace"
         self.desktop_config = root / "claude_desktop_config.json"
+        self.launch_folder = root / "launch folder"
         self.records.mkdir(parents=True)
         self.projects_root.mkdir()
+        self.launch_folder.mkdir()
         self._write_shortcut_config([])
         self.activity = ClaudeActivityStore(
             terminal_deadline_ms=100,
@@ -46,11 +48,17 @@ class ClaudeCodeProviderTests(unittest.TestCase):
         snapshot = provider.snapshot()
 
         self.assertEqual(snapshot.provider_id, "claude-code")
-        self.assertEqual(snapshot.capabilities, frozenset({"focus_session"}))
+        self.assertEqual(
+            snapshot.capabilities,
+            frozenset({"focus_session", "new_session"}),
+        )
         self.assertEqual(len(snapshot.sessions), 1)
         session = snapshot.sessions[0]
         self.assertEqual(session.id, "claude-code:local_a")
-        self.assertEqual(session.capabilities, frozenset({"focus_session"}))
+        self.assertEqual(
+            session.capabilities,
+            frozenset({"focus_session", "new_session"}),
+        )
         self.assertEqual(session.icon, "claude")
         self.assertEqual(session.title, "Claude A")
         self.assertEqual(session.workspace_path, "/tmp/worktree-local_a")
@@ -69,7 +77,7 @@ class ClaudeCodeProviderTests(unittest.TestCase):
         provider = self._provider()
         self.assertEqual(
             provider.snapshot().sessions[0].capabilities,
-            frozenset({"focus_session"}),
+            frozenset({"focus_session", "new_session"}),
         )
 
         def focus_target(index: int) -> None:
@@ -97,6 +105,24 @@ class ClaudeCodeProviderTests(unittest.TestCase):
         self.assertTrue(result.accepted)
         self.assertEqual(result.verdict, "FOCUS_VERIFIED")
         self.assertEqual(result.details["shortcut_index"], 1)
+
+    def test_open_new_uses_official_deep_link_with_folder(self) -> None:
+        provider = self._provider()
+        completed = mock.Mock(returncode=0, stderr="")
+
+        with mock.patch(
+            "elchango.providers.claude_code.subprocess.run",
+            return_value=completed,
+        ) as run:
+            result = provider.open_new()
+
+        self.assertTrue(result.accepted)
+        self.assertEqual(result.verdict, "NEW_SESSION_REQUESTED")
+        deep_link = result.details["deep_link"]
+        self.assertIsInstance(deep_link, str)
+        self.assertTrue(deep_link.startswith("claude://code/new?folder="))
+        self.assertIn("launch+folder", deep_link)
+        run.assert_called_once()
 
     def test_fresh_hook_state_overlays_persistent_inventory(self) -> None:
         self._write_session("local_a", "cli-a", activity=200)
@@ -165,6 +191,7 @@ class ClaudeCodeProviderTests(unittest.TestCase):
             desktop_sessions_root=self.desktop_root,
             projects_root=self.projects_root,
             desktop_config=self.desktop_config,
+            launch_folder=self.launch_folder,
             activity_store=self.activity,
         )
 
