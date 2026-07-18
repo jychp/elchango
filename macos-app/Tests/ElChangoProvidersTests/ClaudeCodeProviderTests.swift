@@ -629,6 +629,7 @@ private actor ClaudeAutomation: NativeAutomating {
         _ text: String,
         bundleID: String,
         inputMarker: String,
+        emptyPlaceholderValue: String?,
         focusKeyCode: CGKeyCode?,
         submitCount: Int,
         targetVerifier: @escaping @Sendable () async throws -> Bool

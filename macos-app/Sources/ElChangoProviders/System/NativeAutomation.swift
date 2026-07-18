@@ -16,6 +16,7 @@ public protocol NativeAutomating: Sendable {
         _ text: String,
         bundleID: String,
         inputMarker: String,
+        emptyPlaceholderValue: String?,
         focusKeyCode: CGKeyCode?,
         submitCount: Int,
         targetVerifier: @escaping @Sendable () async throws -> Bool
@@ -116,6 +117,7 @@ public actor NativeAutomation: NativeAutomating {
         _ text: String,
         bundleID: String,
         inputMarker: String,
+        emptyPlaceholderValue: String?,
         focusKeyCode: CGKeyCode?,
         submitCount: Int,
         targetVerifier: @escaping @Sendable () async throws -> Bool
@@ -127,6 +129,8 @@ public actor NativeAutomation: NativeAutomating {
         }
         let started = ContinuousClock.now
         let identity = try await requireFrontmost(bundleID: bundleID)
+        prepareAccessibility(processIdentifier: identity.processIdentifier)
+        try await sleep(milliseconds: 200)
         if let focusKeyCode {
             try await postShortcut(
                 keyCode: focusKeyCode,
@@ -139,7 +143,8 @@ public actor NativeAutomation: NativeAutomating {
         let focused = try verifiedFocusedInput(
             processIdentifier: identity.processIdentifier,
             marker: inputMarker,
-            requireEmpty: true
+            requireEmpty: true,
+            emptyPlaceholderValue: emptyPlaceholderValue
         )
         _ = try await requireFrontmost(
             bundleID: bundleID,
@@ -148,16 +153,21 @@ public actor NativeAutomation: NativeAutomating {
         try verifyFocusedInput(
             focused,
             marker: inputMarker,
-            requireEmpty: true
+            requireEmpty: true,
+            emptyPlaceholderValue: emptyPlaceholderValue
         )
         guard try await targetVerifier() else {
             throw ProviderOperationError.targetUnverified(
                 "selected provider session changed before text dispatch"
             )
         }
-        try postText(
+        try await postText(
             text,
-            processIdentifier: identity.processIdentifier
+            bundleID: bundleID,
+            processIdentifier: identity.processIdentifier,
+            focusedElement: focused,
+            marker: inputMarker,
+            emptyPlaceholderValue: emptyPlaceholderValue
         )
         for _ in 0..<submitCount {
             try await sleep(milliseconds: 500)
@@ -175,11 +185,13 @@ public actor NativeAutomation: NativeAutomating {
                     "selected provider session changed before submission"
                 )
             }
-            try await postShortcut(
+            try await postFocusedKey(
                 keyCode: 36,
                 flags: [],
                 bundleID: bundleID,
-                processIdentifier: identity.processIdentifier
+                processIdentifier: identity.processIdentifier,
+                focusedElement: focused,
+                marker: inputMarker
             )
         }
         _ = try await requireFrontmost(
@@ -200,6 +212,8 @@ public actor NativeAutomation: NativeAutomating {
     ) async throws -> ProviderActionResult {
         let started = ContinuousClock.now
         let identity = try await requireFrontmost(bundleID: bundleID)
+        prepareAccessibility(processIdentifier: identity.processIdentifier)
+        try await sleep(milliseconds: 200)
         if let focusKeyCode {
             try await postShortcut(
                 keyCode: focusKeyCode,
@@ -209,12 +223,15 @@ public actor NativeAutomation: NativeAutomating {
             )
             try await sleep(milliseconds: 200)
         }
+        let focused: AXUIElement?
         if let inputMarker {
-            _ = try verifiedFocusedInput(
+            focused = try verifiedFocusedInput(
                 processIdentifier: identity.processIdentifier,
                 marker: inputMarker,
                 requireEmpty: false
             )
+        } else {
+            focused = nil
         }
         _ = try await requireFrontmost(
             bundleID: bundleID,
@@ -225,11 +242,13 @@ public actor NativeAutomation: NativeAutomating {
                 "selected provider session changed before shortcut dispatch"
             )
         }
-        try await postShortcut(
+        try await postFocusedKey(
             keyCode: 36,
             flags: .maskCommand,
             bundleID: bundleID,
-            processIdentifier: identity.processIdentifier
+            processIdentifier: identity.processIdentifier,
+            focusedElement: focused,
+            marker: inputMarker
         )
         _ = try await requireFrontmost(
             bundleID: bundleID,
@@ -268,14 +287,28 @@ public actor NativeAutomation: NativeAutomating {
         return identity
     }
 
+    private func prepareAccessibility(processIdentifier: pid_t) {
+        let applicationElement = AXUIElementCreateApplication(
+            processIdentifier
+        )
+        AXUIElementSetMessagingTimeout(applicationElement, 1)
+        _ = AXUIElementSetAttributeValue(
+            applicationElement,
+            "AXManualAccessibility" as CFString,
+            kCFBooleanTrue
+        )
+    }
+
     private func verifiedFocusedInput(
         processIdentifier: pid_t,
         marker: String,
-        requireEmpty: Bool
+        requireEmpty: Bool,
+        emptyPlaceholderValue: String? = nil
     ) throws -> AXUIElement {
         let applicationElement = AXUIElementCreateApplication(
             processIdentifier
         )
+        AXUIElementSetMessagingTimeout(applicationElement, 1)
         var value: CFTypeRef?
         let result = AXUIElementCopyAttributeValue(
             applicationElement,
@@ -291,7 +324,8 @@ public actor NativeAutomation: NativeAutomating {
         try verifyFocusedInput(
             element,
             marker: marker,
-            requireEmpty: requireEmpty
+            requireEmpty: requireEmpty,
+            emptyPlaceholderValue: emptyPlaceholderValue
         )
         return element
     }
@@ -299,7 +333,8 @@ public actor NativeAutomation: NativeAutomating {
     private func verifyFocusedInput(
         _ element: AXUIElement,
         marker: String,
-        requireEmpty: Bool
+        requireEmpty: Bool,
+        emptyPlaceholderValue: String? = nil
     ) throws {
         let role = try stringAttribute(
             element,
@@ -330,13 +365,30 @@ public actor NativeAutomation: NativeAutomating {
             )
         }
         if requireEmpty {
-            let count = try integerAttribute(
+            let value = optionalTextAttribute(
                 element,
-                name: "AXNumberOfCharacters" as CFString
+                name: kAXValueAttribute as CFString
             )
-            guard count == 0 else {
+            let isEmpty: Bool
+            let count: Int
+            if let value {
+                count = value.count
+                isEmpty = value.isEmpty
+                    || value == "\n"
+                    || (
+                        emptyPlaceholderValue != nil
+                            && value == emptyPlaceholderValue
+                    )
+            } else {
+                count = try integerAttribute(
+                    element,
+                    name: "AXNumberOfCharacters" as CFString
+                )
+                isEmpty = count == 0
+            }
+            guard isEmpty else {
                 throw ProviderOperationError.targetUnverified(
-                    "focused input is not empty"
+                    "focused input is not empty (\(count) characters)"
                 )
             }
         }
@@ -344,10 +396,24 @@ public actor NativeAutomation: NativeAutomating {
 
     private func postText(
         _ text: String,
-        processIdentifier: pid_t
-    ) throws {
+        bundleID: String,
+        processIdentifier: pid_t,
+        focusedElement: AXUIElement,
+        marker: String,
+        emptyPlaceholderValue: String?
+    ) async throws {
         let units = Array(text.utf16)
         for start in stride(from: 0, to: units.count, by: 20) {
+            _ = try await requireFrontmost(
+                bundleID: bundleID,
+                processIdentifier: processIdentifier
+            )
+            try verifyFocusedInput(
+                focusedElement,
+                marker: marker,
+                requireEmpty: start == 0,
+                emptyPlaceholderValue: emptyPlaceholderValue
+            )
             let chunk = Array(units[start..<min(start + 20, units.count)])
             guard let down = CGEvent(
                 keyboardEventSource: nil,
@@ -372,9 +438,48 @@ public actor NativeAutomation: NativeAutomating {
                     unicodeString: buffer.baseAddress
                 )
             }
-            down.postToPid(processIdentifier)
-            up.postToPid(processIdentifier)
+            down.post(tap: .cghidEventTap)
+            up.post(tap: .cghidEventTap)
+            try await sleep(milliseconds: 20)
         }
+    }
+
+    private func postFocusedKey(
+        keyCode: CGKeyCode,
+        flags: CGEventFlags,
+        bundleID: String,
+        processIdentifier: pid_t,
+        focusedElement: AXUIElement?,
+        marker: String?
+    ) async throws {
+        _ = try await requireFrontmost(
+            bundleID: bundleID,
+            processIdentifier: processIdentifier
+        )
+        if let focusedElement, let marker {
+            try verifyFocusedInput(
+                focusedElement,
+                marker: marker,
+                requireEmpty: false
+            )
+        }
+        guard let down = CGEvent(
+            keyboardEventSource: nil,
+            virtualKey: keyCode,
+            keyDown: true
+        ), let up = CGEvent(
+            keyboardEventSource: nil,
+            virtualKey: keyCode,
+            keyDown: false
+        ) else {
+            throw ProviderOperationError.system(
+                "macOS failed to create a focused keyboard event"
+            )
+        }
+        down.flags = flags
+        up.flags = flags
+        down.post(tap: .cghidEventTap)
+        up.post(tap: .cghidEventTap)
     }
 
     private func postShortcut(
@@ -468,6 +573,24 @@ public actor NativeAutomation: NativeAutomating {
             )
         }
         return number.intValue
+    }
+
+    private func optionalTextAttribute(
+        _ element: AXUIElement,
+        name: CFString
+    ) -> String? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, name, &value) == .success
+        else {
+            return nil
+        }
+        if let string = value as? String {
+            return string
+        }
+        if let attributed = value as? NSAttributedString {
+            return attributed.string
+        }
+        return nil
     }
 
     private func stringListAttribute(

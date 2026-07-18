@@ -384,6 +384,7 @@ public actor ClaudeCodeProvider: AgentProvider {
                 "Open a pull request for the current branch.",
                 bundleID: Self.bundleID,
                 inputMarker: Self.inputMarker,
+                emptyPlaceholderValue: nil,
                 focusKeyCode: nil,
                 submitCount: 1,
                 targetVerifier: {
@@ -395,6 +396,7 @@ public actor ClaudeCodeProvider: AgentProvider {
                 "Commit the current changes with a Conventional Commit message and push the current branch.",
                 bundleID: Self.bundleID,
                 inputMarker: Self.inputMarker,
+                emptyPlaceholderValue: nil,
                 focusKeyCode: nil,
                 submitCount: 1,
                 targetVerifier: {
@@ -406,6 +408,7 @@ public actor ClaudeCodeProvider: AgentProvider {
                 "/compact",
                 bundleID: Self.bundleID,
                 inputMarker: Self.inputMarker,
+                emptyPlaceholderValue: nil,
                 focusKeyCode: nil,
                 submitCount: 2,
                 targetVerifier: {
