@@ -4,6 +4,7 @@ import unittest
 
 from elchango.deck import DeckService, provider_positions
 from elchango.models import AgentSession, ProviderSnapshot
+from elchango.providers.base import ProviderError
 
 
 class FakeProvider:
@@ -25,6 +26,14 @@ class FakeClock:
 
     def __call__(self) -> float:
         return self.now
+
+
+class FailingProvider(FakeProvider):
+    provider_id = "failing"
+    display_name = "Failing"
+
+    def snapshot(self) -> ProviderSnapshot:
+        raise ProviderError("inventory temporarily unavailable")
 
 
 def make_session(
@@ -74,6 +83,20 @@ class DeckServiceTests(unittest.TestCase):
         self.assertEqual(snapshot.source, "no providers available")
         self.assertTrue(all(not button.enabled for button in snapshot.buttons[:10]))
         self.assertFalse(snapshot.buttons[14].enabled)
+
+    def test_provider_failure_does_not_hide_healthy_provider(self) -> None:
+        healthy = FakeProvider(make_snapshot(1))
+        failing = FailingProvider(make_snapshot(1))
+        service = DeckService({"test": healthy, "failing": failing})
+
+        snapshot = service.snapshot()
+
+        self.assertEqual(snapshot.buttons[0].session_id, "test:session-0")
+        self.assertIn("failing=unavailable", snapshot.source)
+        self.assertEqual(
+            service.provider_errors(),
+            {"failing": "inventory temporarily unavailable"},
+        )
 
     def test_snapshot_always_contains_fifteen_ordered_buttons(self) -> None:
         service = DeckService(FakeProvider(make_snapshot(3)))

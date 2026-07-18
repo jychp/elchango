@@ -25,6 +25,7 @@ interface VisibleKey {
   port: KeyPort;
   position: number;
   renderedImage?: string;
+  feedbackImage: string | undefined;
 }
 
 export class StreamDeckSurface {
@@ -44,7 +45,7 @@ export class StreamDeckSurface {
 
   register(port: KeyPort): void {
     const position = positionFromCoordinates(port.row, port.column);
-    this.keys.set(port.id, { port, position });
+    this.keys.set(port.id, { port, position, feedbackImage: undefined });
     if (this.online && this.snapshotValue) {
       void this.renderKey(this.keys.get(port.id)!);
     } else {
@@ -165,23 +166,26 @@ export class StreamDeckSurface {
   }
 
   private async setKeyImage(key: VisibleKey, image: string): Promise<void> {
+    if (key.feedbackImage && image !== key.feedbackImage) return;
     if (key.renderedImage === image) return;
     await key.port.setImage(image);
     key.renderedImage = image;
   }
 
   private async showSuccess(key: VisibleKey): Promise<void> {
-    await this.setKeyImage(key, SUCCESS_IMAGE);
-    await delay(this.successFeedbackMs);
-    if (this.keys.get(key.port.id) === key) {
-      await this.renderKey(key);
-    }
+    await this.showFeedback(key, SUCCESS_IMAGE);
   }
 
   private async showFailure(key: VisibleKey): Promise<void> {
-    await this.setKeyImage(key, FAILURE_IMAGE);
+    await this.showFeedback(key, FAILURE_IMAGE);
+  }
+
+  private async showFeedback(key: VisibleKey, image: string): Promise<void> {
+    key.feedbackImage = image;
+    await this.setKeyImage(key, image);
     await delay(this.successFeedbackMs);
-    if (this.keys.get(key.port.id) === key) {
+    if (this.keys.get(key.port.id) === key && key.feedbackImage === image) {
+      key.feedbackImage = undefined;
       await this.renderKey(key);
     }
   }

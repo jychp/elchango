@@ -178,7 +178,7 @@ def main(argv: list[str] | None = None) -> int:
             unavailable_providers["claude-code"] = str(error)
         else:
             providers[claude.provider_id] = claude
-            hook_recorders[claude.provider_id] = claude_activity_store.record
+            hook_recorders[claude.provider_id] = claude.record_hook
     else:
         unavailable_providers["claude-code"] = (
             "Claude Desktop application is not installed"

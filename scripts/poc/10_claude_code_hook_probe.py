@@ -35,8 +35,9 @@ Safety and side effects
 ``config`` and ``analyze`` are read-only. ``record`` has one explicit side
 effect: it creates or appends to the file passed with ``--log``. It never
 changes Claude settings, blocks an event, controls a session, or stores prompt
-text, assistant text, tool inputs, or tool outputs. It always exits zero after
-accepting a valid payload, so it cannot intentionally block Claude Code.
+text, assistant text, tool inputs, or tool outputs. The ``record`` command
+always exits zero, including when evidence cannot be written, so this
+diagnostic hook cannot intentionally block Claude Code.
 
 Examples
 ========
@@ -399,7 +400,7 @@ def main() -> int:
         return 0
     except (FileNotFoundError, OSError, ProbeError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
-        return 2
+        return 0 if args.command == "record" else 2
 
 
 if __name__ == "__main__":

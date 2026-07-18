@@ -286,10 +286,16 @@ def focus(
     while time.monotonic() < deadline:
         current = inventory(Path(target.record_path).parents[2])
         current_target = next(
-            session
-            for session in current
-            if session.desktop_session_id == session_id
+            (
+                session
+                for session in current
+                if session.desktop_session_id == session_id
+                and not session.archived
+            ),
+            None,
         )
+        if current_target is None:
+            break
         focused_after = current_target.last_focused_at_ms
         current_visible = [session for session in current if not session.archived]
         newest = max(
@@ -615,7 +621,14 @@ def main() -> int:
     args = parse_args()
     try:
         sessions = inventory(args.desktop_sessions_root)
-        persisted_shortcut_order = shortcut_order(args.desktop_config, sessions)
+        needs_shortcut_order = args.sort_by == "shortcut" or (
+            args.execute and args.strategy == "shortcut"
+        )
+        persisted_shortcut_order = (
+            shortcut_order(args.desktop_config, sessions)
+            if needs_shortcut_order
+            else ()
+        )
         if args.sort_by == "activity":
             sessions.sort(
                 key=lambda session: (

@@ -16,6 +16,7 @@ from elchango.deck import DeckService
 from elchango.focus import FocusResult
 from elchango.launch import LaunchResult
 from elchango.models import AgentSession, ProviderSnapshot
+from elchango.providers.base import ProviderError
 from elchango.providers.cursor_adapter import CursorAdapter
 from elchango.server import DeckHTTPServer, DeckRequestHandler, serve
 
@@ -165,6 +166,29 @@ class DeckServerTests(unittest.TestCase):
             {"claude-code": "Claude Desktop application is not installed"},
         )
 
+    def test_health_reports_runtime_provider_failures(self) -> None:
+        class FailingProvider(StaticProvider):
+            provider_id = "failing"
+
+            def snapshot(self) -> ProviderSnapshot:
+                raise ProviderError("runtime inventory failure")
+
+        self.server.deck_service = DeckService(
+            {"cursor": self.cursor, "failing": FailingProvider()}
+        )
+        self.server.deck_service.snapshot()
+
+        with urllib.request.urlopen(
+            f"{self.base_url}/api/health",
+            timeout=2,
+        ) as response:
+            payload = json.load(response)
+
+        self.assertEqual(
+            payload["unavailable_providers"]["failing"],
+            "runtime inventory failure",
+        )
+
     def test_snapshot_clients_keep_independent_pages(self) -> None:
         self.server.deck_service = DeckService(StaticProvider(count=11))
 
@@ -302,7 +326,7 @@ class DeckServerTests(unittest.TestCase):
             f"{self.base_url}/api/focus",
             data=json.dumps(
                 {
-                    "session_id": "session-1",
+                    "session_id": "cursor:session-1",
                     "revision": 1,
                 }
             ).encode(),
@@ -328,7 +352,7 @@ class DeckServerTests(unittest.TestCase):
             f"{self.base_url}/api/focus",
             data=json.dumps(
                 {
-                    "session_id": "session-1",
+                    "session_id": "cursor:session-1",
                     "revision": 0,
                 }
             ).encode(),

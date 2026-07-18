@@ -24,6 +24,7 @@ class CLITests(unittest.TestCase):
                 ),
                 patch("elchango.cli.serve") as serve,
             ):
+                claude_provider_class.return_value.provider_id = "claude-code"
                 result = main(
                     [
                         "serve",
@@ -36,6 +37,10 @@ class CLITests(unittest.TestCase):
         self.assertEqual(result, 0)
         provider_class.return_value.snapshot.assert_called_once_with()
         claude_provider_class.return_value.snapshot.assert_called_once_with()
+        self.assertIs(
+            serve.call_args.kwargs["hook_recorders"]["claude-code"],
+            claude_provider_class.return_value.record_hook,
+        )
         self.assertTrue(serve.call_args.args[-1])
 
     def test_one_unavailable_provider_does_not_block_the_other(self) -> None:

@@ -39,6 +39,10 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/health":
             providers = self.server.providers
+            unavailable_providers = {
+                **getattr(self.server, "unavailable_providers", {}),
+                **self.server.deck_service.provider_errors(),
+            }
             self._send_json(
                 HTTPStatus.OK,
                 {
@@ -56,11 +60,7 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
                         provider_id: sorted(provider.capabilities)
                         for provider_id, provider in providers.items()
                     },
-                    "unavailable_providers": getattr(
-                        self.server,
-                        "unavailable_providers",
-                        {},
-                    ),
+                    "unavailable_providers": unavailable_providers,
                 },
             )
             return
@@ -117,8 +117,7 @@ class DeckRequestHandler(BaseHTTPRequestHandler):
                 (
                     button
                     for button in snapshot.buttons
-                    if button.provider_id == "cursor"
-                    and button.native_session_id == session_id
+                    if button.session_id == session_id
                     and button.kind == "session"
                     and button.enabled
                 ),

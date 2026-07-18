@@ -16,7 +16,7 @@ from elchango.models import (
     DeckSnapshot,
     SessionState,
 )
-from elchango.providers.base import AgentProvider
+from elchango.providers.base import AgentProvider, ProviderError
 
 
 SESSION_SLOTS = 10
@@ -94,6 +94,8 @@ class DeckService:
         ):
             raise ValueError("default_provider_id is not registered")
         self._lock = threading.Lock()
+        self._provider_error_lock = threading.Lock()
+        self._provider_errors: dict[str, str] = {}
         self._session_order: list[str | None] = []
         self._refresh_requested = True
         self._max_client_states = max_client_states
@@ -173,15 +175,28 @@ class DeckService:
         )
 
     def _combined_snapshot(self) -> _CombinedSnapshot:
-        snapshots = tuple(
-            provider.snapshot() for provider in self._providers.values()
-        )
+        snapshots = []
+        provider_errors: dict[str, str] = {}
+        for provider_id, provider in self._providers.items():
+            try:
+                snapshots.append(provider.snapshot())
+            except ProviderError as error:
+                provider_errors[provider_id] = str(error)
+        with self._provider_error_lock:
+            self._provider_errors = provider_errors
         if not snapshots:
+            source = (
+                ";".join(
+                    f"{provider_id}=unavailable: {error}"
+                    for provider_id, error in provider_errors.items()
+                )
+                or "no providers available"
+            )
             return _CombinedSnapshot(
                 observed_at_ms=time.time_ns() // 1_000_000,
                 selected_session_id=None,
                 sessions=(),
-                source="no providers available",
+                source=source,
                 read_only=True,
             )
         selected_session_id = next(
@@ -201,11 +216,25 @@ class DeckService:
                 for session in snapshot.sessions
             ),
             source=";".join(
-                f"{snapshot.provider_id}={snapshot.source}"
-                for snapshot in snapshots
+                (
+                    *(
+                        f"{snapshot.provider_id}={snapshot.source}"
+                        for snapshot in snapshots
+                    ),
+                    *(
+                        f"{provider_id}=unavailable: {error}"
+                        for provider_id, error in provider_errors.items()
+                    ),
+                )
             ),
             read_only=all(snapshot.read_only for snapshot in snapshots),
         )
+
+    def provider_errors(self) -> dict[str, str]:
+        """Return provider failures observed during the latest snapshot."""
+
+        with self._provider_error_lock:
+            return dict(self._provider_errors)
 
     def refresh(self, client_id: str = DEFAULT_CLIENT_ID) -> DeckSnapshot:
         client_id = validate_client_id(client_id)

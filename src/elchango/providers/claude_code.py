@@ -238,10 +238,15 @@ class ClaudeCodeProvider:
                     if not record.archived
                 )
             current_target = next(
-                record
-                for record in current
-                if record.desktop_session_id == native_session_id
+                (
+                    record
+                    for record in current
+                    if record.desktop_session_id == native_session_id
+                ),
+                None,
             )
+            if current_target is None:
+                break
             newest = max(
                 (
                     record.last_focused_at_ms
@@ -294,13 +299,18 @@ class ClaudeCodeProvider:
         with self._launch_lock:
             deep_link = "claude://code/new"
             started = time.monotonic()
-            completed = subprocess.run(
-                ["/usr/bin/open", deep_link],
-                capture_output=True,
-                text=True,
-                timeout=5,
-                check=False,
-            )
+            try:
+                completed = subprocess.run(
+                    ["/usr/bin/open", deep_link],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired) as error:
+                raise ClaudeCodeProviderError(
+                    f"cannot open Claude Desktop new session link: {error}"
+                ) from error
             if completed.returncode != 0:
                 raise ClaudeCodeProviderError(
                     "cannot open Claude Desktop new session link: "
@@ -316,6 +326,24 @@ class ClaudeCodeProvider:
                     "message": "Claude Desktop new Code session requested.",
                 },
             )
+
+    def record_hook(
+        self,
+        payload: dict[str, Any],
+        observed_at_ms: int,
+    ) -> object:
+        """Record hook evidence only for a current persistent Code session."""
+
+        session_id = payload.get("session_id")
+        with self._lock:
+            known_session_ids = {
+                record.cli_session_id
+                for record in self._records_locked()
+                if not record.archived
+            }
+        if session_id not in known_session_ids:
+            raise ValueError("Claude Code hook session_id is not in current inventory")
+        return self.activity_store.record(payload, observed_at_ms)
 
     def _records(self) -> tuple[_DesktopRecord, ...]:
         if not self._desktop_sessions_root.is_dir():
@@ -498,7 +526,13 @@ def _shortcut_order(
         local_slice = epitaxy["dframe-local-slice"]
         assignments = local_slice["customGroupAssignments"]
         group_order = local_slice["customGroupOrder"]
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError) as error:
+    except (
+        OSError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        KeyError,
+        TypeError,
+    ) as error:
         raise ClaudeCodeProviderError(
             f"{config_path}: cannot read Claude sidebar order: {error}"
         ) from error

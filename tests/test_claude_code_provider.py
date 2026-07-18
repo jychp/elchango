@@ -155,6 +155,34 @@ class ClaudeCodeProviderTests(unittest.TestCase):
             ("idle", "observed", "completion acknowledged by focus"),
         )
 
+    def test_focus_returns_unverified_when_target_disappears(self) -> None:
+        target_path = self._write_session(
+            "local_target",
+            "cli-target",
+            activity=200,
+            last_focused_at=100,
+        )
+        self._write_session(
+            "local_other",
+            "cli-other",
+            activity=100,
+            last_focused_at=200,
+        )
+        self._write_shortcut_config(["local_target"])
+        provider = self._provider()
+
+        def remove_target(_index: int) -> None:
+            target_path.unlink()
+
+        with mock.patch(
+            "elchango.providers.claude_code._send_focus_shortcut",
+            side_effect=remove_target,
+        ):
+            result = provider.focus("local_target")
+
+        self.assertFalse(result.accepted)
+        self.assertEqual(result.verdict, "FOCUS_UNVERIFIED")
+
     def test_open_new_uses_neutral_official_deep_link(self) -> None:
         provider = self._provider()
         completed = mock.Mock(returncode=0, stderr="")
@@ -169,6 +197,51 @@ class ClaudeCodeProviderTests(unittest.TestCase):
         self.assertEqual(result.verdict, "NEW_SESSION_REQUESTED")
         self.assertEqual(result.details["deep_link"], "claude://code/new")
         run.assert_called_once()
+
+    def test_open_new_translates_process_failures(self) -> None:
+        provider = self._provider()
+
+        with mock.patch(
+            "elchango.providers.claude_code.subprocess.run",
+            side_effect=OSError("open unavailable"),
+        ):
+            with self.assertRaisesRegex(
+                ClaudeCodeProviderError,
+                "cannot open Claude Desktop new session link",
+            ):
+                provider.open_new()
+
+    def test_record_hook_rejects_unknown_session_ids(self) -> None:
+        self._write_session("local_a", "cli-a", activity=200)
+        provider = self._provider()
+        payload = {
+            "hook_event_name": "Stop",
+            "session_id": "unknown",
+            "cwd": "/tmp/unknown",
+            "transcript_path": "/tmp/unknown.jsonl",
+        }
+
+        with self.assertRaisesRegex(ValueError, "not in current inventory"):
+            provider.record_hook(payload, 100)
+        self.assertIsNone(self.activity.state_for("unknown", 100))
+
+    def test_invalid_sidebar_shape_fails_as_provider_error(self) -> None:
+        self._write_session(
+            "local_target",
+            "cli-target",
+            activity=200,
+            last_focused_at=100,
+        )
+        self.desktop_config.write_text(
+            json.dumps({"preferences": None}),
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(
+            ClaudeCodeProviderError,
+            "cannot read Claude sidebar order",
+        ):
+            self._provider().focus("local_target")
 
     def test_fresh_hook_state_overlays_persistent_inventory(self) -> None:
         self._write_session("local_a", "cli-a", activity=200)

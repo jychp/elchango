@@ -239,6 +239,36 @@ test("surface replaces native warning feedback with the KO logo", async () => {
   surface.unregister(key.id);
 });
 
+test("surface preserves KO feedback while polling", async () => {
+  const images: string[] = [];
+  const surface = new StreamDeckSurface(
+    {
+      async snapshot() {
+        return snapshot(1);
+      },
+      async activate() {
+        throw new Error("focus failed");
+      },
+    },
+    { error() {} },
+    30,
+  );
+  const key = recordingKey(images, []);
+  surface.register(key);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  const activation = surface.activate(key.id);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(images.at(-1), "static/imgs/actions/key/failure.png");
+
+  await surface.refreshNow();
+  assert.equal(images.at(-1), "static/imgs/actions/key/failure.png");
+
+  await activation;
+  assert.match(decodeSvg(images.at(-1)!), /Agent 0/);
+  surface.unregister(key.id);
+});
+
 test("surface rejects stale responses but accepts a newer service epoch", async () => {
   const snapshots = [
     snapshotWith(5, 200, "Current"),

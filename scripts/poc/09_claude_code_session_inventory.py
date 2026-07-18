@@ -260,6 +260,8 @@ def live_cli_session_ids(process_dir: Path) -> set[str]:
         if not isinstance(value, dict):
             raise SchemaError(f"{path}: process record must be an object")
         pid = _required_integer(value, "pid", path)
+        if pid <= 0:
+            raise SchemaError(f"{path}: pid must be a positive integer")
         session_id = _required_string(value, "sessionId", path)
         if process_exists(pid):
             session_ids.add(session_id)
@@ -342,7 +344,7 @@ def inventory(
             live_cli_ids,
         )
         sessions.append(session)
-        if candidate_count > 1:
+        if not session.archived and candidate_count > 1:
             ambiguous += 1
 
     sessions.sort(
