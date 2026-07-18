@@ -27,6 +27,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var serviceState: ServiceState = .starting
     private var statusItem: NSStatusItem?
     private var refreshTimer: Timer?
+    private var providerStatuses = [
+        "cursor": "starting",
+        "claude-code": "starting",
+    ]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -58,7 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             withLength: NSStatusItem.squareLength
         )
         item.button?.image = NSImage(
-            systemSymbolName: "rectangle.grid.3x2.fill",
+            systemSymbolName: "square.grid.3x3.fill",
             accessibilityDescription: "elChango"
         )
         item.button?.image?.isTemplate = true
@@ -74,6 +78,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             let preferences = try PreferencesStore()
             let registry = ProviderRegistry()
+            let enabledProviderIDs = Set(
+                registry.providers.map { $0.descriptor.id }
+            )
+            providerStatuses = Dictionary(
+                uniqueKeysWithValues: ["cursor", "claude-code"].map { id in
+                    if let reason = registry.unavailableProviders[id] {
+                        return (id, "unavailable: \(reason)")
+                    }
+                    return (
+                        id,
+                        enabledProviderIDs.contains(id)
+                            ? "enabled"
+                            : "disabled"
+                    )
+                }
+            )
             let deckService = try DeckService(
                 providers: registry.providers,
                 preferences: preferences
@@ -106,6 +126,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func rebuildMenu() {
         let menu = NSMenu()
 
+        let version = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleShortVersionString"
+        ) as? String ?? "unknown"
+        let titleItem = NSMenuItem(
+            title: "",
+            action: nil,
+            keyEquivalent: ""
+        )
+        titleItem.view = menuHeaderView(version: version)
+        menu.addItem(titleItem)
+
         let stateItem = NSMenuItem(
             title: "Service: \(serviceState.label)",
             action: nil,
@@ -123,11 +154,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(endpointItem)
 
         menu.addItem(.separator())
-        menu.addItem(
+        let webDeckItem = menu.addItem(
             withTitle: "Open Web Deck",
             action: #selector(openWebDeck),
             keyEquivalent: "o"
-        ).target = self
+        )
+        webDeckItem.target = self
+        webDeckItem.image = menuIcon(named: "safari")
 
         if !accessibility.isTrusted {
             menu.addItem(
@@ -137,19 +170,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ).target = self
         }
 
-        menu.addItem(
+        let diagnosticsItem = menu.addItem(
             withTitle: "Diagnostics",
             action: #selector(showDiagnostics),
             keyEquivalent: "d"
-        ).target = self
+        )
+        diagnosticsItem.target = self
+        diagnosticsItem.image = menuIcon(named: "stethoscope")
         menu.addItem(.separator())
-        menu.addItem(
-            withTitle: "Quit elChango",
+        let quitItem = menu.addItem(
+            withTitle: "Quit",
             action: #selector(quit),
             keyEquivalent: "q"
-        ).target = self
+        )
+        quitItem.target = self
+        quitItem.image = menuIcon(named: "xmark.rectangle")
 
         statusItem?.menu = menu
+    }
+
+    private func menuHeaderView(version: String) -> NSView {
+        let view = NSView(
+            frame: NSRect(x: 0, y: 0, width: 260, height: 32)
+        )
+        let title = NSTextField(labelWithString: "elChango")
+        title.font = .boldSystemFont(ofSize: 14)
+        title.textColor = .white
+        let versionLabel = NSTextField(labelWithString: version)
+        versionLabel.font = .systemFont(ofSize: 9)
+        versionLabel.textColor = .white
+
+        let stack = NSStackView(views: [title, versionLabel])
+        stack.orientation = .horizontal
+        stack.alignment = .firstBaseline
+        stack.spacing = 3
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            stack.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+        ])
+        return view
+    }
+
+    private func menuIcon(named symbolName: String) -> NSImage? {
+        guard let image = NSImage(
+            systemSymbolName: symbolName,
+            accessibilityDescription: nil
+        ) else {
+            return nil
+        }
+        image.isTemplate = true
+        image.size = NSSize(width: 16, height: 16)
+        return image
     }
 
     @objc
@@ -184,6 +257,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var diagnosticsText: String {
         let serviceDetails: String
+        let version = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleShortVersionString"
+        ) as? String ?? "unknown"
         switch serviceState {
         case .starting:
             serviceDetails = "starting"
@@ -194,12 +270,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         return """
+        Version: \(version)
         Service: \(serviceDetails)
         Endpoint: http://127.0.0.1:\(LoopbackService.defaultPort)
         Accessibility: \(accessibility.isTrusted ? "granted" : "not granted")
-        Web assets: \(Self.webAssetRoot?.path ?? "not found")
-        Cursor: native inventory and actions enabled
-        Claude Code: native inventory and actions enabled
+
+        Cursor: \(providerStatuses["cursor"] ?? "unknown")
+        Claude Code: \(providerStatuses["claude-code"] ?? "unknown")
         """
     }
 

@@ -197,7 +197,7 @@
 </script>
 
 <svelte:head>
-  <title>elChango control surface</title>
+  <title>elChango</title>
   <meta
     name="description"
     content="Local control surface for monitored AI coding agent sessions."
