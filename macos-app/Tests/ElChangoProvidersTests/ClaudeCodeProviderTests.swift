@@ -301,6 +301,42 @@ struct ClaudeCodeProviderTests {
         #expect(snapshot.sessions.map(\.nativeID) == ["local_large"])
     }
 
+    @Test("focus succeeds when exact sidebar shortcut dispatch is verified")
+    func focusDispatchDoesNotWaitForPersistence() async throws {
+        let fixture = try ClaudeTemporaryFixture()
+        try fixture.writeRecord(
+            desktopID: "local_current",
+            cliID: "cli-current",
+            lastFocusedAt: 500
+        )
+        try fixture.writeRecord(
+            desktopID: "local_target",
+            cliID: "cli-target",
+            lastFocusedAt: 100
+        )
+        let config = try fixture.writeShortcutConfig(
+            starred: ["local_current", "local_target"]
+        )
+        let automation = ClaudeAutomation(
+            frontmostBundleID: ClaudeCodeProvider.bundleID
+        )
+        let provider = ClaudeCodeProvider(
+            desktopSessionsRootURL: fixture.desktopRoot,
+            projectsRootURL: fixture.projectsRoot,
+            desktopConfigURL: config,
+            automation: automation,
+            clock: { 1_000 }
+        )
+
+        let result = try await provider.focus(
+            nativeSessionID: "local_target"
+        )
+
+        #expect(result.accepted)
+        #expect(result.verdict == "FOCUS_DISPATCH_VERIFIED")
+        #expect(await automation.shortcutCount() == 1)
+    }
+
     @Test("verified commands preserve the selected Claude target")
     func verifiedCommand() async throws {
         let fixture = try ClaudeTemporaryFixture()
@@ -332,6 +368,10 @@ struct ClaudeCodeProviderTests {
         #expect(result.accepted)
         #expect(await automation.dispatchedTexts() == [
             "Open a pull request for the current branch.",
+        ])
+        #expect(await automation.dispatchedSubmitCounts() == [2])
+        #expect(await automation.dispatchedEmptyPlaceholders() == [
+            "Type / for commands\n",
         ])
     }
 
@@ -604,6 +644,9 @@ private struct ClaudeExpectedSession: Codable, Equatable {
 private actor ClaudeAutomation: NativeAutomating {
     private var bundleID: String?
     private var texts: [String] = []
+    private var submitCounts: [Int] = []
+    private var emptyPlaceholders: [String?] = []
+    private var shortcuts = 0
 
     init(frontmostBundleID: String?) {
         bundleID = frontmostBundleID
@@ -623,7 +666,9 @@ private actor ClaudeAutomation: NativeAutomating {
         keyCode: CGKeyCode,
         flags: CGEventFlags,
         bundleID: String
-    ) async throws {}
+    ) async throws {
+        shortcuts += 1
+    }
 
     func dispatchText(
         _ text: String,
@@ -638,6 +683,8 @@ private actor ClaudeAutomation: NativeAutomating {
             throw ProviderOperationError.targetUnverified("fixture target")
         }
         texts.append(text)
+        submitCounts.append(submitCount)
+        emptyPlaceholders.append(emptyPlaceholderValue)
         return ProviderActionResult(
             accepted: true,
             verdict: "DISPATCH_VERIFIED",
@@ -663,5 +710,17 @@ private actor ClaudeAutomation: NativeAutomating {
 
     func dispatchedTexts() -> [String] {
         texts
+    }
+
+    func dispatchedSubmitCounts() -> [Int] {
+        submitCounts
+    }
+
+    func dispatchedEmptyPlaceholders() -> [String?] {
+        emptyPlaceholders
+    }
+
+    func shortcutCount() -> Int {
+        shortcuts
     }
 }

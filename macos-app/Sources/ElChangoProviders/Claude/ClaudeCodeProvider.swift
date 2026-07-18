@@ -40,6 +40,7 @@ public actor ClaudeCodeProvider: AgentProvider {
     public static let maximumMetadataPrefixBytes = 64 * 1_024
     public static let bundleID = "com.anthropic.claudefordesktop"
     public static let inputMarker = "tiptapProseMirrorProseMirror-focused"
+    public static let emptyInputPlaceholder = "Type / for commands\n"
     public static let commands: Set<CommandID> = [
         .accept, .createPR, .commitPush, .compact,
     ]
@@ -240,52 +241,37 @@ public actor ClaudeCodeProvider: AgentProvider {
             }
             try await sendClaudeSidebarShortcut(index: index + 1)
         }
-        let deadline = ContinuousClock.now.advanced(by: .seconds(4))
-        repeat {
-            let current = try readRecords().filter { !$0.isArchived }
-            if let currentTarget = current.first(where: {
-                $0.desktopSessionID == nativeSessionID
-            }) {
-                let newest = current.compactMap(
-                    \.lastFocusedAtMilliseconds
-                ).max() ?? -1
-                let uniquelyNewest =
-                    currentTarget.lastFocusedAtMilliseconds == newest
-                    && current.filter {
-                        $0.lastFocusedAtMilliseconds == newest
-                    }.count == 1
-                if let focused = currentTarget.lastFocusedAtMilliseconds,
-                    (focused > beforeMaximum || targetAlreadySelected),
-                    uniquelyNewest,
-                    try await isFrontmost()
-                {
-                    activityStore.acknowledge(
-                        currentTarget.cliSessionID,
-                        observedAtMilliseconds: clock()
-                    )
-                    return actionResult(
-                        accepted: true,
-                        verdict: "FOCUS_VERIFIED",
-                        message: "Exact Claude Desktop session focus verified.",
-                        started: started,
-                        executed: true,
-                        details: [
-                            "session_id": .string(nativeSessionID),
-                            "strategy": .string("sidebar_shortcut"),
-                            "shortcut_index": .integer(Int64(index + 1)),
-                        ]
-                    )
-                }
-            }
-            try await Task.sleep(for: .milliseconds(100))
-        } while ContinuousClock.now < deadline
+        guard try await isFrontmost() else {
+            return actionResult(
+                accepted: false,
+                verdict: "FOCUS_DISPATCH_UNVERIFIED",
+                message: "Claude lost foreground identity after focus dispatch.",
+                started: started,
+                executed: !targetAlreadySelected,
+                details: ["session_id": .string(nativeSessionID)]
+            )
+        }
+        if targetAlreadySelected {
+            activityStore.acknowledge(
+                target.cliSessionID,
+                observedAtMilliseconds: clock()
+            )
+        }
         return actionResult(
-            accepted: false,
-            verdict: "FOCUS_UNVERIFIED",
-            message: "Claude Desktop did not select the exact target before timeout.",
+            accepted: true,
+            verdict: targetAlreadySelected
+                ? "FOCUS_VERIFIED"
+                : "FOCUS_DISPATCH_VERIFIED",
+            message: targetAlreadySelected
+                ? "Exact Claude Desktop session focus verified."
+                : "Exact Claude sidebar shortcut dispatch verified.",
             started: started,
             executed: true,
-            details: ["session_id": .string(nativeSessionID)]
+            details: [
+                "session_id": .string(nativeSessionID),
+                "strategy": .string("sidebar_shortcut"),
+                "shortcut_index": .integer(Int64(index + 1)),
+            ]
         )
     }
 
@@ -340,8 +326,7 @@ public actor ClaudeCodeProvider: AgentProvider {
                 ]
             )
         }
-        let before = try await snapshot()
-        guard before.selectedNativeSessionID == nativeSessionID,
+        guard try await isSelected(nativeSessionID),
             try await isFrontmost()
         else {
             return ProviderActionResult(
@@ -354,8 +339,7 @@ public actor ClaudeCodeProvider: AgentProvider {
                 ]
             )
         }
-        let latest = try await snapshot()
-        guard latest.selectedNativeSessionID == nativeSessionID,
+        guard try await isSelected(nativeSessionID),
             try await isFrontmost()
         else {
             return ProviderActionResult(
@@ -384,9 +368,9 @@ public actor ClaudeCodeProvider: AgentProvider {
                 "Open a pull request for the current branch.",
                 bundleID: Self.bundleID,
                 inputMarker: Self.inputMarker,
-                emptyPlaceholderValue: nil,
+                emptyPlaceholderValue: Self.emptyInputPlaceholder,
                 focusKeyCode: nil,
-                submitCount: 1,
+                submitCount: 2,
                 targetVerifier: {
                     try await self.isSelected(nativeSessionID)
                 }
@@ -396,9 +380,9 @@ public actor ClaudeCodeProvider: AgentProvider {
                 "Commit the current changes with a Conventional Commit message and push the current branch.",
                 bundleID: Self.bundleID,
                 inputMarker: Self.inputMarker,
-                emptyPlaceholderValue: nil,
+                emptyPlaceholderValue: Self.emptyInputPlaceholder,
                 focusKeyCode: nil,
-                submitCount: 1,
+                submitCount: 2,
                 targetVerifier: {
                     try await self.isSelected(nativeSessionID)
                 }
@@ -408,7 +392,7 @@ public actor ClaudeCodeProvider: AgentProvider {
                 "/compact",
                 bundleID: Self.bundleID,
                 inputMarker: Self.inputMarker,
-                emptyPlaceholderValue: nil,
+                emptyPlaceholderValue: Self.emptyInputPlaceholder,
                 focusKeyCode: nil,
                 submitCount: 2,
                 targetVerifier: {
@@ -416,9 +400,8 @@ public actor ClaudeCodeProvider: AgentProvider {
                 }
             )
         }
-        let after = try await snapshot()
         guard dispatched.accepted,
-            after.selectedNativeSessionID == nativeSessionID,
+            try await isSelected(nativeSessionID),
             try await isFrontmost()
         else {
             return ProviderActionResult(
@@ -463,7 +446,9 @@ public actor ClaudeCodeProvider: AgentProvider {
     }
 
     private func isSelected(_ nativeSessionID: String) async throws -> Bool {
-        try await snapshot().selectedNativeSessionID == nativeSessionID
+        let visibleRecords = try readRecords().filter { !$0.isArchived }
+        return Self.selectedNativeSessionID(from: visibleRecords)
+            == nativeSessionID
     }
 
     private func shortcutOrder(
