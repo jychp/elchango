@@ -72,29 +72,54 @@ def dispatch_text(
         "on run argv\n"
         'tell application "System Events"\n'
         "set targetProcess to first application process whose frontmost is true\n"
-        "tell targetProcess\n"
+        "if bundle identifier of targetProcess is not item 5 of argv then "
+        'error "frontmost bundle changed before dispatch"\n'
         'if item 2 of argv is not "" then\n'
         "keystroke item 2 of argv using command down\n"
         "delay 0.2\n"
         "end if\n"
-        'set focusedElement to value of attribute "AXFocusedUIElement"\n'
+        "set targetProcess to first application process whose frontmost is true\n"
+        "if bundle identifier of targetProcess is not item 5 of argv then "
+        'error "frontmost bundle changed before input"\n'
+        'set focusedElement to value of attribute "AXFocusedUIElement" '
+        "of targetProcess\n"
         'set focusedRole to value of attribute "AXRole" of focusedElement\n'
         'if focusedRole is not "AXTextArea" and focusedRole is not "AXTextField" '
         'and focusedRole is not "AXComboBox" then error "focused element is not '
         'a text input: " & focusedRole\n'
+        'if (value of attribute "AXEnabled" of focusedElement) is not true then '
+        'error "focused input is disabled"\n'
         'if item 3 of argv is not "" then\n'
         'set focusedClass to (value of attribute "AXDOMClassList" of '
         "focusedElement) as text\n"
         'if focusedClass is not item 3 of argv then error "focused input marker '
         'does not match"\n'
         "end if\n"
+        'if (value of attribute "AXNumberOfCharacters" of focusedElement) '
+        'is not 0 then error "focused input is not empty"\n'
         "keystroke item 1 of argv\n"
         "set submitCount to item 4 of argv as integer\n"
         "repeat submitCount times\n"
         "delay 0.5\n"
+        "set targetProcess to first application process whose frontmost is true\n"
+        "if bundle identifier of targetProcess is not item 5 of argv then "
+        'error "frontmost bundle changed before submission"\n'
+        'set focusedElement to value of attribute "AXFocusedUIElement" '
+        "of targetProcess\n"
+        'set focusedRole to value of attribute "AXRole" of focusedElement\n'
+        'if focusedRole is not "AXTextArea" and focusedRole is not "AXTextField" '
+        'and focusedRole is not "AXComboBox" then error "focused element changed '
+        'before submission: " & focusedRole\n'
+        'if (value of attribute "AXEnabled" of focusedElement) is not true then '
+        'error "focused input is disabled before submission"\n'
+        'if item 3 of argv is not "" then\n'
+        'set focusedClass to (value of attribute "AXDOMClassList" of '
+        "focusedElement) as text\n"
+        'if focusedClass is not item 3 of argv then error "focused input marker '
+        'changed before submission"\n'
+        "end if\n"
         "key code 36\n"
         "end repeat\n"
-        "end tell\n"
         "end tell\n"
         "end run"
     )
@@ -109,6 +134,7 @@ def dispatch_text(
                 focus_shortcut or "",
                 expected_input_marker or "",
                 str(submit_count),
+                expected_bundle_id,
             ],
             capture_output=True,
             text=True,
@@ -151,20 +177,31 @@ def dispatch_command_enter(
     script = (
         "on run argv\n"
         'tell application "System Events"\n'
-        "tell first application process whose frontmost is true\n"
+        "set targetProcess to first application process whose frontmost is true\n"
+        "if bundle identifier of targetProcess is not item 3 of argv then "
+        'error "frontmost bundle changed before dispatch"\n'
         'if item 1 of argv is not "" then\n'
         "keystroke item 1 of argv using command down\n"
         "delay 0.2\n"
         "end if\n"
+        "set targetProcess to first application process whose frontmost is true\n"
+        "if bundle identifier of targetProcess is not item 3 of argv then "
+        'error "frontmost bundle changed before shortcut"\n'
         'if item 2 of argv is not "" then\n'
-        'set focusedElement to value of attribute "AXFocusedUIElement"\n'
+        'set focusedElement to value of attribute "AXFocusedUIElement" '
+        "of targetProcess\n"
+        'set focusedRole to value of attribute "AXRole" of focusedElement\n'
+        'if focusedRole is not "AXTextArea" and focusedRole is not "AXTextField" '
+        'and focusedRole is not "AXComboBox" then error "focused element is not '
+        'a text input: " & focusedRole\n'
+        'if (value of attribute "AXEnabled" of focusedElement) is not true then '
+        'error "focused input is disabled"\n'
         'set focusedClass to (value of attribute "AXDOMClassList" of '
         "focusedElement) as text\n"
         'if focusedClass is not item 2 of argv then error "focused input marker '
         'does not match"\n'
         "end if\n"
         "key code 36 using command down\n"
-        "end tell\n"
         "end tell\n"
         "end run"
     )
@@ -177,6 +214,7 @@ def dispatch_command_enter(
                 "--",
                 focus_shortcut or "",
                 expected_input_marker or "",
+                expected_bundle_id,
             ],
             capture_output=True,
             text=True,

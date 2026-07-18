@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, replace
+import threading
+from dataclasses import dataclass, field, replace
 from typing import ClassVar
 
 from elchango.activity import ActivityStore
@@ -38,6 +39,12 @@ class CursorAdapter:
     focus_controller: CursorFocusController
     launch_controller: CursorLaunchController
     activity_store: ActivityStore
+    _action_lock: threading.Lock = field(
+        default_factory=threading.Lock,
+        init=False,
+        repr=False,
+        compare=False,
+    )
 
     provider_id: ClassVar[str] = "cursor"
     display_name: ClassVar[str] = "Cursor"
@@ -81,7 +88,8 @@ class CursorAdapter:
         )
 
     def focus(self, native_session_id: str) -> ProviderActionResult:
-        result = self.focus_controller.focus(native_session_id)
+        with self._action_lock:
+            result = self.focus_controller.focus(native_session_id)
         accepted = result.verdict == "FOCUS_VERIFIED"
         if accepted:
             self.activity_store.acknowledge(
@@ -95,7 +103,8 @@ class CursorAdapter:
         )
 
     def open_new(self) -> ProviderActionResult:
-        result = self.launch_controller.open_new()
+        with self._action_lock:
+            result = self.launch_controller.open_new()
         return ProviderActionResult(
             accepted=result.verdict == "NEW_AGENT_VIEW_REQUESTED",
             verdict=result.verdict,
@@ -106,6 +115,14 @@ class CursorAdapter:
         return frontmost_bundle_id() == self.bundle_id
 
     def execute_command(
+        self,
+        native_session_id: str,
+        command_id: CommandId,
+    ) -> ProviderActionResult:
+        with self._action_lock:
+            return self._execute_command(native_session_id, command_id)
+
+    def _execute_command(
         self,
         native_session_id: str,
         command_id: CommandId,
@@ -127,6 +144,18 @@ class CursorAdapter:
                 verdict="TARGET_UNVERIFIED",
                 details={
                     "message": "Cursor target is not uniquely selected and frontmost."
+                },
+            )
+        latest = self.snapshot()
+        if (
+            latest.selected_native_session_id != native_session_id
+            or not self.is_frontmost()
+        ):
+            return ProviderActionResult(
+                accepted=False,
+                verdict="STALE_PREFLIGHT",
+                details={
+                    "message": "Cursor target changed before command dispatch."
                 },
             )
         if recipe.text is None:

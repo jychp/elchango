@@ -46,10 +46,12 @@ surfaces and stored in
 `~/Library/Application Support/elChango/preferences.json`.
 
 Cursor and Claude Code Desktop enable Accept, Open PR, Commit Push, and Compact
-after live command-dispatch reconnaissance. A command is sent only to the
-uniquely selected session of the frontmost harness after target and
-composer-input verification. Open PR and Commit Push instruct the native agent;
-elChango does not run host-side Git operations for these buttons.
+after live command-dispatch reconnaissance. Every action requires the uniquely
+selected session of the frontmost harness. Text and slash recipes additionally
+require an empty, enabled, provider-specific composer input. Claude Accept is
+an intentional application-level `Cmd+Enter` shortcut and does not require
+composer focus. Open PR and Commit Push instruct the native agent; elChango does
+not run host-side Git operations for these buttons.
 
 ## Stream Deck MK.2
 

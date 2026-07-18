@@ -68,7 +68,7 @@
       target.releasePointerCapture(event.pointerId)
     }
 
-    if (duration >= LONG_PRESS_MS) longPress()
+    if (duration >= LONG_PRESS_MS && longPressEligible) longPress()
     else activate()
   }
 

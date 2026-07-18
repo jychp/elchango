@@ -229,15 +229,17 @@ Current verdict: `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
   `AXDOMClassList` value
   `tiptapProseMirrorui-prompt-input-editor__inputProseMirror-focused`.
 - `Cmd+L` focuses that composer from the conversation message area. Product
-  dispatch verifies the exact class after focusing and refuses input if it does
-  not match.
+  dispatch atomically rechecks Cursor foreground identity, the enabled input
+  role, the exact class, and an empty draft after focusing.
 - The POC is dry-run by default. Execute mode submits one explicitly supplied
   recipe after two matching preflights and never retries.
 - A harmless `test` instruction was observed arriving as a submitted message
   after one Return with a 500 ms delay.
 - Cursor's `/summarize` suggestion requires two delayed Return presses: one to
   select the slash-command suggestion and one to submit it. This sequence was
-  observed triggering summarize successfully.
+  observed triggering summarize successfully. The implementation preserves
+  this operator-approved timed sequence; it does not claim to identify the
+  suggestion semantically.
 
 ### Product mappings
 

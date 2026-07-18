@@ -228,14 +228,16 @@ def validate_target(connection: sqlite3.Connection, target: str) -> None:
     ).fetchone()
     if row is None:
         raise ProbeError(f"Target composer not found: {target}")
-    payload: dict[str, Any] = {}
     text = decode_text(row["value"])
-    if text:
-        try:
-            candidate = json.loads(text)
-            payload = candidate if isinstance(candidate, dict) else {}
-        except json.JSONDecodeError:
-            pass
+    if not text:
+        raise ProbeError("Target composer metadata is missing or undecodable.")
+    try:
+        candidate = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise ProbeError("Target composer metadata is malformed JSON.") from error
+    if not isinstance(candidate, dict):
+        raise ProbeError("Target composer metadata must be a JSON object.")
+    payload: dict[str, Any] = candidate
     if bool(row["isArchived"]):
         raise ProbeError("Target composer is archived.")
     if bool(row["isSubagent"]):
@@ -308,19 +310,45 @@ def focus_is_exact(focus: FocusEvidence, marker: str | None) -> bool:
     )
 
 
-def send_once(value: str, *, confirm_suggestion: bool) -> None:
+def send_once(
+    value: str,
+    *,
+    confirm_suggestion: bool,
+    input_marker: str,
+) -> None:
     script = r'''
 on run argv
+  my verifyInput(item 3 of argv, item 4 of argv, true)
   tell application "System Events"
     keystroke (item 1 of argv)
-    delay 0.5
-    key code 36
-    if (item 2 of argv) is "true" then
-      delay 0.5
-      key code 36
-    end if
   end tell
+  delay 0.5
+  my verifyInput(item 3 of argv, item 4 of argv, false)
+  tell application "System Events"
+    key code 36
+  end tell
+  if (item 2 of argv) is "true" then
+    delay 0.5
+    my verifyInput(item 3 of argv, item 4 of argv, false)
+    tell application "System Events"
+      key code 36
+    end tell
+  end if
 end run
+
+on verifyInput(expectedBundle, expectedMarker, requireEmpty)
+  tell application "System Events"
+    set p to first application process whose frontmost is true
+    if bundle identifier of p is not expectedBundle then error "frontmost bundle changed"
+    set e to value of attribute "AXFocusedUIElement" of p
+    set roleValue to value of attribute "AXRole" of e
+    if roleValue is not "AXTextArea" and roleValue is not "AXTextField" then error "focused element is not a text input"
+    if (value of attribute "AXEnabled" of e) is not true then error "focused input is disabled"
+    set markerValue to (value of attribute "AXDOMClassList" of e) as text
+    if markerValue is not expectedMarker then error "focused input marker changed"
+    if requireEmpty and (value of attribute "AXNumberOfCharacters" of e) is not 0 then error "focused input is not empty"
+  end tell
+end verifyInput
 '''
     completed = subprocess.run(
         [
@@ -330,6 +358,8 @@ end run
             "--",
             value,
             "true" if confirm_suggestion else "false",
+            CURSOR_BUNDLE_ID,
+            input_marker,
         ],
         capture_output=True,
         text=True,
@@ -430,7 +460,11 @@ def inspect(args: argparse.Namespace) -> DispatchResult:
                 latest_focus,
                 query_only,
             )
-        send_once(recipe_value, confirm_suggestion=recipe_kind == "command")
+        send_once(
+            recipe_value,
+            confirm_suggestion=recipe_kind == "command",
+            input_marker=args.input_marker,
+        )
         after = selected_id(connection)
         verdict = "DISPATCH_SENT" if after == args.target else "POST_DISPATCH_AMBIGUOUS"
         message = (

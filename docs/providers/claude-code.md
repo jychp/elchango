@@ -203,17 +203,21 @@ Current verdict: `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
 - macOS Accessibility can expose the focused element's role and metadata. The
   observed Claude composer is an enabled `AXTextArea` with description `Prompt`
   and exact `AXDOMClassList` value
-  `tiptapProseMirrorProseMirror-focused`. Text dispatch refuses unless the
-  target, frontmost bundle, enabled text-input role, and marker all match twice.
+  `tiptapProseMirrorProseMirror-focused`. The POC performs two preflights, and
+  both POC and product injection scripts recheck the frontmost bundle, enabled
+  input role, exact marker, and empty draft immediately before typing.
 - The POC reads bounded metadata prefixes, defaults to dry-run, submits at most
   one explicitly supplied recipe in execute mode, and never retries.
 - A harmless `test` instruction was observed arriving as a submitted message
   after one Return with a 500 ms delay.
 - Claude's `/compact` suggestion requires two delayed Return presses: one to
   select the command and one to submit it. This sequence was observed
-  triggering compaction successfully.
+  triggering compaction successfully. The implementation preserves this
+  operator-approved timed sequence; it does not claim to identify the
+  suggestion semantically.
 - `Cmd+Enter` was observed accepting a real open plan while the exact Claude
-  session was uniquely selected and Claude Desktop was frontmost.
+  session was uniquely selected and Claude Desktop was frontmost. This is an
+  application-level shortcut and intentionally does not require composer focus.
 
 ### Product mappings
 

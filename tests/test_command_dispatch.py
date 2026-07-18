@@ -39,7 +39,13 @@ class CommandDispatchTests(unittest.TestCase):
         self.assertEqual(result.verdict, "DISPATCH_VERIFIED")
         self.assertTrue(result.executed)
         arguments = run.call_args.args[0]
-        self.assertEqual(arguments[-4:], ["/summarize", "l", "cursor-composer", "2"])
+        self.assertEqual(
+            arguments[-5:],
+            ["/summarize", "l", "cursor-composer", "2", "expected.bundle"],
+        )
+        self.assertIn("frontmost bundle changed before input", arguments[2])
+        self.assertIn("AXEnabled", arguments[2])
+        self.assertIn("focused input is not empty", arguments[2])
         self.assertIn("repeat submitCount times", arguments[2])
 
     def test_dispatches_command_enter_shortcut_once(self) -> None:
@@ -63,7 +69,11 @@ class CommandDispatchTests(unittest.TestCase):
         self.assertEqual(result.verdict, "DISPATCH_VERIFIED")
         self.assertTrue(result.executed)
         arguments = run.call_args.args[0]
-        self.assertEqual(arguments[-2:], ["l", "cursor-composer"])
+        self.assertEqual(
+            arguments[-3:],
+            ["l", "cursor-composer", "expected.bundle"],
+        )
+        self.assertIn("frontmost bundle changed before shortcut", arguments[2])
         self.assertIn("key code 36 using command down", arguments[2])
 
 

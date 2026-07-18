@@ -115,8 +115,7 @@ class ClaudeCodeProvider:
         self.activity_store = activity_store or ClaudeActivityStore()
         self._cache: dict[Path, _CachedRecord] = {}
         self._lock = threading.Lock()
-        self._focus_lock = threading.Lock()
-        self._launch_lock = threading.Lock()
+        self._action_lock = threading.Lock()
 
     def snapshot(self) -> ProviderSnapshot:
         """Read persistent non-archived sessions and overlay fresh hook signals."""
@@ -206,7 +205,7 @@ class ClaudeCodeProvider:
     def focus(self, native_session_id: str) -> ProviderActionResult:
         """Focus one exact Desktop session through persisted sidebar shortcuts."""
 
-        with self._focus_lock:
+        with self._action_lock:
             return self._focus(native_session_id)
 
     def _focus(self, native_session_id: str) -> ProviderActionResult:
@@ -325,7 +324,7 @@ class ClaudeCodeProvider:
     def open_new(self) -> ProviderActionResult:
         """Open Claude Desktop's official new Code session deep link."""
 
-        with self._launch_lock:
+        with self._action_lock:
             deep_link = "claude://code/new"
             started = time.monotonic()
             try:
@@ -364,6 +363,14 @@ class ClaudeCodeProvider:
         native_session_id: str,
         command_id: CommandId,
     ) -> ProviderActionResult:
+        with self._action_lock:
+            return self._execute_command(native_session_id, command_id)
+
+    def _execute_command(
+        self,
+        native_session_id: str,
+        command_id: CommandId,
+    ) -> ProviderActionResult:
         recipe = self.command_recipes.get(command_id)
         if recipe is None:
             return ProviderActionResult(
@@ -381,6 +388,18 @@ class ClaudeCodeProvider:
                 verdict="TARGET_UNVERIFIED",
                 details={
                     "message": "Claude target is not uniquely selected and frontmost."
+                },
+            )
+        latest = self.snapshot()
+        if (
+            latest.selected_native_session_id != native_session_id
+            or not self.is_frontmost()
+        ):
+            return ProviderActionResult(
+                accepted=False,
+                verdict="STALE_PREFLIGHT",
+                details={
+                    "message": "Claude target changed before command dispatch."
                 },
             )
         if recipe.text is None:
