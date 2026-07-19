@@ -78,4 +78,30 @@ struct NativeAutomationTests {
             ) == nil
         )
     }
+
+    @Test("best-effort routing requires an explicitly allowed non-text role")
+    func bestEffortRolePolicy() {
+        let claudePolicy = UnfocusedTextDispatchPolicy.bestEffort(
+            allowedAccessibilityRoles: ["AXGroup"]
+        )
+
+        #expect(
+            NativeAutomation.bestEffortAllowed(
+                role: "AXGroup",
+                policy: claudePolicy
+            )
+        )
+        #expect(
+            !NativeAutomation.bestEffortAllowed(
+                role: "AXWebArea",
+                policy: claudePolicy
+            )
+        )
+        #expect(
+            !NativeAutomation.bestEffortAllowed(
+                role: "AXGroup",
+                policy: .reject
+            )
+        )
+    }
 }

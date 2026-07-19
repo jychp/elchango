@@ -18,13 +18,14 @@ automation starts. Command dispatch then performs these steps in order:
 The verified transaction does not mutate input before all four preconditions
 pass.
 
-Claude has one explicit best-effort exception when no composer can be verified,
-including a non-input focus, wrong role or marker, a disabled input, or an
-Accessibility read failure. The application, process, and exact selected
-session remain mandatory, but elChango skips input verification, draft capture,
-deletion, and restoration. It sends the command and provider-owned submission
-keys through Claude's observed application-level input routing. This path never
-reports verified input mutation or draft preservation.
+Claude has one explicit best-effort exception when Accessibility successfully
+reports the observed non-text `AXGroup` role. The application, process, and
+exact selected session remain mandatory, but elChango skips input verification,
+draft capture, deletion, and restoration. It sends the command and
+provider-owned submission keys through Claude's observed application-level
+input routing. Missing Accessibility evidence, another non-text role, a wrong
+text-input marker, or a disabled input rejects the action without typing. This
+path never reports verified input mutation or draft preservation.
 
 ## Transaction
 

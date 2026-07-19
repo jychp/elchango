@@ -920,6 +920,7 @@ private actor ClaudeAutomation: NativeAutomating {
         bundleID: String,
         inputMarker: String,
         focusKeyCode: CGKeyCode?,
+        unfocusedPolicy: UnfocusedTextDispatchPolicy,
         submitCount: Int,
         targetVerifier: @escaping @Sendable () async throws -> Bool
     ) async throws -> ProviderActionResult {

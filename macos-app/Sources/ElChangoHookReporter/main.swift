@@ -102,12 +102,11 @@ private enum Provider: String {
             for task in tasks {
                 var sanitizedTask: [String: String] = [:]
                 for (key, rawValue) in task where taskKeys.contains(key) {
-                    guard let value = rawValue as? String,
+                    if let value = rawValue as? String,
                         (1...256).contains(value.utf8.count)
-                    else {
-                        return nil
+                    {
+                        sanitizedTask[key] = value
                     }
-                    sanitizedTask[key] = value
                 }
                 sanitizedTasks.append(sanitizedTask)
             }

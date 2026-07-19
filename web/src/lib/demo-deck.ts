@@ -35,6 +35,15 @@ export const demoSessions = [
     selected: false,
   },
   {
+    id: 'demo:working',
+    providerId: 'demo',
+    label: 'Working',
+    detail: 'Local agent',
+    icon: 'code',
+    color: 'working',
+    selected: false,
+  },
+  {
     id: 'demo:lazy-coding',
     providerId: 'demo',
     label: 'Idle',
@@ -49,7 +58,7 @@ export const demoSessions = [
     label: 'Claude',
     detail: 'Claude Code',
     icon: 'claude',
-    color: 'working',
+    color: 'idle',
     selected: false,
   },
   {
@@ -58,7 +67,7 @@ export const demoSessions = [
     label: 'Cursor',
     detail: 'Cursor',
     icon: 'cursor',
-    color: 'working',
+    color: 'idle',
     selected: true,
   },
 ] as const satisfies readonly DemoSession[]
@@ -80,9 +89,9 @@ const sessionButtons: DeckButton[] = demoSessions.map((session, position) => ({
 }))
 
 const availableButtons: DeckButton[] = Array.from(
-  { length: 5 },
+  { length: 10 - sessionButtons.length },
   (_, offset) => {
-    const position = offset + 5
+    const position = offset + sessionButtons.length
     return {
       id: `empty:${position}`,
       position,

@@ -223,7 +223,8 @@ def sanitized_background_tasks(payload: dict[str, Any]) -> tuple[dict[str, str],
         metadata = {
             key: field
             for key in ("id", "type", "status", "agent_type")
-            if isinstance((field := task.get(key)), str) and field
+            if isinstance((field := task.get(key)), str)
+            and 1 <= len(field.encode()) <= 256
         }
         tasks.append(metadata)
     return tuple(tasks)

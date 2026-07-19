@@ -242,11 +242,12 @@ Claude understood or completed the semantic operation.
   bundle immediately before dispatch.
 - Text dispatch additionally requires the enabled provider-specific
   Accessibility target and bounded draft capture when the input is focused.
-  If no verified composer is available, including a non-input focus or a
-  role, marker, enabled-state, or Accessibility-read failure, elChango uses the
-  documented best-effort exception. Exact application and session verification
-  remain, but input verification, draft capture, deletion, and restoration are
-  skipped. Claude then routes application-level typing to its prompt.
+  If Accessibility successfully reports the observed non-text `AXGroup` role,
+  elChango uses the documented best-effort exception. Exact application and
+  session verification remain, but input verification, draft capture, deletion,
+  and restoration are skipped. Claude then routes application-level typing to
+  its prompt. Other roles, input mismatches, disabled inputs, and Accessibility
+  read failures reject the action without typing.
 - Shortcuts target the verified process. Text and submission events use the
   global HID tap because the observed Electron editor ignored PID-targeted
   Unicode events. The verified path requires foreground, selected-session, and

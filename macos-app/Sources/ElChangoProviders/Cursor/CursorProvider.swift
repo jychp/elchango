@@ -942,6 +942,7 @@ public actor CursorProvider: AgentProvider {
                 bundleID: Self.bundleID,
                 inputMarker: Self.inputMarker,
                 focusKeyCode: 37,
+                unfocusedPolicy: .reject,
                 submitCount: 1,
                 targetVerifier: {
                     try await self.isSelected(nativeSessionID)
@@ -953,6 +954,7 @@ public actor CursorProvider: AgentProvider {
                 bundleID: Self.bundleID,
                 inputMarker: Self.inputMarker,
                 focusKeyCode: 37,
+                unfocusedPolicy: .reject,
                 submitCount: 1,
                 targetVerifier: {
                     try await self.isSelected(nativeSessionID)
@@ -964,6 +966,7 @@ public actor CursorProvider: AgentProvider {
                 bundleID: Self.bundleID,
                 inputMarker: Self.inputMarker,
                 focusKeyCode: 37,
+                unfocusedPolicy: .reject,
                 submitCount: 2,
                 targetVerifier: {
                     try await self.isSelected(nativeSessionID)

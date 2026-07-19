@@ -4,10 +4,15 @@
   <img src="docs/assets/elchango-logo.png" alt="elChango cybernetic monkey logo" width="320">
 </p>
 
-elChango is a local control deck for native AI coding sessions on macOS. It
-brings Cursor and Claude Code sessions into one consistent 15-key view so you
-can see what needs attention, return to the right session, start a new one, and
-run a small set of verified commands from a browser or Stream Deck.
+elChango turns a physical Stream Deck into a dedicated control surface for
+native AI coding sessions on macOS. Its 15 keys show Cursor and Claude Code
+sessions at a glance, then let you return to the right session, start a new one,
+and run a small set of verified commands without leaving the hardware.
+
+The physical Stream Deck MK.2 experience is the main product. You can try the
+same layout first with the Stream Deck Mobile app, then move to the physical
+device without learning a different workflow. A browser deck is included as a
+fallback for setup, testing, and troubleshooting.
 
 The app is designed to fail closed. If elChango cannot verify the provider,
 session, or command target, it disables or rejects the action instead of
@@ -15,31 +20,26 @@ guessing.
 
 ## What you get
 
-- A menu bar app that discovers local Cursor and Claude Code sessions.
-- A browser deck included with the app.
-- An optional Stream Deck MK.2 surface with the same 5-by-3 layout.
+- A Stream Deck MK.2 profile with a complete 5-by-3 physical control surface.
+- Support for Stream Deck Mobile so you can test the experience before buying
+  the physical hardware.
+- A native menu bar app that discovers local Cursor and Claude Code sessions.
+- A browser fallback for setup, testing, and troubleshooting.
 - Shared working, waiting, done, error, idle, and degraded status.
 - Verified session focus and neutral new-session launch.
 - Bounded commands for Accept, Open PR, Commit Push, and Compact when the
   selected provider and session support them.
-- Persistent session icons and command placement.
 
 <p align="center">
-  <img src="docs/assets/elchango-off.png" alt="Sleeping monkey shown when the local service is offline" width="180">
-  <img src="docs/assets/elchango-ko.png" alt="Knocked-out monkey shown after an action failure" width="180">
+  <img src="docs/assets/elchango-deck-demo.png" alt="elChango 15-key deck showing session states, Cursor and Claude providers, and agent controls" width="1024">
 </p>
-
-The sleeping monkey means that the local service is unavailable. The
-knocked-out monkey means that an action failed. The optional Stream Deck
-screensaver is available at
-[docs/assets/elchango-screensaver.png](docs/assets/elchango-screensaver.png).
 
 ## Requirements
 
 - macOS 14 or newer.
 - Cursor and/or Claude Desktop with Claude Code sessions.
 - Accessibility permission for session focus and commands.
-- Stream Deck 7.1 or newer only if you use the hardware surface.
+- Stream Deck 7.1 or newer for Stream Deck Mobile or the physical surface.
 
 The release app is Universal 2 and runs on Apple Silicon and Intel Macs. Python,
 Node.js, and Xcode are not required for normal use.
@@ -71,8 +71,12 @@ release apps are signed with Developer ID and notarized by Apple.
 2. Choose the grid icon in the macOS menu bar.
 3. Choose **Request Accessibility Access** and approve elChango in **System
    Settings > Privacy & Security > Accessibility**.
-4. Return to the menu and choose **Open Web Deck**.
-5. Install the provider plugin for each provider you use.
+4. Complete the [Stream Deck setup](#stream-deck-setup) with Stream Deck Mobile
+   or a physical Stream Deck.
+5. Install the [provider plugin](#install-provider-plugins) for each provider
+   you use.
+6. Use **Open Web Deck** from the menu only when you need the browser fallback
+   for setup, testing, or troubleshooting.
 
 The menu's **Diagnostics** item shows the app version, local service status,
 Accessibility status, and provider availability. Only one stable or debug
@@ -88,6 +92,21 @@ prompt text, scripts, shell commands, or shortcuts.
 If macOS does not retain permission after an app update or move, remove the old
 elChango entry in Accessibility settings, keep the app at
 `/Applications/elChango.app`, reopen it, and grant access again.
+
+## Stream Deck setup
+
+Download the `.streamDeckPlugin` file from the matching
+[GitHub release](https://github.com/jychp/elchango/releases), then double-click
+it. The package installs the plugin and an `elChango` Stream Deck MK.2 profile
+with all 15 keys populated.
+
+Use the profile with Stream Deck Mobile to try the full 15-key workflow before
+buying a physical Stream Deck. The browser deck remains available when you only
+need a quick setup or troubleshooting fallback.
+
+The profile stores positions, not session identities. Before each action, the
+plugin requests a fresh button ID and revision from the local app. See the
+[Stream Deck guide](plugins/streamdeck/README.md) for runtime details.
 
 ## Install provider plugins
 
@@ -122,17 +141,6 @@ claude plugin install elchango@elchango
 
 Start elChango before beginning or resuming a Claude Code session. See the
 [Claude Code plugin guide](plugins/claude/README.md) for hook coverage.
-
-## Optional Stream Deck setup
-
-Download the `.streamDeckPlugin` file from the matching
-[GitHub release](https://github.com/jychp/elchango/releases), then double-click
-it. The package installs the plugin and an `elChango` Stream Deck MK.2 profile
-with all 15 keys populated.
-
-The profile stores positions, not session identities. Before each action, the
-plugin requests a fresh button ID and revision from the local app. See the
-[Stream Deck guide](plugins/streamdeck/README.md) for runtime details.
 
 ## Use and personalize the deck
 
@@ -172,7 +180,7 @@ elChango to degrade rather than infer a session from ambiguous data.
 
 Grant Accessibility access, bring the expected provider forward, and select
 the exact session again. Commands remain disabled when elChango cannot verify
-the selected session or expected empty input target.
+the selected session or expected input target.
 
 **An action failed**
 

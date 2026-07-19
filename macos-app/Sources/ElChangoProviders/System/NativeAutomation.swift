@@ -3,6 +3,11 @@ import AppKit
 import ElChangoCore
 import Foundation
 
+public enum UnfocusedTextDispatchPolicy: Sendable {
+    case reject
+    case bestEffort(allowedAccessibilityRoles: Set<String>)
+}
+
 public protocol NativeAutomating: Sendable {
     func frontmostBundleID() async -> String?
     func activate(bundleID: String) async throws
@@ -24,6 +29,7 @@ public protocol NativeAutomating: Sendable {
         bundleID: String,
         inputMarker: String,
         focusKeyCode: CGKeyCode?,
+        unfocusedPolicy: UnfocusedTextDispatchPolicy,
         submitCount: Int,
         targetVerifier: @escaping @Sendable () async throws -> Bool
     ) async throws -> ProviderActionResult
@@ -36,6 +42,11 @@ public protocol NativeAutomating: Sendable {
 }
 
 public actor NativeAutomation: NativeAutomating {
+    private enum FocusedInputProbe {
+        case verified(AXUIElement)
+        case nonTextRole(String)
+    }
+
     private static let maximumDraftBytes = 64 * 1_024
 
     public init() {}
@@ -205,6 +216,7 @@ public actor NativeAutomation: NativeAutomating {
         bundleID: String,
         inputMarker: String,
         focusKeyCode: CGKeyCode?,
+        unfocusedPolicy: UnfocusedTextDispatchPolicy,
         submitCount: Int,
         targetVerifier: @escaping @Sendable () async throws -> Bool
     ) async throws -> ProviderActionResult {
@@ -226,10 +238,24 @@ public actor NativeAutomation: NativeAutomating {
         }
         prepareAccessibility(processIdentifier: identity.processIdentifier)
         try await sleep(milliseconds: 200)
-        var focused = try? verifiedFocusedInput(
-            processIdentifier: identity.processIdentifier,
-            marker: inputMarker
-        )
+        var focused: AXUIElement?
+        var nonTextRole: String?
+        if focusKeyCode == nil {
+            switch try probeFocusedInput(
+                processIdentifier: identity.processIdentifier,
+                marker: inputMarker
+            ) {
+            case .verified(let element):
+                focused = element
+            case .nonTextRole(let role):
+                nonTextRole = role
+            }
+        } else {
+            focused = try? verifiedFocusedInput(
+                processIdentifier: identity.processIdentifier,
+                marker: inputMarker
+            )
+        }
         if focused == nil, let focusKeyCode {
             try await postShortcut(
                 keyCode: focusKeyCode,
@@ -240,6 +266,17 @@ public actor NativeAutomation: NativeAutomating {
             try await sleep(milliseconds: 200)
         }
         if focused == nil, focusKeyCode == nil {
+            guard
+                let nonTextRole,
+                Self.bestEffortAllowed(
+                    role: nonTextRole,
+                    policy: unfocusedPolicy
+                )
+            else {
+                throw ProviderOperationError.targetUnverified(
+                    "provider has no eligible unfocused input route"
+                )
+            }
             return try await dispatchBestEffortText(
                 text,
                 submitCount: submitCount,
@@ -525,6 +562,51 @@ public actor NativeAutomation: NativeAutomating {
                 "Accessibility permission is required for keyboard dispatch"
             )
         }
+    }
+
+    nonisolated static func bestEffortAllowed(
+        role: String,
+        policy: UnfocusedTextDispatchPolicy
+    ) -> Bool {
+        switch policy {
+        case .reject:
+            return false
+        case .bestEffort(let allowedAccessibilityRoles):
+            return allowedAccessibilityRoles.contains(role)
+        }
+    }
+
+    private func probeFocusedInput(
+        processIdentifier: pid_t,
+        marker: String
+    ) throws -> FocusedInputProbe {
+        let applicationElement = AXUIElementCreateApplication(
+            processIdentifier
+        )
+        AXUIElementSetMessagingTimeout(applicationElement, 1)
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(
+            applicationElement,
+            kAXFocusedUIElementAttribute as CFString,
+            &value
+        )
+        guard result == .success, let value else {
+            throw ProviderOperationError.targetUnverified(
+                "provider has no focused accessibility element"
+            )
+        }
+        let element = unsafeDowncast(value, to: AXUIElement.self)
+        let role = try stringAttribute(
+            element,
+            name: kAXRoleAttribute as CFString
+        )
+        guard
+            Set(["AXTextArea", "AXTextField", "AXComboBox"]).contains(role)
+        else {
+            return .nonTextRole(role)
+        }
+        try verifyFocusedInput(element, marker: marker)
+        return .verified(element)
     }
 
     private func verifiedFocusedInput(
@@ -954,29 +1036,51 @@ public actor NativeAutomation: NativeAutomating {
             processIdentifier: processIdentifier
         )
         if flags.contains(.maskCommand) {
-            try postGlobalKey(55, down: true, flags: .maskCommand)
-            do {
-                try postGlobalKey(keyCode, down: true, flags: flags)
-                try await sleep(milliseconds: 80)
-                _ = try await requireFrontmost(
-                    bundleID: bundleID,
-                    processIdentifier: processIdentifier
-                )
-                try postGlobalKey(keyCode, down: false, flags: flags)
-            } catch {
-                try? postGlobalKey(55, down: false, flags: [])
-                throw error
-            }
-            try postGlobalKey(55, down: false, flags: [])
+            try await postGlobalCommandShortcut(
+                keyCode: keyCode,
+                flags: flags,
+                bundleID: bundleID,
+                processIdentifier: processIdentifier
+            )
             return
         }
         try postGlobalKey(keyCode, down: true, flags: flags)
+        do {
+            try await sleep(milliseconds: 80)
+            _ = try await requireFrontmost(
+                bundleID: bundleID,
+                processIdentifier: processIdentifier
+            )
+            try postGlobalKey(keyCode, down: false, flags: flags)
+        } catch {
+            try? postGlobalKey(keyCode, down: false, flags: flags)
+            throw error
+        }
+    }
+
+    private func postGlobalCommandShortcut(
+        keyCode: CGKeyCode,
+        flags: CGEventFlags,
+        bundleID: String,
+        processIdentifier: pid_t
+    ) async throws {
+        try postGlobalKey(55, down: true, flags: .maskCommand)
+        var shortcutKeyIsDown = false
+        defer {
+            if shortcutKeyIsDown {
+                try? postGlobalKey(keyCode, down: false, flags: flags)
+            }
+            try? postGlobalKey(55, down: false, flags: [])
+        }
+        try postGlobalKey(keyCode, down: true, flags: flags)
+        shortcutKeyIsDown = true
         try await sleep(milliseconds: 80)
         _ = try await requireFrontmost(
             bundleID: bundleID,
             processIdentifier: processIdentifier
         )
         try postGlobalKey(keyCode, down: false, flags: flags)
+        shortcutKeyIsDown = false
     }
 
     private func postKey(

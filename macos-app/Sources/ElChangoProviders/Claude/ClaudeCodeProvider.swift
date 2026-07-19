@@ -385,6 +385,9 @@ public actor ClaudeCodeProvider: AgentProvider {
                 bundleID: Self.bundleID,
                 inputMarker: Self.inputMarker,
                 focusKeyCode: nil,
+                unfocusedPolicy: .bestEffort(
+                    allowedAccessibilityRoles: ["AXGroup"]
+                ),
                 submitCount: 2,
                 targetVerifier: {
                     try await self.isSelected(nativeSessionID)
@@ -396,6 +399,9 @@ public actor ClaudeCodeProvider: AgentProvider {
                 bundleID: Self.bundleID,
                 inputMarker: Self.inputMarker,
                 focusKeyCode: nil,
+                unfocusedPolicy: .bestEffort(
+                    allowedAccessibilityRoles: ["AXGroup"]
+                ),
                 submitCount: 2,
                 targetVerifier: {
                     try await self.isSelected(nativeSessionID)
@@ -407,6 +413,9 @@ public actor ClaudeCodeProvider: AgentProvider {
                 bundleID: Self.bundleID,
                 inputMarker: Self.inputMarker,
                 focusKeyCode: nil,
+                unfocusedPolicy: .bestEffort(
+                    allowedAccessibilityRoles: ["AXGroup"]
+                ),
                 submitCount: 2,
                 targetVerifier: {
                     try await self.isSelected(nativeSessionID)
