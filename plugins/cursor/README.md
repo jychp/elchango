@@ -26,6 +26,11 @@ The reporter forwards only event name, conversation ID, generation ID, composer
 mode, and stop status to elChango at `127.0.0.1`. It discards prompt text,
 responses, tool data, email, and transcript paths.
 
+Hook routes cannot execute actions. They validate current persistent session
+identity, accept only sanitized lifecycle fields, and are rate-limited. They
+are intentionally separate from the authenticated control API. See the root
+[security policy](../../SECURITY.md) for the complete trust boundary.
+
 ## Installation
 
 Individual users will install `elchango` from Cursor's public Marketplace after

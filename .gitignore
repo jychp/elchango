@@ -4,5 +4,6 @@ __pycache__/
 *.egg-info/
 .coverage
 dist/
+node_modules/
 macos-app/.build/
 macos-app/dist/

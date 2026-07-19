@@ -108,9 +108,10 @@ public actor CursorProvider: AgentProvider {
                     for: candidate.session.nativeID,
                     observedAtMilliseconds: observedAtMilliseconds,
                     currentGenerationID: candidate.generationID
-                ), hookState.0 == .done
-                    || hookState.0 == .error
-                    || candidate.session.state != .waiting
+                ),
+                    hookState.0 == .done
+                        || hookState.0 == .error
+                        || candidate.session.state != .waiting
                 {
                     state = hookState
                 }
@@ -261,8 +262,9 @@ public actor CursorProvider: AgentProvider {
             {
                 continue
             }
-            guard let lastActivityAtMilliseconds =
-                row.lastUpdatedAtMilliseconds
+            guard
+                let lastActivityAtMilliseconds =
+                    row.lastUpdatedAtMilliseconds
             else {
                 continue
             }
@@ -286,21 +288,21 @@ public actor CursorProvider: AgentProvider {
             sessions.append(
                 CursorCandidate(
                     session: AgentSession(
-                    providerID: descriptor.id,
-                    nativeID: row.composerID,
-                    capabilities: descriptor.capabilities,
-                    icon: descriptor.icon,
-                    title: Self.string(row.header["name"])
-                        ?? "Untitled session",
-                    workspaceID: row.workspaceID,
-                    workspacePath: Self.embeddedWorkspacePath(row.header)
-                        ?? workspacePaths[row.workspaceID],
-                    state: inferred.state,
-                    confidence: inferred.confidence,
-                    stateDetail: inferred.detail,
-                    selected: false,
-                    lastActivityAtMilliseconds: lastActivityAtMilliseconds,
-                    commands: Self.commands
+                        providerID: descriptor.id,
+                        nativeID: row.composerID,
+                        capabilities: descriptor.capabilities,
+                        icon: descriptor.icon,
+                        title: Self.string(row.header["name"])
+                            ?? "Untitled session",
+                        workspaceID: row.workspaceID,
+                        workspacePath: Self.embeddedWorkspacePath(row.header)
+                            ?? workspacePaths[row.workspaceID],
+                        state: inferred.state,
+                        confidence: inferred.confidence,
+                        stateDetail: inferred.detail,
+                        selected: false,
+                        lastActivityAtMilliseconds: lastActivityAtMilliseconds,
+                        commands: Self.commands
                     ),
                     generationID: generationID
                 )
@@ -342,7 +344,7 @@ public actor CursorProvider: AgentProvider {
         let result = latestTool.result?.lowercased()
         let activeSignalIsFresh =
             observedAtMilliseconds - lastActivityAtMilliseconds
-                <= activeSignalTTLMilliseconds
+            <= activeSignalTTLMilliseconds
         let blocking =
             Self.bool(data["hasBlockingPendingActions"])
             || Self.bool(header["hasBlockingPendingActions"])
@@ -514,8 +516,9 @@ public actor CursorProvider: AgentProvider {
         composerID: String,
         data: JSONObject
     ) throws -> (tool: String?, result: String?) {
-        guard let headers = data["fullConversationHeadersOnly"]
-            as? [Any]
+        guard
+            let headers = data["fullConversationHeadersOnly"]
+                as? [Any]
         else {
             return (nil, nil)
         }
@@ -569,11 +572,13 @@ public actor CursorProvider: AgentProvider {
     }
 
     private func loadWorkspacePaths() -> [String: String] {
-        guard let directories = try? FileManager.default.contentsOfDirectory(
-            at: workspaceStorageURL,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) else {
+        guard
+            let directories = try? FileManager.default.contentsOfDirectory(
+                at: workspaceStorageURL,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            )
+        else {
             return [:]
         }
         var paths: [String: String] = [:]
@@ -701,10 +706,12 @@ public actor CursorProvider: AgentProvider {
     ) async throws -> ProviderActionResult {
         let started = ContinuousClock.now
         let before = try await snapshot()
-        guard before.sessions.contains(where: {
-            $0.nativeID == nativeSessionID
-                && $0.capabilities.contains(.focusSession)
-        }) else {
+        guard
+            before.sessions.contains(where: {
+                $0.nativeID == nativeSessionID
+                    && $0.capabilities.contains(.focusSession)
+            })
+        else {
             return actionResult(
                 accepted: false,
                 verdict: "INVALID_TARGET",
@@ -723,7 +730,8 @@ public actor CursorProvider: AgentProvider {
                 return actionResult(
                     accepted: false,
                     verdict: "UNSUPPORTED_SIDEBAR_SHORTCUT",
-                    message: "The target is absent from Cursor's current sidebar order.",
+                    message:
+                        "The target is absent from Cursor's current sidebar order.",
                     started: started,
                     executed: true,
                     details: ["session_id": .string(nativeSessionID)]
@@ -742,8 +750,9 @@ public actor CursorProvider: AgentProvider {
             }
             let latest = try await snapshot()
             let latestOrder = try sidebarOrder()
-            guard latest.selectedNativeSessionID
-                == activated.selectedNativeSessionID,
+            guard
+                latest.selectedNativeSessionID
+                    == activated.selectedNativeSessionID,
                 latestOrder == order,
                 latestOrder.indices.contains(index),
                 latestOrder[index] == nativeSessionID,
@@ -752,7 +761,8 @@ public actor CursorProvider: AgentProvider {
                 return actionResult(
                     accepted: false,
                     verdict: "STALE_PREFLIGHT",
-                    message: "Cursor selection or sidebar order changed before focus dispatch.",
+                    message:
+                        "Cursor selection or sidebar order changed before focus dispatch.",
                     started: started,
                     executed: false,
                     details: ["session_id": .string(nativeSessionID)]
@@ -787,7 +797,8 @@ public actor CursorProvider: AgentProvider {
                 return actionResult(
                     accepted: true,
                     verdict: "FOCUS_VERIFIED",
-                    message: "The requested session is selected and Cursor is foreground.",
+                    message:
+                        "The requested session is selected and Cursor is foreground.",
                     started: started,
                     executed: true,
                     details: details
@@ -819,7 +830,8 @@ public actor CursorProvider: AgentProvider {
             return actionResult(
                 accepted: false,
                 verdict: "CURSOR_NOT_FOREGROUND",
-                message: "Cursor was not foreground, so no New Agent shortcut was sent.",
+                message:
+                    "Cursor was not foreground, so no New Agent shortcut was sent.",
                 started: started,
                 executed: false
             )
@@ -885,7 +897,7 @@ public actor CursorProvider: AgentProvider {
                 details: [
                     "message": .string(
                         "Cursor does not support \(commandID.rawValue)."
-                    ),
+                    )
                 ]
             )
         }
@@ -899,7 +911,7 @@ public actor CursorProvider: AgentProvider {
                 details: [
                     "message": .string(
                         "Cursor target is not uniquely selected and frontmost."
-                    ),
+                    )
                 ]
             )
         }
@@ -913,7 +925,7 @@ public actor CursorProvider: AgentProvider {
                 details: [
                     "message": .string(
                         "Cursor target changed before command dispatch."
-                    ),
+                    )
                 ]
             )
         }
@@ -1000,9 +1012,11 @@ public actor CursorProvider: AgentProvider {
             )
         }
         let current = try await snapshot()
-        guard current.sessions.contains(where: {
-            $0.nativeID == sessionID
-        }) else {
+        guard
+            current.sessions.contains(where: {
+                $0.nativeID == sessionID
+            })
+        else {
             throw ProviderOperationError.invalidHook(
                 "Cursor hook conversation_id is not in current inventory"
             )
@@ -1054,8 +1068,9 @@ public actor CursorProvider: AgentProvider {
         } else {
             createdAtExpression = "0"
         }
-        guard let sectionOrders =
-            settings["sectionOrderByGroupBy"] as? JSONObject,
+        guard
+            let sectionOrders =
+                settings["sectionOrderByGroupBy"] as? JSONObject,
             let sectionOrder = sectionOrders["repository"] as? [String]
         else {
             throw CursorProviderError.readFailed(
@@ -1139,7 +1154,8 @@ public actor CursorProvider: AgentProvider {
     }
 
     private func pinnedSessionIDs() throws -> Set<String> {
-        let url = workspaceStorageURL
+        let url =
+            workspaceStorageURL
             .appendingPathComponent("empty-window", isDirectory: true)
             .appendingPathComponent("state.vscdb")
         guard FileManager.default.fileExists(atPath: url.path) else {
@@ -1209,7 +1225,8 @@ public actor CursorProvider: AgentProvider {
         details: [String: JSONValue] = [:]
     ) -> ProviderActionResult {
         let duration = started.duration(to: .now)
-        let milliseconds = duration.components.seconds * 1_000
+        let milliseconds =
+            duration.components.seconds * 1_000
             + Int64(duration.components.attoseconds / 1_000_000_000_000_000)
         return ProviderActionResult(
             accepted: accepted,

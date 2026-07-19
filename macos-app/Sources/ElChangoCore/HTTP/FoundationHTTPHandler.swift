@@ -8,6 +8,12 @@ public struct FoundationHTTPHandler: HTTPHandler {
     private let assetRoot: URL?
     private let accessibility: any AccessibilityChecking
     private let deckService: DeckService
+    private let authorization: LoopbackAuthorization
+    private let hookRateLimiter: HookRateLimiter
+    private let expectedAuthority: String
+    private let allowedOrigin: String
+    private let allowedHookProviderIDs: Set<String>
+    private let requireLoopbackPeer: Bool
     private let unavailableProviders: [String: String]
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
@@ -16,11 +22,22 @@ public struct FoundationHTTPHandler: HTTPHandler {
         assetRoot: URL?,
         accessibility: any AccessibilityChecking,
         deckService: DeckService,
+        authorization: LoopbackAuthorization,
+        hookRateLimiter: HookRateLimiter = HookRateLimiter(),
+        expectedAuthority: String = "127.0.0.1:8765",
+        allowedHookProviderIDs: Set<String> = ["cursor", "claude-code"],
+        requireLoopbackPeer: Bool = true,
         unavailableProviders: [String: String] = [:]
     ) {
         self.assetRoot = assetRoot?.standardizedFileURL
         self.accessibility = accessibility
         self.deckService = deckService
+        self.authorization = authorization
+        self.hookRateLimiter = hookRateLimiter
+        self.expectedAuthority = expectedAuthority
+        self.allowedOrigin = "http://\(expectedAuthority)"
+        self.allowedHookProviderIDs = allowedHookProviderIDs
+        self.requireLoopbackPeer = requireLoopbackPeer
         self.unavailableProviders = unavailableProviders
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -29,9 +46,52 @@ public struct FoundationHTTPHandler: HTTPHandler {
     }
 
     public func handleRequest(_ request: HTTPRequest) async throws -> HTTPResponse {
+        guard !requireLoopbackPeer || Self.isLoopback(request.remoteAddress)
+        else {
+            return try jsonResponse(
+                .forbidden,
+                APIErrorResponse(error: "request peer is not loopback")
+            )
+        }
+        guard
+            request.headers[.host]?.lowercased()
+                == expectedAuthority.lowercased()
+        else {
+            return try jsonResponse(
+                .misdirectedRequest,
+                APIErrorResponse(error: "unexpected Host header")
+            )
+        }
+
+        if request.path.hasPrefix("/api/"),
+            let origin = request.headers[HTTPHeader("Origin")],
+            origin != allowedOrigin
+        {
+            return try jsonResponse(
+                .forbidden,
+                APIErrorResponse(error: "request Origin is not allowed")
+            )
+        }
+        if request.path.hasPrefix("/api/hooks/"),
+            request.headers[HTTPHeader("Origin")] != nil
+        {
+            return try jsonResponse(
+                .forbidden,
+                APIErrorResponse(error: "hook requests cannot have an Origin")
+            )
+        }
+
         if request.method == .GET {
+            if request.path == "/",
+                let bootstrap = request.query["bootstrap"]
+            {
+                return try await consumeBootstrap(bootstrap)
+            }
             switch request.path {
             case "/api/health":
+                guard await isAuthorized(request) else {
+                    return try unauthorizedResponse()
+                }
                 let diagnostics = await deckService.providerDiagnostics()
                 let unavailable = unavailableProviders.merging(
                     diagnostics.unavailableProviders
@@ -55,6 +115,9 @@ public struct FoundationHTTPHandler: HTTPHandler {
                     )
                 )
             case "/api/snapshot":
+                guard await isAuthorized(request) else {
+                    return try unauthorizedResponse()
+                }
                 let clientID = request.query["client_id"] ?? "web"
                 do {
                     return try jsonResponse(
@@ -94,6 +157,34 @@ public struct FoundationHTTPHandler: HTTPHandler {
         _ request: HTTPRequest
     ) async throws -> HTTPResponse {
         let isHook = request.path.hasPrefix("/api/hooks/")
+        let hookProviderID =
+            isHook
+            ? String(request.path.dropFirst("/api/hooks/".count))
+            : nil
+        if let hookProviderID,
+            !allowedHookProviderIDs.contains(hookProviderID)
+        {
+            return try jsonResponse(
+                .notFound,
+                APIErrorResponse(error: "hook provider is not supported")
+            )
+        }
+        if !isHook {
+            guard let authorizationKind = await authorizationKind(request)
+            else {
+                return try unauthorizedResponse()
+            }
+            if authorizationKind == .cookie,
+                request.headers[HTTPHeader("Origin")] != allowedOrigin
+            {
+                return try jsonResponse(
+                    .forbidden,
+                    APIErrorResponse(
+                        error: "browser actions require the expected Origin"
+                    )
+                )
+            }
+        }
         let limit = isHook ? Self.hookBodyLimit : Self.actionBodyLimit
         guard isHook || Self.actionPaths.contains(request.path) else {
             return try jsonResponse(
@@ -103,8 +194,9 @@ public struct FoundationHTTPHandler: HTTPHandler {
                 )
             )
         }
-        guard request.headers[.contentType]?.lowercased()
-            .hasPrefix("application/json") == true
+        guard
+            request.headers[.contentType]?.lowercased()
+                .hasPrefix("application/json") == true
         else {
             return try jsonResponse(
                 .unsupportedMediaType,
@@ -112,7 +204,7 @@ public struct FoundationHTTPHandler: HTTPHandler {
             )
         }
         if let length = request.headers[.contentLength].flatMap(Int.init),
-           length > limit
+            length > limit
         {
             return try jsonResponse(
                 .payloadTooLarge,
@@ -133,36 +225,27 @@ public struct FoundationHTTPHandler: HTTPHandler {
             )
         }
         if isHook {
-            let providerID = String(
-                request.path.dropFirst("/api/hooks/".count)
-            )
+            let providerID = hookProviderID ?? ""
+            guard await hookRateLimiter.allow(providerID: providerID) else {
+                return try jsonResponse(
+                    .tooManyRequests,
+                    APIErrorResponse(
+                        error: "hook request rate limit exceeded",
+                        retryable: true
+                    )
+                )
+            }
             return try await receiveHook(
                 providerID: providerID,
                 body: body
             )
         }
-        if request.path == "/api/focus" {
-            return try await focus(body: body)
-        }
-
         let payload: DeckActionRequest
         do {
-            if request.path == "/api/intent" {
-                let intent = try decoder.decode(
-                    DeckIntentRequest.self,
-                    from: body
-                )
-                payload = DeckActionRequest(
-                    clientID: DeckService.defaultClientID,
-                    buttonID: intent.buttonID,
-                    revision: intent.revision
-                )
-            } else {
-                payload = try decoder.decode(
-                    DeckActionRequest.self,
-                    from: body
-                )
-            }
+            payload = try decoder.decode(
+                DeckActionRequest.self,
+                from: body
+            )
             try DeckService.validateClientID(payload.clientID)
             guard !payload.buttonID.isEmpty else {
                 throw DeckServiceError.invalidAction(
@@ -211,6 +294,61 @@ public struct FoundationHTTPHandler: HTTPHandler {
                 )
             )
         }
+    }
+
+    private func consumeBootstrap(
+        _ bootstrap: String
+    ) async throws -> HTTPResponse {
+        guard let session = await authorization.consumeBootstrap(bootstrap)
+        else {
+            return try jsonResponse(
+                .unauthorized,
+                APIErrorResponse(error: "web bootstrap is invalid or expired")
+            )
+        }
+        var headers = securityHeaders
+        headers[.location] = "/"
+        headers[.setCookie] = [
+            "\(LoopbackAuthorization.webSessionCookieName)=\(session)",
+            "HttpOnly",
+            "SameSite=Strict",
+            "Path=/",
+            "Max-Age=43200",
+        ].joined(separator: "; ")
+        headers[HTTPHeader("Cache-Control")] = "no-store"
+        return HTTPResponse(
+            statusCode: .seeOther,
+            headers: headers
+        )
+    }
+
+    private func isAuthorized(_ request: HTTPRequest) async -> Bool {
+        await authorizationKind(request) != nil
+    }
+
+    private func authorizationKind(
+        _ request: HTTPRequest
+    ) async -> AuthorizationKind? {
+        if await authorization.acceptsBearer(
+            request.headers[.authorization]
+        ) {
+            return .bearer
+        }
+        if await authorization.acceptsCookie(
+            request.headers[.cookie]
+        ) {
+            return .cookie
+        }
+        return nil
+    }
+
+    private func unauthorizedResponse() throws -> HTTPResponse {
+        var response = try jsonResponse(
+            .unauthorized,
+            APIErrorResponse(error: "authentication is required")
+        )
+        response.headers[HTTPHeader("WWW-Authenticate")] = "Bearer"
+        return response
     }
 
     private func receiveHook(
@@ -270,54 +408,17 @@ public struct FoundationHTTPHandler: HTTPHandler {
         }
     }
 
-    private func focus(body: Data) async throws -> HTTPResponse {
-        let request: FocusRequest
-        do {
-            request = try decoder.decode(FocusRequest.self, from: body)
-            guard !request.sessionID.isEmpty else {
-                throw DeckServiceError.invalidAction(
-                    "session_id must be a non-empty string"
-                )
-            }
-        } catch {
-            return try jsonResponse(
-                .badRequest,
-                APIErrorResponse(error: error.localizedDescription)
-            )
-        }
-        do {
-            let result = try await deckService.focusSession(
-                sessionID: request.sessionID
-            )
-            return try jsonResponse(
-                result.accepted ? .ok : .conflict,
-                JSONValue.object(result.details)
-            )
-        } catch let error as DeckServiceError {
-            return try jsonResponse(
-                .conflict,
-                APIErrorResponse(error: error.localizedDescription)
-            )
-        } catch {
-            return try jsonResponse(
-                .serviceUnavailable,
-                APIErrorResponse(
-                    error: error.localizedDescription,
-                    retryable: false
-                )
-            )
-        }
-    }
-
     private func activate(
         _ request: DeckActionRequest
     ) async throws -> HTTPResponse {
         let snapshot = try await deckService.snapshot(
             clientID: request.clientID
         )
-        guard let button = snapshot.buttons.first(
-            where: { $0.id == request.buttonID && $0.enabled }
-        ) else {
+        guard
+            let button = snapshot.buttons.first(
+                where: { $0.id == request.buttonID && $0.enabled }
+            )
+        else {
             throw DeckServiceError.invalidAction(
                 "button is not actionable in the current snapshot"
             )
@@ -363,7 +464,7 @@ public struct FoundationHTTPHandler: HTTPHandler {
             )
         case .setSessionIcon:
             guard let optionID = button.optionID,
-                  let icon = DeckIcon(rawValue: optionID)
+                let icon = DeckIcon(rawValue: optionID)
             else {
                 throw DeckServiceError.invalidAction(
                     "icon option is missing"
@@ -404,7 +505,8 @@ public struct FoundationHTTPHandler: HTTPHandler {
             let launch = try await deckService.openNew(
                 providerID: providerID
             )
-            let completed = launch.accepted
+            let completed =
+                launch.accepted
                 ? try await deckService.completeNewSession(
                     clientID: request.clientID
                 )
@@ -467,9 +569,11 @@ public struct FoundationHTTPHandler: HTTPHandler {
         let snapshot = try await deckService.snapshot(
             clientID: request.clientID
         )
-        guard let button = snapshot.buttons.first(
-            where: { $0.id == request.buttonID }
-        ) else {
+        guard
+            let button = snapshot.buttons.first(
+                where: { $0.id == request.buttonID }
+            )
+        else {
             throw DeckServiceError.invalidAction(
                 "button is absent from the current snapshot"
             )
@@ -484,7 +588,7 @@ public struct FoundationHTTPHandler: HTTPHandler {
                 sessionID: sessionID
             )
         } else if 11..<14 ~= button.position,
-                  button.action == .executeCommand
+            button.action == .executeCommand
         {
             action = .chooseSlotCommand
             updated = try await deckService.chooseSlotCommand(
@@ -515,21 +619,23 @@ public struct FoundationHTTPHandler: HTTPHandler {
         }
 
         guard let decodedPath = path.removingPercentEncoding,
-              isSafeAssetPath(decodedPath)
+            isSafeAssetPath(decodedPath)
         else {
             return jsonError(.badRequest, message: "invalid asset path")
         }
 
-        let relativePath = decodedPath == "/"
+        let relativePath =
+            decodedPath == "/"
             ? "index.html"
             : String(decodedPath.drop(while: { $0 == "/" }))
-        let candidate = assetRoot
+        let candidate =
+            assetRoot
             .appendingPathComponent(relativePath, isDirectory: false)
             .standardizedFileURL
 
         if isInsideAssetRoot(candidate),
-           let data = try? Data(contentsOf: candidate),
-           !candidate.hasDirectoryPath
+            let data = try? Data(contentsOf: candidate),
+            !candidate.hasDirectoryPath
         {
             return staticResponse(data: data, fileURL: candidate)
         }
@@ -552,7 +658,8 @@ public struct FoundationHTTPHandler: HTTPHandler {
 
     private func isInsideAssetRoot(_ candidate: URL) -> Bool {
         guard let assetRoot else { return false }
-        let rootPath = assetRoot.path.hasSuffix("/")
+        let rootPath =
+            assetRoot.path.hasSuffix("/")
             ? assetRoot.path
             : assetRoot.path + "/"
         return candidate.path == assetRoot.path
@@ -563,7 +670,8 @@ public struct FoundationHTTPHandler: HTTPHandler {
         let isHTML = fileURL.pathExtension.lowercased() == "html"
         var headers = securityHeaders
         headers[.contentType] = contentType(for: fileURL)
-        headers[HTTPHeader("Cache-Control")] = isHTML
+        headers[HTTPHeader("Cache-Control")] =
+            isHTML
             ? "no-cache"
             : "public, max-age=31536000, immutable"
         return HTTPResponse(
@@ -638,7 +746,19 @@ public struct FoundationHTTPHandler: HTTPHandler {
     private static let actionPaths: Set<String> = [
         "/api/activate",
         "/api/long-press",
-        "/api/focus",
-        "/api/intent",
     ]
+
+    private static func isLoopback(_ address: HTTPRequest.Address?) -> Bool {
+        switch address {
+        case .ip4("127.0.0.1", port: _), .ip6("::1", port: _):
+            true
+        case .ip4, .ip6, .unix, .none:
+            false
+        }
+    }
+
+    private enum AuthorizationKind {
+        case bearer
+        case cookie
+    }
 }

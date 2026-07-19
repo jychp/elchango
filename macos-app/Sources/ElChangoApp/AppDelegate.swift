@@ -23,6 +23,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private let accessibility = AccessibilityAuthorizer()
+    private var runtimeProfile: RuntimeProfile = .stable
+    private var serviceLease: ServiceLease?
     private var service: LoopbackService?
     private var serviceState: ServiceState = .starting
     private var statusItem: NSStatusItem?
@@ -76,7 +78,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         rebuildMenu()
 
         do {
-            let preferences = try PreferencesStore()
+            runtimeProfile = try RuntimeProfile.resolve(
+                bundleIdentifier: Bundle.main.bundleIdentifier ?? ""
+            )
+            serviceLease = try ServiceLease(
+                holder: runtimeProfile.displayName,
+                url: runtimeProfile.serviceLeaseURL
+            )
+            let controlToken = try ControlTokenStore(
+                url: runtimeProfile.controlTokenURL
+            )
+            .loadOrCreate()
+            let preferences = try PreferencesStore(
+                url: runtimeProfile.preferencesURL
+            )
             let registry = ProviderRegistry()
             let enabledProviderIDs = Set(
                 registry.providers.map { $0.descriptor.id }
@@ -102,6 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 assetRoot: Self.webAssetRoot,
                 accessibility: accessibility,
                 deckService: deckService,
+                controlToken: controlToken,
                 unavailableProviders: registry.unavailableProviders
             )
             self.service = service
@@ -115,20 +131,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 } catch {
                     serviceState = .failed(error.localizedDescription)
                 }
+                self.service = nil
+                serviceLease = nil
                 rebuildMenu()
             }
         } catch {
             serviceState = .failed(error.localizedDescription)
+            service = nil
+            serviceLease = nil
             rebuildMenu()
+            if case ServiceLeaseError.alreadyRunning = error {
+                showExclusiveLaunchFailure(error.localizedDescription)
+            }
         }
     }
 
     private func rebuildMenu() {
         let menu = NSMenu()
 
-        let version = Bundle.main.object(
-            forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "unknown"
+        let version =
+            Bundle.main.object(
+                forInfoDictionaryKey: "CFBundleShortVersionString"
+            ) as? String ?? "unknown"
         let titleItem = NSMenuItem(
             title: "",
             action: nil,
@@ -193,7 +217,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let view = NSView(
             frame: NSRect(x: 0, y: 0, width: 260, height: 32)
         )
-        let title = NSTextField(labelWithString: "elChango")
+        let title = NSTextField(
+            labelWithString: runtimeProfile.displayName
+        )
         title.font = .boldSystemFont(ofSize: 14)
         title.textColor = .white
         let versionLabel = NSTextField(labelWithString: version)
@@ -214,10 +240,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func menuIcon(named symbolName: String) -> NSImage? {
-        guard let image = NSImage(
-            systemSymbolName: symbolName,
-            accessibilityDescription: nil
-        ) else {
+        guard
+            let image = NSImage(
+                systemSymbolName: symbolName,
+                accessibilityDescription: nil
+            )
+        else {
             return nil
         }
         image.isTemplate = true
@@ -225,12 +253,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return image
     }
 
+    private func showExclusiveLaunchFailure(_ details: String) {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "elChango is already running"
+        alert.informativeText = """
+            \(details). Stable and debug builds share port 8765 and cannot run at \
+            the same time.
+            """
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Quit")
+        alert.runModal()
+        NSApp.terminate(nil)
+    }
+
     @objc
     private func openWebDeck() {
-        guard let url = URL(
-            string: "http://127.0.0.1:\(LoopbackService.defaultPort)/"
-        ) else { return }
-        NSWorkspace.shared.open(url)
+        guard let service else { return }
+        Task {
+            guard let url = await service.webDeckURL() else { return }
+            NSWorkspace.shared.open(url)
+        }
     }
 
     @objc
@@ -257,9 +300,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var diagnosticsText: String {
         let serviceDetails: String
-        let version = Bundle.main.object(
-            forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "unknown"
+        let version =
+            Bundle.main.object(
+                forInfoDictionaryKey: "CFBundleShortVersionString"
+            ) as? String ?? "unknown"
         switch serviceState {
         case .starting:
             serviceDetails = "starting"
@@ -270,14 +314,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         return """
-        Version: \(version)
-        Service: \(serviceDetails)
-        Endpoint: http://127.0.0.1:\(LoopbackService.defaultPort)
-        Accessibility: \(accessibility.isTrusted ? "granted" : "not granted")
+            Version: \(version)
+            Service: \(serviceDetails)
+            Endpoint: http://127.0.0.1:\(LoopbackService.defaultPort)
+            Accessibility: \(accessibility.isTrusted ? "granted" : "not granted")
 
-        Cursor: \(providerStatuses["cursor"] ?? "unknown")
-        Claude Code: \(providerStatuses["claude-code"] ?? "unknown")
-        """
+            Cursor: \(providerStatuses["cursor"] ?? "unknown")
+            Claude Code: \(providerStatuses["claude-code"] ?? "unknown")
+            """
     }
 
     private static var webAssetRoot: URL? {
@@ -295,9 +339,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if let bundled = Bundle.main.resourceURL?
             .appendingPathComponent("Web", isDirectory: true),
-           fileManager.fileExists(
-               atPath: bundled.appendingPathComponent("index.html").path
-           )
+            fileManager.fileExists(
+                atPath: bundled.appendingPathComponent("index.html").path
+            )
         {
             return bundled
         }

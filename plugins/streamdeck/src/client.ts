@@ -1,3 +1,8 @@
+import { constants } from "node:fs";
+import { open } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
 import {
   parseActivationResponse,
   parseDeckSnapshot,
@@ -7,6 +12,14 @@ import {
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:8765";
 const REQUEST_TIMEOUT_MS = 2_000;
+const CONTROL_TOKEN_PATH = path.join(
+  os.homedir(),
+  "Library",
+  "Application Support",
+  "elChango",
+  "control-token",
+);
+const CONTROL_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 export class DeckApiError extends Error {
   constructor(
@@ -24,6 +37,7 @@ export class DeckApiClient {
     private readonly endpoint = DEFAULT_ENDPOINT,
     private readonly fetcher: typeof fetch = fetch,
     private readonly requestTimeoutMs = REQUEST_TIMEOUT_MS,
+    private readonly tokenReader: () => Promise<string> = readControlToken,
   ) {}
 
   async snapshot(): Promise<DeckSnapshot> {
@@ -65,20 +79,16 @@ export class DeckApiClient {
     );
   }
 
-  private async request(
-    url: URL,
-    init: RequestInit,
-  ): Promise<unknown> {
+  private async request(url: URL, init: RequestInit): Promise<unknown> {
     const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      this.requestTimeoutMs,
-    );
+    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
     try {
+      const token = await this.tokenReader();
       const response = await this.fetcher(url, {
         ...init,
         headers: {
           Accept: "application/json",
+          Authorization: `Bearer ${token}`,
           ...init.headers,
         },
         signal: controller.signal,
@@ -104,6 +114,40 @@ export class DeckApiClient {
     } finally {
       clearTimeout(timeout);
     }
+  }
+}
+
+async function readControlToken(): Promise<string> {
+  const handle = await open(
+    CONTROL_TOKEN_PATH,
+    constants.O_RDONLY | constants.O_NOFOLLOW,
+  );
+  try {
+    const information = await handle.stat();
+    if (!information.isFile()) {
+      throw new DeckApiError("elChango control token is not a regular file");
+    }
+    if ((information.mode & 0o777) !== 0o600) {
+      throw new DeckApiError("elChango control token permissions are unsafe");
+    }
+    if (
+      typeof process.getuid === "function" &&
+      information.uid !== process.getuid()
+    ) {
+      throw new DeckApiError("elChango control token has an unexpected owner");
+    }
+    const token = (await handle.readFile("utf8")).trim();
+    const decoded = Buffer.from(token, "base64url");
+    if (
+      !CONTROL_TOKEN_PATTERN.test(token) ||
+      decoded.length !== 32 ||
+      decoded.toString("base64url") !== token
+    ) {
+      throw new DeckApiError("elChango control token has an invalid format");
+    }
+    return token;
+  } finally {
+    await handle.close();
   }
 }
 

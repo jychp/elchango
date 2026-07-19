@@ -8,7 +8,8 @@ struct PreferencesStoreTests {
     func defaultsPersistAndReload() async throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let url = directory
+        let url =
+            directory
             .appendingPathComponent("nested", isDirectory: true)
             .appendingPathComponent("preferences.json")
         let store = try PreferencesStore(url: url)
@@ -26,11 +27,12 @@ struct PreferencesStoreTests {
         let reloaded = try PreferencesStore(url: url)
         let preferences = await reloaded.snapshot()
         #expect(preferences.sessionIcons == ["cursor:session-1": .robot])
-        #expect(preferences.actionSlots == [
-            .compact,
-            .commitPush,
-            .createPR,
-        ])
+        #expect(
+            preferences.actionSlots == [
+                .compact,
+                .commitPush,
+                .createPR,
+            ])
 
         let temporaryFiles = try FileManager.default.contentsOfDirectory(
             at: url.deletingLastPathComponent(),
@@ -52,15 +54,17 @@ struct PreferencesStoreTests {
         let store = try PreferencesStore(url: url)
         let preferences = await store.snapshot()
 
-        #expect(preferences.sessionIcons == [
-            "claude-code:session-1": .terminal,
-            "cursor:session-1": .robot,
-        ])
-        #expect(preferences.actionSlots == [
-            .compact,
-            .commitPush,
-            .createPR,
-        ])
+        #expect(
+            preferences.sessionIcons == [
+                "claude-code:session-1": .terminal,
+                "cursor:session-1": .robot,
+            ])
+        #expect(
+            preferences.actionSlots == [
+                .compact,
+                .commitPush,
+                .createPR,
+            ])
 
         try await store.setActionSlot(index: 0, commandID: .compact)
         #expect(

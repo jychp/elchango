@@ -2,9 +2,8 @@ import Foundation
 
 public actor PrivilegedActionGate {
     private var isLocked = false
-    private var waiters: [
-        (id: UUID, continuation: CheckedContinuation<Bool, Never>)
-    ] = []
+    private var waiters: [(id: UUID, continuation: CheckedContinuation<Bool, Never>)] =
+        []
     private var activeIdentifier: UUID?
 
     public init() {}

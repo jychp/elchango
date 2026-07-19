@@ -84,9 +84,10 @@ public actor ClaudeCodeProvider: AgentProvider {
             let selectedID = Self.selectedNativeSessionID(
                 from: visibleRecords
             )
-            let shortcuts = (try? shortcutOrder(
-                records: visibleRecords
-            )) ?? []
+            let shortcuts =
+                (try? shortcutOrder(
+                    records: visibleRecords
+                )) ?? []
             var sessions: [AgentSession] = []
             for record in visibleRecords {
                 let transcriptCount =
@@ -190,9 +191,11 @@ public actor ClaudeCodeProvider: AgentProvider {
     ) async throws -> ProviderActionResult {
         let started = ContinuousClock.now
         let beforeRecords = try readRecords().filter { !$0.isArchived }
-        guard let target = beforeRecords.first(where: {
-            $0.desktopSessionID == nativeSessionID
-        }) else {
+        guard
+            let target = beforeRecords.first(where: {
+                $0.desktopSessionID == nativeSessionID
+            })
+        else {
             throw ProviderOperationError.targetUnverified(
                 "unknown non-archived Claude session: \(nativeSessionID)"
             )
@@ -202,15 +205,17 @@ public actor ClaudeCodeProvider: AgentProvider {
             return actionResult(
                 accepted: false,
                 verdict: "FOCUS_UNSUPPORTED",
-                message: "Claude session is absent from the persisted sidebar shortcuts.",
+                message:
+                    "Claude session is absent from the persisted sidebar shortcuts.",
                 started: started,
                 executed: false,
                 details: ["session_id": .string(nativeSessionID)]
             )
         }
-        let beforeMaximum = beforeRecords.compactMap(
-            \.lastFocusedAtMilliseconds
-        ).max() ?? -1
+        let beforeMaximum =
+            beforeRecords.compactMap(
+                \.lastFocusedAtMilliseconds
+            ).max() ?? -1
         let targetAlreadySelected =
             target.lastFocusedAtMilliseconds == beforeMaximum
             && beforeRecords.filter {
@@ -233,7 +238,8 @@ public actor ClaudeCodeProvider: AgentProvider {
                 return actionResult(
                     accepted: false,
                     verdict: "STALE_PREFLIGHT",
-                    message: "Claude selection or sidebar order changed before focus dispatch.",
+                    message:
+                        "Claude selection or sidebar order changed before focus dispatch.",
                     started: started,
                     executed: false,
                     details: ["session_id": .string(nativeSessionID)]
@@ -322,7 +328,7 @@ public actor ClaudeCodeProvider: AgentProvider {
                 details: [
                     "message": .string(
                         "Claude does not support \(commandID.rawValue)."
-                    ),
+                    )
                 ]
             )
         }
@@ -335,7 +341,7 @@ public actor ClaudeCodeProvider: AgentProvider {
                 details: [
                     "message": .string(
                         "Claude target is not uniquely selected and frontmost."
-                    ),
+                    )
                 ]
             )
         }
@@ -348,7 +354,7 @@ public actor ClaudeCodeProvider: AgentProvider {
                 details: [
                     "message": .string(
                         "Claude target changed before command dispatch."
-                    ),
+                    )
                 ]
             )
         }
@@ -486,8 +492,7 @@ public actor ClaudeCodeProvider: AgentProvider {
                 )
             }
             for qualified in ordered
-            where qualified.hasPrefix("code:")
-            {
+            where qualified.hasPrefix("code:") {
                 let sessionID = String(qualified.dropFirst("code:".count))
                 if visibleIDs.contains(sessionID),
                     !persisted.contains(sessionID)
@@ -496,7 +501,8 @@ public actor ClaudeCodeProvider: AgentProvider {
                 }
             }
         }
-        let remaining = records
+        let remaining =
+            records
             .filter {
                 !persisted.contains($0.desktopSessionID)
             }
@@ -560,7 +566,8 @@ public actor ClaudeCodeProvider: AgentProvider {
         details: [String: JSONValue] = [:]
     ) -> ProviderActionResult {
         let duration = started.duration(to: .now)
-        let milliseconds = duration.components.seconds * 1_000
+        let milliseconds =
+            duration.components.seconds * 1_000
             + Int64(duration.components.attoseconds / 1_000_000_000_000_000)
         return ProviderActionResult(
             accepted: accepted,
@@ -636,10 +643,12 @@ public actor ClaudeCodeProvider: AgentProvider {
 
     private func requireDirectory(_ url: URL) throws {
         var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(
-            atPath: url.path,
-            isDirectory: &isDirectory
-        ), isDirectory.boolValue else {
+        guard
+            FileManager.default.fileExists(
+                atPath: url.path,
+                isDirectory: &isDirectory
+            ), isDirectory.boolValue
+        else {
             throw ClaudeCodeProviderError.directoryNotFound(url)
         }
     }
@@ -671,8 +680,9 @@ public actor ClaudeCodeProvider: AgentProvider {
             key: "sessionId",
             url: url
         )
-        guard url.deletingPathExtension().lastPathComponent
-            == desktopSessionID
+        guard
+            url.deletingPathExtension().lastPathComponent
+                == desktopSessionID
         else {
             throw ClaudeCodeProviderError.invalidRecord(
                 url,
@@ -772,9 +782,10 @@ public actor ClaudeCodeProvider: AgentProvider {
         do {
             let source = try FileHandle(forReadingFrom: url)
             defer { try? source.close() }
-            data = try source.read(
-                upToCount: maximumMetadataPrefixBytes
-            ) ?? Data()
+            data =
+                try source.read(
+                    upToCount: maximumMetadataPrefixBytes
+                ) ?? Data()
         } catch {
             throw ClaudeCodeProviderError.invalidRecord(
                 url,

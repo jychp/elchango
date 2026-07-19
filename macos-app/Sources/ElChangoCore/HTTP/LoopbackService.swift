@@ -7,6 +7,8 @@ public actor LoopbackService {
     public static let defaultPort: UInt16 = 8_765
 
     private let server: HTTPServer
+    private let authorization: LoopbackAuthorization
+    private let port: UInt16
     private var runTask: Task<Void, any Error>?
 
     public init(
@@ -14,8 +16,12 @@ public actor LoopbackService {
         assetRoot: URL?,
         accessibility: any AccessibilityChecking,
         deckService: DeckService,
+        controlToken: String,
         unavailableProviders: [String: String] = [:]
     ) throws {
+        let authorization = LoopbackAuthorization(
+            controlToken: controlToken
+        )
         let address = try sockaddr_in.inet(ip4: "127.0.0.1", port: port)
         let configuration = HTTPServer.Configuration(
             address: address,
@@ -29,9 +35,13 @@ public actor LoopbackService {
                 assetRoot: assetRoot,
                 accessibility: accessibility,
                 deckService: deckService,
+                authorization: authorization,
+                expectedAuthority: "127.0.0.1:\(port)",
                 unavailableProviders: unavailableProviders
             )
         )
+        self.authorization = authorization
+        self.port = port
     }
 
     public func start() async throws {
@@ -53,6 +63,19 @@ public actor LoopbackService {
         get async {
             await server.isListening
         }
+    }
+
+    public func webDeckURL() async -> URL? {
+        let bootstrap = await authorization.issueBootstrap()
+        var components = URLComponents()
+        components.scheme = "http"
+        components.host = "127.0.0.1"
+        components.port = Int(port)
+        components.path = "/"
+        components.queryItems = [
+            URLQueryItem(name: "bootstrap", value: bootstrap)
+        ]
+        return components.url
     }
 
     public func waitForTermination() async throws {

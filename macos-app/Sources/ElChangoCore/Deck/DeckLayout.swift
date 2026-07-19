@@ -147,10 +147,8 @@ enum DeckLayout {
     ) throws -> (buttons: [DeckButton], pageCount: Int) {
         let pageCount = max(
             1,
-            (
-                DeckIcon.personalizationOptions.count
-                    + sessionSlots - 1
-            ) / sessionSlots
+            (DeckIcon.personalizationOptions.count
+                + sessionSlots - 1) / sessionSlots
         )
         guard 0..<pageCount ~= pageIndex else {
             throw DeckServiceError.invalidAction(

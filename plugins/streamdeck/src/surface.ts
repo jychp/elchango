@@ -67,18 +67,14 @@ export class StreamDeckSurface {
   }
 
   async activate(keyId: string): Promise<void> {
-    await this.dispatch(
-      keyId,
-      false,
-      (buttonId, revision) => this.api.activate(buttonId, revision),
+    await this.dispatch(keyId, false, (buttonId, revision) =>
+      this.api.activate(buttonId, revision),
     );
   }
 
   async longPress(keyId: string): Promise<void> {
-    await this.dispatch(
-      keyId,
-      true,
-      (buttonId, revision) => this.api.longPress(buttonId, revision),
+    await this.dispatch(keyId, true, (buttonId, revision) =>
+      this.api.longPress(buttonId, revision),
     );
   }
 
@@ -92,12 +88,7 @@ export class StreamDeckSurface {
   ): Promise<void> {
     const key = this.keys.get(keyId);
     const snapshot = this.snapshotValue;
-    if (
-      !key ||
-      !this.online ||
-      !snapshot ||
-      this.activationInFlight
-    ) {
+    if (!key || !this.online || !snapshot || this.activationInFlight) {
       if (key) await this.showFailure(key);
       return;
     }
@@ -108,9 +99,11 @@ export class StreamDeckSurface {
     if (
       allowDisabled &&
       button.kind !== "session" &&
-      !(button.position >= 11 &&
+      !(
+        button.position >= 11 &&
         button.position <= 13 &&
-        button.action === "execute_command")
+        button.action === "execute_command"
+      )
     ) {
       return;
     }
@@ -176,7 +169,9 @@ export class StreamDeckSurface {
   }
 
   private async renderAll(): Promise<void> {
-    await Promise.all([...this.keys.values()].map((key) => this.renderKey(key)));
+    await Promise.all(
+      [...this.keys.values()].map((key) => this.renderKey(key)),
+    );
   }
 
   private async renderKey(

@@ -1,0 +1,28 @@
+extension DeckIcon {
+    public static let personalizationOptions: [DeckIcon] = [
+        .cursor,
+        .claude,
+        .robot,
+        .terminal,
+        .code,
+        .bug,
+        .magnifyingGlass,
+        .bell,
+        .wrench,
+        .fire,
+        .fireExtinguisher,
+        .fireTruck,
+        .rocket,
+        .shield,
+        .database,
+        .globe,
+        .package,
+        .gitBranch,
+        .flask,
+        .testTube,
+        .checks,
+        .gitPullRequest,
+        .eye,
+        .shieldCheck,
+    ]
+}

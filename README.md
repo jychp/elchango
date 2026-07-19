@@ -4,228 +4,223 @@
   <img src="docs/assets/elchango-logo.png" alt="elChango cybernetic monkey logo" width="320">
 </p>
 
-elChango is a local control deck for native AI coding sessions. A signed macOS
-menu bar app discovers Cursor and Claude Code sessions, reduces provider state
-to a shared 15-key deck, and serves that deck to a browser and Stream Deck
-hardware.
+elChango is a local control deck for native AI coding sessions on macOS. It
+brings Cursor and Claude Code sessions into one consistent 15-key view so you
+can see what needs attention, return to the right session, start a new one, and
+run a small set of verified commands from a browser or Stream Deck.
 
-The project has completed its native Swift cutover. Cursor and Claude Code
-inventory, state, verified focus, neutral new-session launch, and bounded
-semantic commands are implemented. Provider integrations still depend on
-version-sensitive local schemas, native shortcuts, and Accessibility markers,
-so unsupported or ambiguous conditions fail closed.
+The app is designed to fail closed. If elChango cannot verify the provider,
+session, or command target, it disables or rejects the action instead of
+guessing.
 
-## Capabilities
+## What you get
 
-- Inventory persistent Cursor and Claude Code sessions across workspaces.
-- Show working, waiting, done, error, idle, and degraded state through a common
-  four-color deck model.
-- Keep web and Stream Deck pagination independent while sharing ordering,
-  preferences, provider selection, and action safety.
-- Focus an existing session through a provider-verified route. Cursor verifies
-  the exact selected target after dispatch; Claude verifies the exact sidebar
-  shortcut and requires a later inventory snapshot before commands are enabled.
-- Open Cursor's blank New Agent view or Claude Desktop's neutral new Code view
-  without submitting a prompt.
-- Dispatch Accept, Open PR, Commit Push, and Compact through provider-owned,
-  one-shot recipes after fresh target verification.
-- Persist curated session icons and action placement for both surfaces.
+- A menu bar app that discovers local Cursor and Claude Code sessions.
+- A browser deck included with the app.
+- An optional Stream Deck MK.2 surface with the same 5-by-3 layout.
+- Shared working, waiting, done, error, idle, and degraded status.
+- Verified session focus and neutral new-session launch.
+- Bounded commands for Accept, Open PR, Commit Push, and Compact when the
+  selected provider and session support them.
+- Persistent session icons and command placement.
 
-## Architecture
+<p align="center">
+  <img src="docs/assets/elchango-off.png" alt="Sleeping monkey shown when the local service is offline" width="180">
+  <img src="docs/assets/elchango-ko.png" alt="Knocked-out monkey shown after an action failure" width="180">
+</p>
 
-The macOS app is the only production host. Python is used only for executable
-provider reconnaissance.
-
-```text
-macos-app/                 Swift menu bar app, providers, deck service, HTTP API
-web/                       Svelte 5 browser surface bundled into the app
-plugins/cursor/            Cursor lifecycle hook marketplace plugin
-plugins/claude/            Claude Code HTTP hook marketplace plugin
-plugins/streamdeck/        Elgato plugin and generated MK.2 profile
-contracts/                 HTTP, preference, and provider fixtures
-docs/providers/            Evidence, safety boundaries, and limitations
-scripts/poc/cursor/        Cursor reconnaissance POCs 01 through 09
-scripts/poc/claude/        Claude Code reconnaissance POCs 01 through 04
-```
-
-The app binds only to `http://127.0.0.1:8765`. It owns provider inventory,
-sanitized hook state, serialized native automation, persistent preferences,
-bundled web assets, and the loopback API consumed by both surfaces.
+The sleeping monkey means that the local service is unavailable. The
+knocked-out monkey means that an action failed. The optional Stream Deck
+screensaver is available at
+[docs/assets/elchango-screensaver.png](docs/assets/elchango-screensaver.png).
 
 ## Requirements
 
-For normal use:
+- macOS 14 or newer.
+- Cursor and/or Claude Desktop with Claude Code sessions.
+- Accessibility permission for session focus and commands.
+- Stream Deck 7.1 or newer only if you use the hardware surface.
 
-- macOS 14 or newer;
-- Cursor and/or Claude Desktop with Claude Code sessions;
-- the native elChango app;
-- Stream Deck 7.1 or newer only for the hardware surface.
+The release app is Universal 2 and runs on Apple Silicon and Intel Macs. Python,
+Node.js, and Xcode are not required for normal use.
 
-For development:
+## Install
 
-- Xcode 26 or newer;
-- Node.js 24 and npm;
-- Python 3 for POCs and provider plugin validation;
-- the Elgato Stream Deck CLI, installed through the plugin's npm dependencies.
-
-Python is not required to run the packaged app.
-
-## Install the macOS app
-
-Build from a clone:
+### Homebrew
 
 ```bash
-make setup
-ELCHANGO_SIGN_MODE=adhoc make build-app-macos
-open macos-app/dist/elChango.app
+brew install --cask jychp/tap/elchango
 ```
 
-Move `macos-app/dist/elChango.app` to `/Applications/elChango.app` before
-installing the Cursor plugin. The plugin intentionally uses that fixed path for
-its fail-open hook reporter.
+### GitHub release
 
-Ad-hoc signing is suitable for builds and unprivileged HTTP smoke tests. For
-Accessibility testing and regular use, build with a stable Apple Development or
-local signing identity and keep the app at a stable path:
+Download `elChango-X.Y.Z-macos-universal.zip` and its checksum from the
+[latest GitHub release](https://github.com/jychp/elchango/releases/latest).
+Verify the archive:
 
 ```bash
-ELCHANGO_SIGN_MODE=identity \
-ELCHANGO_CODESIGN_IDENTITY="Your Signing Identity" \
-make build-app-macos
+shasum -a 256 -c elChango-X.Y.Z-macos-universal.zip.sha256
 ```
 
-Launch the app and grant Accessibility permission when prompted. The menu bar
-item reports service status and opens the browser deck.
+Extract the archive and move `elChango.app` to `/Applications`. Official
+release apps are signed with Developer ID and notarized by Apple.
+
+## First launch
+
+1. Open `/Applications/elChango.app`.
+2. Choose the grid icon in the macOS menu bar.
+3. Choose **Request Accessibility Access** and approve elChango in **System
+   Settings > Privacy & Security > Accessibility**.
+4. Return to the menu and choose **Open Web Deck**.
+5. Install the provider plugin for each provider you use.
+
+The menu's **Diagnostics** item shows the app version, local service status,
+Accessibility status, and provider availability. Only one stable or debug
+instance can use the local service at a time.
+
+### Why Accessibility is required
+
+Accessibility lets elChango inspect the frontmost supported app, verify the
+selected session and input target, focus a session, and dispatch its fixed
+commands. It does not allow browser or Stream Deck clients to submit arbitrary
+prompt text, scripts, shell commands, or shortcuts.
+
+If macOS does not retain permission after an app update or move, remove the old
+elChango entry in Accessibility settings, keep the app at
+`/Applications/elChango.app`, reopen it, and grant access again.
 
 ## Install provider plugins
 
-Provider plugins add low-latency lifecycle hooks. They are fail-open: an absent
-app or unavailable loopback service does not block the coding agent.
+Provider plugins add low-latency lifecycle updates. They fail open, so an
+unavailable elChango app does not block your coding agent.
 
-### Cursor marketplace plugin
+### Cursor
 
-Individual users install reviewed plugins from Cursor's public Marketplace.
-elChango is not yet listed there, so local development currently uses a symlink:
+The Cursor plugin is intended for the public Cursor Marketplace. Until it is
+listed, individual users can install it from a local clone:
 
 ```bash
 mkdir -p ~/.cursor/plugins/local
 ln -s /path/to/elchango/plugins/cursor ~/.cursor/plugins/local/elchango
 ```
 
-Restart Cursor or run `Developer: Reload Window`, then confirm `elchango`
-appears in Customize and its Hooks panel. Teams and Enterprise organizations
-can instead import `https://github.com/jychp/elchango` through their managed
-Team Marketplace. Repository import is not an individual-user installation
-flow.
+Restart Cursor or run **Developer: Reload Window**, then confirm that
+`elchango` appears in Customize and in the Hooks panel. Team and Enterprise
+organizations can import `https://github.com/jychp/elchango` through their
+managed Team Marketplace.
 
-The plugin invokes
-`/Applications/elChango.app/Contents/MacOS/elChangoHookReporter`, so use the
-documented application path. See
-[plugins/cursor/README.md](plugins/cursor/README.md) for the reported events and
-privacy boundary.
+The plugin expects the app at `/Applications/elChango.app`. See the
+[Cursor plugin guide](plugins/cursor/README.md) for its event and privacy
+boundaries.
 
-### Claude Code marketplace plugin
-
-Run these commands in a shell:
+### Claude Code
 
 ```bash
 claude plugin marketplace add jychp/elchango
 claude plugin install elchango@elchango
 ```
 
-For a local clone, replace `jychp/elchango` with its filesystem path. Start
-elChango before beginning or resuming a session. See
-[plugins/claude/README.md](plugins/claude/README.md) for hook coverage.
+Start elChango before beginning or resuming a Claude Code session. See the
+[Claude Code plugin guide](plugins/claude/README.md) for hook coverage.
 
-## Install the Stream Deck plugin
+## Optional Stream Deck setup
 
-Build the installable distribution:
+Download the `.streamDeckPlugin` file from the matching
+[GitHub release](https://github.com/jychp/elchango/releases), then double-click
+it. The package installs the plugin and an `elChango` Stream Deck MK.2 profile
+with all 15 keys populated.
 
-```bash
-make build-plugin-streamdeck
-```
+The profile stores positions, not session identities. Before each action, the
+plugin requests a fresh button ID and revision from the local app. See the
+[Stream Deck guide](plugins/streamdeck/README.md) for runtime details.
 
-Double-click the generated
-`plugins/streamdeck/com.jychp.elchango.streamDeckPlugin`. It installs the plugin
-and an `elChango` Stream Deck MK.2 profile with all 15 keys populated. The
-profile stores deck positions, not session identities. The running plugin reads
-fresh button IDs and revisions from the local app before every action.
+## Use and personalize the deck
 
-For the locked or idle device screen, select
-`docs/assets/elchango-screensaver.png` in Stream Deck Settings under Devices,
-Set Screensaver. Stream Deck manages that setting outside the plugin.
+- Select a session to bring its verified provider window and session forward.
+- Select **Available** or **New** to choose a provider and open its neutral new
+  session view. elChango does not submit a prompt.
+- Use **Refresh** to reorder sessions by recent activity.
+- Use **Previous** and **Next** to move through more than ten sessions.
+- Select an enabled command to run it against the currently verified target.
+  A disabled command means that the required target or capability is not
+  available.
+- Press and hold a session key to choose its icon.
+- Press and hold one of the three command keys to change its command.
 
-See [plugins/streamdeck/README.md](plugins/streamdeck/README.md) for development,
-runtime, and uninstall details.
+Browser and Stream Deck pagination and provider selection are independent.
+Session icons and command placement are shared and persist between launches.
 
-## Safety and privacy
+## Troubleshooting
 
-- Provider databases are opened read-only, with Cursor additionally using
-  `PRAGMA query_only=ON`.
-- Hooks retain lifecycle metadata only. Prompt text, responses, tool content,
-  notification messages, email, and transcript content are discarded.
-- A hook affects state only when its native ID exactly matches a current
-  persistent session.
-- Surface requests contain opaque provider-qualified targets and stable semantic
-  command IDs, never arbitrary prompt text, shortcuts, scripts, or shell
-  commands.
-- Focus uses provider-specific verification and never enables commands from a
-  shortcut response alone.
-- Command dispatch rechecks the selected session, frontmost application, and,
-  for text recipes, the empty provider-specific composer immediately before one
-  dispatch.
-- Privileged actions are serialized across providers. Stale revisions,
-  ambiguous identity, schema drift, or failed Accessibility checks reject the
-  action instead of guessing.
-- One unavailable provider does not block the other provider or the local deck.
+**The menu says the service is unavailable**
 
-## Development
+Quit any other stable or debug elChango instance, reopen the app, and check
+**Diagnostics**. Both profiles use `127.0.0.1:8765`.
 
-The root Makefile is the supported entry point:
+**The deck shows the sleeping monkey**
 
-```bash
-make setup                    # install and resolve dependencies
-make                          # run all tests and diff checks
-make test-app-macos           # Swift tests
-make test-web                 # Svelte and TypeScript checks
-make test-plugins             # Cursor, Claude, and Stream Deck plugins
-make test-pocs                # compile every POC and exercise --help
-make build                    # package the app and all plugins
-make build-web                # build browser assets only
-make build-plugin-cursor      # validate and package the Cursor plugin
-make build-plugin-claude      # validate and package the Claude plugin
-make build-plugin-streamdeck  # validate and package the Stream Deck plugin
-make clean                    # remove generated distributions
-```
+Confirm that elChango is running and reopen the browser deck from the menu. Do
+not bookmark or reuse its one-time bootstrap URL.
 
-For live web development, run the native service and Vite separately:
+**A provider is missing or stale**
 
-```bash
-swift run --package-path macos-app ElChangoApp
-npm --prefix web run dev
-```
+Confirm the provider is installed and has a persistent local session. Install
+or reload its plugin, then use **Refresh**. Provider format changes may cause
+elChango to degrade rather than infer a session from ambiguous data.
 
-Vite proxies `/api` to the loopback service. More frontend details are in
-[web/README.md](web/README.md).
+**Focus or commands are disabled**
 
-## Releases
+Grant Accessibility access, bring the expected provider forward, and select
+the exact session again. Commands remain disabled when elChango cannot verify
+the selected session or expected empty input target.
 
-`make release VERSION=X.Y.Z` accepts strict semantic versions without a `v`
-prefix. The value must match the committed Stream Deck package and manifest
-version. The target requires a clean tracked worktree on `main`, fetches
-`origin/main`, verifies that local and remote `main` match, creates annotated
-tag `vX.Y.Z`, and pushes that tag.
+**An action failed**
 
-The tag workflow validates and packages the Stream Deck plugin on Linux, creates
-a SHA-256 checksum, and creates or updates the GitHub Release with generated
-notes. The current release workflow does not publish the macOS app or provider
-plugin archives.
+Check that the provider stayed frontmost and the selected session did not
+change during dispatch. elChango does not automatically retry ambiguous
+actions.
 
-## Provider documentation
+For reproducible problems, use the [support policy](SUPPORT.md). Report
+vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 
-- [Cursor provider findings](docs/providers/cursor.md)
-- [Claude Code provider findings](docs/providers/claude-code.md)
+## Privacy
 
-These documents distinguish measured observations, conclusions, degradation,
-and unproven assumptions. The POCs under `scripts/poc/cursor/` and
-`scripts/poc/claude/` remain the executable evidence.
+elChango runs locally and binds only to `127.0.0.1`. It has no telemetry
+service and does not send provider content to an elChango server.
+
+Provider stores are read without modification. Hooks discard prompt text,
+responses, tool content, notification messages, email, and transcript content.
+The app stores its control token and your deck preferences under
+`~/Library/Application Support/elChango/`.
+
+The browser receives an authenticated session through a short-lived,
+single-use URL. Stream Deck uses an owner-only local token. Read the
+[security model](docs/security.md) for trust boundaries, limitations, and
+token handling. Vulnerabilities are reported through
+[SECURITY.md](SECURITY.md).
+
+## Uninstall
+
+1. Quit elChango.
+2. Remove the Cursor and Claude Code plugins using their provider's plugin
+   manager.
+3. Remove the elChango plugin in Stream Deck preferences, if installed.
+4. Delete `/Applications/elChango.app`.
+5. To remove preferences and the local control token, delete
+   `~/Library/Application Support/elChango/`.
+6. Remove elChango from **System Settings > Privacy & Security >
+   Accessibility**.
+
+## License and branding
+
+The software and documentation are available under the
+[MIT License](LICENSE). Bundled dependency licenses are recorded in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+The elChango name, monkey logo, application icon, screensaver artwork, and
+other project branding are not licensed under MIT. See
+[TRADEMARKS.md](TRADEMARKS.md) for permitted use and the third-party
+non-affiliation statement.
+
+Development setup and contribution standards are in
+[CONTRIBUTING.md](CONTRIBUTING.md).

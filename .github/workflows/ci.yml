@@ -14,28 +14,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  versions:
+    name: Monorepo version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        timeout-minutes: 2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Validate component versions
+        timeout-minutes: 2
+        run: make test-versions
+
   macos:
     name: macOS Swift
     runs-on: macos-26
     timeout-minutes: 30
     steps:
       - name: Check out repository
+        timeout-minutes: 3
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: Set up Node.js
+        timeout-minutes: 3
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: Install web dependencies for app resources
+        timeout-minutes: 8
         run: npm ci
         working-directory: web
       - name: Test macOS app
+        timeout-minutes: 15
         run: make test-app-macos
       - name: Build macOS app
-        run: make build-app-macos
+        timeout-minutes: 20
+        run: make build-app-macos-universal
 
   web:
     name: Web Svelte
@@ -43,21 +62,30 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Check out repository
+        timeout-minutes: 3
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: Set up Node.js
+        timeout-minutes: 3
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: Install web dependencies
+        timeout-minutes: 8
         run: npm ci
         working-directory: web
+      - name: Install browser test runtime
+        timeout-minutes: 8
+        run: npx playwright install --with-deps chromium
+        working-directory: web
       - name: Test web
+        timeout-minutes: 10
         run: make test-web
       - name: Build web
+        timeout-minutes: 5
         run: make build-web
 
   provider-plugins:
@@ -72,18 +100,27 @@ jobs:
           - claude
     steps:
       - name: Check out repository
+        timeout-minutes: 3
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: Set up Node.js for Claude validator
         if: matrix.provider == 'claude'
+        timeout-minutes: 3
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 24
-      - name: Install official Claude validator
+          cache: npm
+          cache-dependency-path: .github/tools/claude-validator/package-lock.json
+      - name: Install locked Claude validator
         if: matrix.provider == 'claude'
-        run: npm install --global @anthropic-ai/claude-code@2.1.212
+        timeout-minutes: 5
+        run: |
+          npm ci --prefix .github/tools/claude-validator
+          echo "$GITHUB_WORKSPACE/.github/tools/claude-validator/node_modules/.bin" \
+            >> "$GITHUB_PATH"
       - name: Validate and build provider plugin
+        timeout-minutes: 8
         run: make build-plugin-${{ matrix.provider }}
 
   pocs:
@@ -92,14 +129,17 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out repository
+        timeout-minutes: 3
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: Set up Python
+        timeout-minutes: 3
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
       - name: Compile and smoke test POCs
+        timeout-minutes: 7
         run: make test-pocs
 
   streamdeck:
@@ -108,19 +148,24 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Check out repository
+        timeout-minutes: 3
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: Set up Node.js
+        timeout-minutes: 3
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: plugins/streamdeck/package-lock.json
       - name: Install Stream Deck dependencies
+        timeout-minutes: 7
         run: npm ci
         working-directory: plugins/streamdeck
       - name: Check and test Stream Deck plugin
+        timeout-minutes: 10
         run: make test-plugin-streamdeck
       - name: Build Stream Deck plugin
+        timeout-minutes: 10
         run: make build-plugin-streamdeck

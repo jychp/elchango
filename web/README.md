@@ -9,13 +9,16 @@ pagination, preferences, target verification, and actions.
 
 The production build is bundled into `elChango.app` and served by the native
 loopback service at `http://127.0.0.1:8765`. The browser does not read Cursor or
-Claude data directly and does not perform native automation.
+Claude data directly and does not perform native automation. Open it from the
+app menu. A short-lived, single-use URL creates an `HttpOnly`,
+`SameSite=Strict` session cookie without exposing the persistent control token
+to browser JavaScript.
 
 The web surface has pagination and provider-picker state independent from the
 Stream Deck surface. All browser tabs currently use the same `web` client ID
-and therefore share that web state. Key activations send the current opaque
-button ID and revision to the native service, which rebuilds the deck and
-resolves the target before acting.
+and therefore share that web state. Key activations send the current button ID
+and revision to the native service, which rebuilds the deck and resolves the
+target before acting.
 
 ## Requirements
 
@@ -38,7 +41,9 @@ swift run --package-path macos-app ElChangoApp
 npm --prefix web run dev
 ```
 
-Vite proxies `/api` to `http://127.0.0.1:8765`.
+Start the native app first. Vite reads the owner-only control token from the
+application support directory and adds it to proxied `/api` requests. The
+token remains in the Vite process and is not included in browser code.
 
 ## Checks and builds
 
@@ -64,7 +69,8 @@ application.
 ## Design constraints
 
 - Keep provider-specific recipes and native IDs out of the browser.
-- Treat button IDs and revisions as opaque, short-lived values.
+- Treat button IDs and revisions as short-lived routing values, not
+  authorization capabilities.
 - Preserve the fixed 15-position layout and shared deck contract.
 - Do not infer state from labels, colors, or transcript content.
 - Keep client-scoped navigation local to the browser client.

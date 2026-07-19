@@ -1,8 +1,7 @@
-import streamDeck, {
-  action,
+import streamDeck, { action, SingletonAction } from "@elgato/streamdeck";
+import type {
   KeyDownEvent,
   KeyUpEvent,
-  SingletonAction,
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
@@ -12,14 +11,11 @@ import { KeyPressController } from "./key-press.js";
 import { StreamDeckSurface } from "./surface.js";
 
 const ACTION_UUID = "com.jychp.elchango.key";
-const surface = new StreamDeckSurface(
-  new DeckApiClient("streamdeck"),
-  {
-    error(message) {
-      streamDeck.logger.error(message);
-    },
+const surface = new StreamDeckSurface(new DeckApiClient("streamdeck"), {
+  error(message) {
+    streamDeck.logger.error(message);
   },
-);
+});
 const keyPresses = new KeyPressController(
   (keyId) => surface.activate(keyId),
   (keyId) => surface.longPress(keyId),

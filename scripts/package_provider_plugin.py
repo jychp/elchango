@@ -25,6 +25,7 @@ PLUGIN_FILES = {
         "hooks/hooks.json",
     },
 }
+REPOSITORY_NOTICES = ("LICENSE", "TRADEMARKS.md")
 
 
 def plugin_version(provider: str) -> str:
@@ -74,6 +75,15 @@ def package(provider: str, output_directory: Path) -> Path:
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o100644 << 16
             archive.writestr(info, path.read_bytes(), compresslevel=9)
+        for relative_path in REPOSITORY_NOTICES:
+            info = zipfile.ZipInfo(relative_path, FIXED_TIMESTAMP)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o100644 << 16
+            archive.writestr(
+                info,
+                (ROOT / relative_path).read_bytes(),
+                compresslevel=9,
+            )
     return destination
 
 

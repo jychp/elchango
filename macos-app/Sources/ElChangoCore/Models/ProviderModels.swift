@@ -146,8 +146,8 @@ public protocol AgentProvider: Sendable {
     ) async throws -> ActivityObservation
 }
 
-public extension AgentProvider {
-    func focus(
+extension AgentProvider {
+    public func focus(
         nativeSessionID: String
     ) async throws -> ProviderActionResult {
         throw ProviderOperationError.unsupported(
@@ -155,13 +155,13 @@ public extension AgentProvider {
         )
     }
 
-    func openNew() async throws -> ProviderActionResult {
+    public func openNew() async throws -> ProviderActionResult {
         throw ProviderOperationError.unsupported(
             "\(descriptor.displayName) does not support new sessions"
         )
     }
 
-    func executeCommand(
+    public func executeCommand(
         nativeSessionID: String,
         commandID: CommandID
     ) async throws -> ProviderActionResult {
@@ -170,7 +170,7 @@ public extension AgentProvider {
         )
     }
 
-    func recordHook(
+    public func recordHook(
         _ payload: ProviderHookPayload,
         observedAtMilliseconds: Int64
     ) async throws -> ActivityObservation {

@@ -353,7 +353,7 @@ public actor DeckService {
         try Self.validateClientID(clientID)
         let state = clientState(for: clientID)
         guard case .sessionIcon(let sessionID, let page) = state.picker,
-              page > 0
+            page > 0
         else {
             throw DeckServiceError.invalidAction(
                 "picker is already on its first page"
@@ -373,13 +373,11 @@ public actor DeckService {
         let state = clientState(for: clientID)
         let count = max(
             1,
-            (
-                DeckIcon.personalizationOptions.count
-                    + DeckLayout.sessionSlots - 1
-            ) / DeckLayout.sessionSlots
+            (DeckIcon.personalizationOptions.count
+                + DeckLayout.sessionSlots - 1) / DeckLayout.sessionSlots
         )
         guard case .sessionIcon(let sessionID, let page) = state.picker,
-              page + 1 < count
+            page + 1 < count
         else {
             throw DeckServiceError.invalidAction(
                 "picker is already on its last page"
@@ -400,17 +398,17 @@ public actor DeckService {
         _ = await combinedSnapshot()
         let entries: [(String, [String])] = providerOrder.compactMap {
             providerID in
-                guard providerErrors[providerID] == nil else {
-                    return nil
-                }
-                guard let descriptor = providers[providerID]?.descriptor else {
-                    return nil
-                }
-                return (
-                    providerID,
-                    descriptor.capabilities.map(\.rawValue).sorted()
-                )
+            guard providerErrors[providerID] == nil else {
+                return nil
             }
+            guard let descriptor = providers[providerID]?.descriptor else {
+                return nil
+            }
+            return (
+                providerID,
+                descriptor.capabilities.map(\.rawValue).sorted()
+            )
+        }
         let capabilities = Dictionary(
             uniqueKeysWithValues: entries
         )
@@ -499,12 +497,11 @@ public actor DeckService {
 
     public static func validateClientID(_ value: String) throws {
         guard 1...maximumClientIDLength ~= value.utf8.count,
-              value.unicodeScalars.allSatisfy({ scalar in
-                  scalar.isASCII && (
-                      CharacterSet.alphanumerics.contains(scalar)
-                          || "._:-".unicodeScalars.contains(scalar)
-                  )
-              })
+            value.unicodeScalars.allSatisfy({ scalar in
+                scalar.isASCII
+                    && (CharacterSet.alphanumerics.contains(scalar)
+                        || "._:-".unicodeScalars.contains(scalar))
+            })
         else {
             throw DeckServiceError.invalidClientID
         }
@@ -529,7 +526,8 @@ public actor DeckService {
         providerErrors = errors
 
         guard !snapshots.isEmpty else {
-            let source = errors.isEmpty
+            let source =
+                errors.isEmpty
                 ? "no providers available"
                 : errors.keys.sorted().map { providerID in
                     "\(providerID)=unavailable: \(errors[providerID]!)"
@@ -550,8 +548,8 @@ public actor DeckService {
         for snapshot in snapshots
         where snapshot.capabilities.contains(.executeCommand) {
             guard let provider = providers[snapshot.providerID],
-                  let selectedID = snapshot.selectedNativeSessionID,
-                  (try? await provider.isFrontmost()) == true
+                let selectedID = snapshot.selectedNativeSessionID,
+                (try? await provider.isFrontmost()) == true
             else {
                 continue
             }
@@ -570,12 +568,10 @@ public actor DeckService {
                 \.selectedSessionID
             ).first,
             sessions: snapshots.flatMap(\.sessions),
-            source: (
-                snapshots.map { "\($0.providerID)=\($0.source)" }
-                    + errors.keys.sorted().map { providerID in
-                        "\(providerID)=unavailable: \(errors[providerID]!)"
-                    }
-            ).joined(separator: ";"),
+            source: (snapshots.map { "\($0.providerID)=\($0.source)" }
+                + errors.keys.sorted().map { providerID in
+                    "\(providerID)=unavailable: \(errors[providerID]!)"
+                }).joined(separator: ";"),
             readOnly: snapshots.allSatisfy(\.readOnly),
             commandTarget: commandTargets.count == 1
                 ? commandTargets[0]
@@ -600,7 +596,7 @@ public actor DeckService {
             return existing
         }
         if clientStates.count >= maximumClientStates,
-           let oldest = clientAccessOrder.first
+            let oldest = clientAccessOrder.first
         {
             clientStates.removeValue(forKey: oldest)
             clientAccessOrder.removeFirst()
@@ -643,13 +639,14 @@ public actor DeckService {
         } else {
             for index in sessionOrder.indices {
                 if let sessionID = sessionOrder[index],
-                   sessionsByID[sessionID] == nil
+                    sessionsByID[sessionID] == nil
                 {
                     sessionOrder[index] = nil
                 }
             }
             let knownIDs = Set(sessionOrder.compactMap { $0 })
-            let newIDs: [String?] = sorted
+            let newIDs: [String?] =
+                sorted
                 .map(\.id)
                 .filter { !knownIDs.contains($0) }
                 .map(Optional.some)
@@ -666,7 +663,8 @@ public actor DeckService {
     ) -> [AgentSession?] {
         let start = pageIndex * DeckLayout.sessionSlots
         let end = min(start + DeckLayout.sessionSlots, sessionOrder.count)
-        var ids = start < end
+        var ids =
+            start < end
             ? Array(sessionOrder[start..<end])
             : []
         ids.append(
@@ -683,9 +681,7 @@ public actor DeckService {
     private var pageCount: Int {
         max(
             1,
-            (
-                sessionOrder.count + DeckLayout.sessionSlots - 1
-            ) / DeckLayout.sessionSlots
+            (sessionOrder.count + DeckLayout.sessionSlots - 1) / DeckLayout.sessionSlots
         )
     }
 }

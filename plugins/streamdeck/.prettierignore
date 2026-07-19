@@ -1,0 +1,5 @@
+*.streamDeckPlugin
+com.jychp.elchango.sdPlugin/bin/
+com.jychp.elchango.sdPlugin/imgs/
+node_modules/
+src/contracts.ts

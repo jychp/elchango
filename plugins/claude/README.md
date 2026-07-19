@@ -32,6 +32,12 @@ The native provider retains no prompt, assistant, notification message, or
 transcript content. Hook evidence affects a session only when `session_id`
 exactly matches a current persistent Claude Code session.
 
+Claude's HTTP-hook format does not distribute elChango's per-install control
+token. Hook routes therefore cannot execute actions and are isolated from the
+authenticated control API. They reject browser origins, validate sanitized
+lifecycle fields against current inventory, and are rate-limited. See the root
+[security policy](../../SECURITY.md) for the residual spoofing limitation.
+
 ## Installation
 
 Add the repository marketplace and install the plugin:
