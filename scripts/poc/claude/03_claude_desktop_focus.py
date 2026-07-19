@@ -399,9 +399,14 @@ def shortcut_order(config_path: Path, sessions: list[Session]) -> tuple[str, ...
         scopes = epitaxy.get("dframe-group-scopes", {})
         if not isinstance(scopes, dict):
             raise ProbeError(f"{config_path}: group scopes must be an object")
-        scope = scopes.get(next(iter(scope_keys), ""), {})
+        scope_key = next(iter(scope_keys), None)
+        scope = scopes.get(scope_key, {}) if scope_key is not None else {}
         if not isinstance(scope, dict):
             raise ProbeError(f"{config_path}: matching group scope must be an object")
+        if scope_key in scopes and any(
+            field not in scope for field in ("groups", "assignments", "order")
+        ):
+            raise ProbeError(f"{config_path}: matching group scope is incomplete")
         groups = scope.get("groups", [])
         assignments = scope.get("assignments", {})
         order = scope.get("order", {})
@@ -425,14 +430,16 @@ def shortcut_order(config_path: Path, sessions: list[Session]) -> tuple[str, ...
             for qualified, group_id in assignments.items()
         ):
             raise ProbeError(f"{config_path}: group assignments must be strings")
-        persisted = [
-            qualified.removeprefix("code:")
-            for qualified in pinned_order
-            if isinstance(qualified, str)
-            and qualified.startswith("code:")
-            and qualified.removeprefix("code:") in visible_ids
-            and qualified not in assignments
-        ]
+        persisted = list(
+            dict.fromkeys(
+                qualified.removeprefix("code:")
+                for qualified in pinned_order
+                if isinstance(qualified, str)
+                and qualified.startswith("code:")
+                and qualified.removeprefix("code:") in visible_ids
+                and qualified not in assignments
+            )
+        )
         for group_id in group_ids:
             qualified_ids = order.get(group_id, [])
             if not isinstance(qualified_ids, list) or any(

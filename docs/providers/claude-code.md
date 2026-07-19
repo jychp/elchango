@@ -242,15 +242,16 @@ Claude understood or completed the semantic operation.
   bundle immediately before dispatch.
 - Text dispatch additionally requires the enabled provider-specific
   Accessibility target and bounded draft capture when the input is focused.
-  If Claude has moved focus to a non-input group, elChango uses the documented
-  best-effort exception: exact application and session verification remain,
-  but input verification, draft capture, deletion, and restoration are skipped.
-  Claude then routes application-level typing to its prompt.
+  If no verified composer is available, including a non-input focus or a
+  role, marker, enabled-state, or Accessibility-read failure, elChango uses the
+  documented best-effort exception. Exact application and session verification
+  remain, but input verification, draft capture, deletion, and restoration are
+  skipped. Claude then routes application-level typing to its prompt.
 - Shortcuts target the verified process. Text and submission events use the
-  global HID tap only after an atomic foreground, selected-session, and
-  exact-input preflight because the observed Electron editor ignored
-  PID-targeted Unicode events. Each recipe is sent at most once, with no
-  automatic retry.
+  global HID tap because the observed Electron editor ignored PID-targeted
+  Unicode events. The verified path requires foreground, selected-session, and
+  exact-input preflight; the best-effort exception omits only the input
+  preflight. Each recipe is sent at most once, with no automatic retry.
 - Existing-session focus requires exact preflight and bounded shortcut
   verification. A newly focused Claude target is not considered selected for
   command eligibility until later inventory uniquely confirms it.

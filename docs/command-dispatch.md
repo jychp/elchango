@@ -15,14 +15,16 @@ automation starts. Command dispatch then performs these steps in order:
 4. Verify the focused, enabled Accessibility text input and its exact
    provider-specific marker. If the expected input is not already focused, the
    provider-approved focus shortcut may run once.
-No input mutation is allowed before all four preconditions pass.
+The verified transaction does not mutate input before all four preconditions
+pass.
 
-Claude has one explicit best-effort exception when its input is not focused.
-The application, process, and exact selected session remain mandatory, but
-elChango skips input verification, draft capture, deletion, and restoration.
-It sends the command and provider-owned submission keys through Claude's
-observed application-level input routing. This path never reports verified
-input mutation or draft preservation.
+Claude has one explicit best-effort exception when no composer can be verified,
+including a non-input focus, wrong role or marker, a disabled input, or an
+Accessibility read failure. The application, process, and exact selected
+session remain mandatory, but elChango skips input verification, draft capture,
+deletion, and restoration. It sends the command and provider-owned submission
+keys through Claude's observed application-level input routing. This path never
+reports verified input mutation or draft preservation.
 
 ## Transaction
 
@@ -42,6 +44,10 @@ After preflight, elChango:
 8. types the original draft into that empty input; and
 9. verifies that the complete input value exactly matches the original draft.
 
+Electron may expose an otherwise exact input value with one trailing newline.
+Command, empty-input, and restored-draft comparisons normalize only that one
+provider artifact before comparing values.
+
 The command is not reported as successfully dispatched until the observable
 submission boundary passes and any nonempty original draft is restored.
 
@@ -52,15 +58,23 @@ clipboard. Draft capture uses Accessibility and remains in bounded process
 memory. Command insertion and draft restoration use keyboard events.
 
 Electron editors have previously ignored PID-targeted Unicode events.
-Therefore, text and focused-key events use the global HID tap only while the
-expected bundle, process ID, selected native session, and exact input remain
-verified. Application shortcuts continue to target the verified process ID.
+Therefore, text and focused-key events use the global HID tap. The expected
+bundle and process ID are checked immediately before each event or text chunk;
+verified-path text chunks additionally recheck the exact input. The selected
+session is checked immediately before replacement and each submission key, but
+not between every HID event, leaving a residual race if native selection
+changes during a chunk. Application shortcuts target the verified process ID
+except for the intentional global-HID `Cmd+A` used by the proven Electron
+selection path.
 
 ## Failure and compensation
 
-Every failed precondition stops before input mutation. A failure after command
-replacement but before an observed submission attempts to restore the captured
-draft when the exact target and command text are still verified.
+Every failed verified-path precondition stops before input mutation. A failure
+before any submission attempts to restore the captured draft when the selected
+target and focused input can still be reacquired. Because this compensation
+does not require the current value to still equal the command, a concurrent
+editor change can be overwritten. After a submission attempt, compensation
+requires the current input to still match the command.
 
 Submission changes another application's state and cannot be made truly
 atomic. If the command was submitted but draft restoration cannot be verified,
@@ -72,4 +86,5 @@ retry a semantic command automatically because a retry could duplicate it.
 Cursor and Claude Desktop may use different focus shortcuts, command text,
 slash commands, and submission counts. Those differences cannot weaken the
 shared activation, target verification, replacement, submission observation,
-or draft restoration contract.
+or draft restoration contract except for Claude's explicitly documented
+best-effort path.
