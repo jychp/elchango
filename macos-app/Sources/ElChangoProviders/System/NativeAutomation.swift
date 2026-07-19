@@ -63,6 +63,19 @@ public actor NativeAutomation: NativeAutomating {
         value == expected || value == "\(expected)\n"
     }
 
+    nonisolated static func normalizedInputText(
+        value: String,
+        characterCount: Int?
+    ) -> String? {
+        guard characterCount.map({ $0 >= 0 }) ?? true else {
+            return nil
+        }
+        if characterCount == 0 {
+            return ""
+        }
+        return value
+    }
+
     public func activate(bundleID: String) async throws {
         DebugTrace.emit("native-automation", "activate.start \(bundleID)")
         let outcome = await MainActor.run {
@@ -251,11 +264,17 @@ public actor NativeAutomation: NativeAutomating {
                 "selected provider session changed before text dispatch"
             )
         }
+        focused = try await selectAll(
+            bundleID: bundleID,
+            processIdentifier: identity.processIdentifier,
+            marker: inputMarker,
+            focusedElement: focused
+        )
         guard
             let draft = Self.boundedDraft(
                 try textAttribute(
                     focused,
-                    name: kAXValueAttribute as CFString
+                    name: kAXSelectedTextAttribute as CFString
                 )
             )
         else {
@@ -275,12 +294,14 @@ public actor NativeAutomation: NativeAutomating {
         var submitAttempted = false
         do {
             DebugTrace.emit("native-automation", "dispatch_text.replace.start")
-            try await replaceFocusedText(
-                with: text,
+            try await postKeyboardText(
+                text,
                 bundleID: bundleID,
                 processIdentifier: identity.processIdentifier,
+                focusedElement: focused,
                 marker: inputMarker
             )
+            try await sleep(milliseconds: 100)
             DebugTrace.emit("native-automation", "dispatch_text.replace.complete")
             focused = try verifiedFocusedInput(
                 processIdentifier: identity.processIdentifier,
@@ -353,10 +374,7 @@ public actor NativeAutomation: NativeAutomating {
                 )
                 let currentText: String?
                 if let current {
-                    currentText = try? textAttribute(
-                        current,
-                        name: kAXValueAttribute as CFString
-                    )
+                    currentText = try? inputText(current)
                 } else {
                     currentText = nil
                 }
@@ -569,13 +587,12 @@ public actor NativeAutomation: NativeAutomating {
         marker: String,
         focusedElement: AXUIElement
     ) async throws -> AXUIElement {
-        try await postFocusedKey(
+        try verifyFocusedInput(focusedElement, marker: marker)
+        try await postGlobalShortcut(
             keyCode: 0,
             flags: .maskCommand,
             bundleID: bundleID,
-            processIdentifier: processIdentifier,
-            focusedElement: focusedElement,
-            marker: marker
+            processIdentifier: processIdentifier
         )
         try await sleep(milliseconds: 100)
         return try verifiedFocusedInput(
@@ -600,16 +617,6 @@ public actor NativeAutomation: NativeAutomating {
             marker: marker,
             focusedElement: focused
         )
-        try await postFocusedKey(
-            keyCode: 51,
-            flags: [],
-            bundleID: bundleID,
-            processIdentifier: processIdentifier,
-            focusedElement: selected,
-            marker: marker
-        )
-        try await sleep(milliseconds: 100)
-        try verifyInputText(selected, expected: "")
         if !text.isEmpty {
             try await postKeyboardText(
                 text,
@@ -617,6 +624,14 @@ public actor NativeAutomation: NativeAutomating {
                 processIdentifier: processIdentifier,
                 focusedElement: selected,
                 marker: marker
+            )
+            try await sleep(milliseconds: 100)
+        } else {
+            try await postGlobalShortcut(
+                keyCode: 51,
+                flags: [],
+                bundleID: bundleID,
+                processIdentifier: processIdentifier
             )
             try await sleep(milliseconds: 100)
         }
@@ -644,13 +659,19 @@ public actor NativeAutomation: NativeAutomating {
                 processIdentifier: processIdentifier,
                 marker: marker
             ),
+                let selected = try? await selectAll(
+                    bundleID: bundleID,
+                    processIdentifier: processIdentifier,
+                    marker: marker,
+                    focusedElement: focused
+                ),
                 let value = try? textAttribute(
-                    focused,
-                    name: kAXValueAttribute as CFString
+                    selected,
+                    name: kAXSelectedTextAttribute as CFString
                 ),
                 Self.inputTextMatches(value, expected: "")
             {
-                return focused
+                return selected
             }
             try await sleep(milliseconds: 100)
         } while ContinuousClock.now < deadline
@@ -707,6 +728,8 @@ public actor NativeAutomation: NativeAutomating {
                     unicodeString: buffer.baseAddress
                 )
             }
+            down.flags = []
+            up.flags = []
             down.post(tap: .cghidEventTap)
             up.post(tap: .cghidEventTap)
             try await sleep(milliseconds: 20)
@@ -718,10 +741,7 @@ public actor NativeAutomation: NativeAutomating {
         _ element: AXUIElement,
         expected: String
     ) throws {
-        let value = try textAttribute(
-            element,
-            name: kAXValueAttribute as CFString
-        )
+        let value = try inputText(element)
         guard Self.inputTextMatches(value, expected: expected) else {
             throw ProviderOperationError.targetUnverified(
                 "provider input did not accept the command text"
@@ -806,6 +826,42 @@ public actor NativeAutomation: NativeAutomating {
         )
     }
 
+    private func postGlobalShortcut(
+        keyCode: CGKeyCode,
+        flags: CGEventFlags,
+        bundleID: String,
+        processIdentifier: pid_t
+    ) async throws {
+        _ = try await requireFrontmost(
+            bundleID: bundleID,
+            processIdentifier: processIdentifier
+        )
+        if flags.contains(.maskCommand) {
+            try postGlobalKey(55, down: true, flags: .maskCommand)
+            do {
+                try postGlobalKey(keyCode, down: true, flags: flags)
+                try await sleep(milliseconds: 80)
+                _ = try await requireFrontmost(
+                    bundleID: bundleID,
+                    processIdentifier: processIdentifier
+                )
+                try postGlobalKey(keyCode, down: false, flags: flags)
+            } catch {
+                try? postGlobalKey(55, down: false, flags: [])
+                throw error
+            }
+            try postGlobalKey(55, down: false, flags: [])
+            return
+        }
+        try postGlobalKey(keyCode, down: true, flags: flags)
+        try await sleep(milliseconds: 80)
+        _ = try await requireFrontmost(
+            bundleID: bundleID,
+            processIdentifier: processIdentifier
+        )
+        try postGlobalKey(keyCode, down: false, flags: flags)
+    }
+
     private func postKey(
         _ keyCode: CGKeyCode,
         down: Bool,
@@ -884,6 +940,28 @@ public actor NativeAutomation: NativeAutomating {
         )
     }
 
+    private func inputText(_ element: AXUIElement) throws -> String {
+        let value = try textAttribute(
+            element,
+            name: kAXValueAttribute as CFString
+        )
+        let characterCount = optionalIntegerAttribute(
+            element,
+            name: "AXNumberOfCharacters" as CFString
+        )
+        guard
+            let normalized = Self.normalizedInputText(
+                value: value,
+                characterCount: characterCount
+            )
+        else {
+            throw ProviderOperationError.targetUnverified(
+                "focused input value contradicts its character count"
+            )
+        }
+        return normalized
+    }
+
     private func booleanAttribute(
         _ element: AXUIElement,
         name: CFString
@@ -897,6 +975,19 @@ public actor NativeAutomation: NativeAutomating {
             )
         }
         return number.boolValue
+    }
+
+    private func optionalIntegerAttribute(
+        _ element: AXUIElement,
+        name: CFString
+    ) -> Int? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, name, &value) == .success,
+            let number = value as? NSNumber
+        else {
+            return nil
+        }
+        return number.intValue
     }
 
     private func stringListAttribute(

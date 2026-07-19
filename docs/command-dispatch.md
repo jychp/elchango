@@ -16,20 +16,18 @@ automation starts. Command dispatch then performs these steps in order:
    provider-specific marker. If the expected input is not already focused, the
    provider-approved focus shortcut may run once before verification is
    repeated.
-5. Capture the complete Accessibility input value as a bounded in-memory
-   draft.
-
-No input mutation is allowed before all five preconditions pass.
+No input mutation is allowed before all four preconditions pass.
 
 ## Transaction
 
 After preflight, elChango:
 
 1. rechecks the selected native session;
-2. selects all input with `Cmd+A`;
-3. deletes the selected input and verifies that the input is empty;
-4. types the bounded command through the provider-proven Unicode keyboard
-   transport;
+2. selects all input with a globally posted, held `Cmd+A`;
+3. captures the complete Accessibility selected text as a bounded in-memory
+   draft;
+4. types the bounded command directly over the selection through the
+   provider-proven Unicode keyboard transport;
 5. verifies that the complete input value exactly matches the command;
 6. rechecks the frontmost process, focused input, and selected session before
    each provider-owned submission key;

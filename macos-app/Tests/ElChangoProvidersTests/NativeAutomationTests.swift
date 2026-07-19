@@ -50,4 +50,32 @@ struct NativeAutomationTests {
             )
         )
     }
+
+    @Test("dynamic placeholders are not captured as drafts")
+    func placeholderNormalization() {
+        #expect(
+            NativeAutomation.normalizedInputText(
+                value: "15 characters",
+                characterCount: 0
+            ) == ""
+        )
+        #expect(
+            NativeAutomation.normalizedInputText(
+                value: "Existing draft",
+                characterCount: 14
+            ) == "Existing draft"
+        )
+        #expect(
+            NativeAutomation.normalizedInputText(
+                value: "Fallback value",
+                characterCount: nil
+            ) == "Fallback value"
+        )
+        #expect(
+            NativeAutomation.normalizedInputText(
+                value: "Invalid",
+                characterCount: -1
+            ) == nil
+        )
+    }
 }
