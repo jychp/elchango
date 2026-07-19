@@ -40,7 +40,6 @@ public actor ClaudeCodeProvider: AgentProvider {
     public static let maximumMetadataPrefixBytes = 64 * 1_024
     public static let bundleID = "com.anthropic.claudefordesktop"
     public static let inputMarker = "tiptapProseMirrorProseMirror-focused"
-    public static let emptyInputPlaceholder = "Type / for commands\n"
     public static let commands: Set<CommandID> = [
         .accept, .createPR, .commitPush, .compact,
     ]
@@ -257,12 +256,10 @@ public actor ClaudeCodeProvider: AgentProvider {
                 details: ["session_id": .string(nativeSessionID)]
             )
         }
-        if targetAlreadySelected {
-            activityStore.acknowledge(
-                target.cliSessionID,
-                observedAtMilliseconds: clock()
-            )
-        }
+        activityStore.acknowledge(
+            target.cliSessionID,
+            observedAtMilliseconds: clock()
+        )
         return actionResult(
             accepted: true,
             verdict: targetAlreadySelected
@@ -374,7 +371,6 @@ public actor ClaudeCodeProvider: AgentProvider {
                 "Open a pull request for the current branch.",
                 bundleID: Self.bundleID,
                 inputMarker: Self.inputMarker,
-                emptyPlaceholderValue: Self.emptyInputPlaceholder,
                 focusKeyCode: nil,
                 submitCount: 2,
                 targetVerifier: {
@@ -386,7 +382,6 @@ public actor ClaudeCodeProvider: AgentProvider {
                 "Commit the current changes with a Conventional Commit message and push the current branch.",
                 bundleID: Self.bundleID,
                 inputMarker: Self.inputMarker,
-                emptyPlaceholderValue: Self.emptyInputPlaceholder,
                 focusKeyCode: nil,
                 submitCount: 2,
                 targetVerifier: {
@@ -398,7 +393,6 @@ public actor ClaudeCodeProvider: AgentProvider {
                 "/compact",
                 bundleID: Self.bundleID,
                 inputMarker: Self.inputMarker,
-                emptyPlaceholderValue: Self.emptyInputPlaceholder,
                 focusKeyCode: nil,
                 submitCount: 2,
                 targetVerifier: {
@@ -430,21 +424,6 @@ public actor ClaudeCodeProvider: AgentProvider {
         _ payload: ProviderHookPayload,
         observedAtMilliseconds: Int64
     ) async throws -> ActivityObservation {
-        guard let sessionID = payload.sessionID, !sessionID.isEmpty else {
-            throw ProviderOperationError.invalidHook(
-                "Claude Code hook event is missing session_id"
-            )
-        }
-        let known = Set(
-            try readRecords()
-                .filter { !$0.isArchived }
-                .map(\.cliSessionID)
-        )
-        guard known.contains(sessionID) else {
-            throw ProviderOperationError.invalidHook(
-                "Claude Code hook session_id is not in current inventory"
-            )
-        }
         return try activityStore.record(
             payload,
             observedAtMilliseconds: observedAtMilliseconds

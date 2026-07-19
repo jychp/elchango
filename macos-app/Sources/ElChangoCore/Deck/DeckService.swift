@@ -33,6 +33,19 @@ public actor DeckService {
         let commandTarget: AgentSession?
     }
 
+    private struct ProviderTask: Sendable {
+        let index: Int
+        let providerID: String
+        let provider: any AgentProvider
+    }
+
+    private struct ProviderSnapshotResult: Sendable {
+        let index: Int
+        let providerID: String
+        let snapshot: ProviderSnapshot?
+        let errorDescription: String?
+    }
+
     private struct RenderSignature: Equatable {
         let selectedSessionID: String?
         let sessions: [AgentSession]
@@ -508,21 +521,57 @@ public actor DeckService {
     }
 
     private func combinedSnapshot() async -> CombinedSnapshot {
-        var snapshots: [ProviderSnapshot] = []
+        var indexedSnapshots: [(Int, ProviderSnapshot)] = []
         var errors: [String: String] = [:]
-        for providerID in providerOrder {
-            guard let provider = providers[providerID] else { continue }
-            do {
-                let snapshot = try await provider.snapshot()
-                guard snapshot.providerID == providerID else {
-                    errors[providerID] = "provider snapshot ID mismatch"
+        let providerTasks = providerOrder.enumerated().compactMap {
+            index, providerID -> ProviderTask? in
+            guard let provider = providers[providerID] else { return nil }
+            return ProviderTask(
+                index: index,
+                providerID: providerID,
+                provider: provider
+            )
+        }
+        let results = await Task.detached {
+            await withTaskGroup(
+                of: ProviderSnapshotResult.self,
+                returning: [ProviderSnapshotResult].self
+            ) { group in
+                for task in providerTasks {
+                    group.addTask {
+                        do {
+                            return ProviderSnapshotResult(
+                                index: task.index,
+                                providerID: task.providerID,
+                                snapshot: try await task.provider.snapshot(),
+                                errorDescription: nil
+                            )
+                        } catch {
+                            return ProviderSnapshotResult(
+                                index: task.index,
+                                providerID: task.providerID,
+                                snapshot: nil,
+                                errorDescription: error.localizedDescription
+                            )
+                        }
+                    }
+                }
+                return await group.reduce(into: []) { $0.append($1) }
+            }
+        }.value
+        for result in results {
+            if let snapshot = result.snapshot {
+                guard snapshot.providerID == result.providerID else {
+                    errors[result.providerID] =
+                        "provider snapshot ID mismatch"
                     continue
                 }
-                snapshots.append(snapshot)
-            } catch {
-                errors[providerID] = error.localizedDescription
+                indexedSnapshots.append((result.index, snapshot))
+            } else if let error = result.errorDescription {
+                errors[result.providerID] = error
             }
         }
+        let snapshots = indexedSnapshots.sorted { $0.0 < $1.0 }.map(\.1)
         providerErrors = errors
 
         guard !snapshots.isEmpty else {

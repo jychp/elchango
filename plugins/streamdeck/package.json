@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
     "build": "npm run profile && rollup -c",
     "watch": "rollup -c -w --watch.onEnd=\"streamdeck restart com.jychp.elchango\"",
@@ -30,7 +33,7 @@
     "@rollup/plugin-terser": "^1.0.0",
     "@rollup/plugin-typescript": "^12.3.0",
     "@tsconfig/node20": "^20.1.9",
-    "@types/node": "^26.1.1",
+    "@types/node": "^24.13.2",
     "eslint": "^10.7.0",
     "fflate": "^0.8.3",
     "prettier": "^3.9.5",

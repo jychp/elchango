@@ -83,6 +83,13 @@ public struct ProviderHookPayload: Codable, Equatable, Sendable {
     public let transcriptPath: String?
     public let notificationType: String?
     public let toolName: String?
+    public let promptID: String?
+    public let permissionMode: String?
+    public let compactTrigger: String?
+    public let source: String?
+    public let agentID: String?
+    public let subagentID: String?
+    public let backgroundTasks: [ProviderHookBackgroundTask]?
 
     public init(
         hookEventName: String? = nil,
@@ -94,7 +101,14 @@ public struct ProviderHookPayload: Codable, Equatable, Sendable {
         cwd: String? = nil,
         transcriptPath: String? = nil,
         notificationType: String? = nil,
-        toolName: String? = nil
+        toolName: String? = nil,
+        promptID: String? = nil,
+        permissionMode: String? = nil,
+        compactTrigger: String? = nil,
+        source: String? = nil,
+        agentID: String? = nil,
+        subagentID: String? = nil,
+        backgroundTasks: [ProviderHookBackgroundTask]? = nil
     ) {
         self.hookEventName = hookEventName
         self.conversationID = conversationID
@@ -106,6 +120,13 @@ public struct ProviderHookPayload: Codable, Equatable, Sendable {
         self.transcriptPath = transcriptPath
         self.notificationType = notificationType
         self.toolName = toolName
+        self.promptID = promptID
+        self.permissionMode = permissionMode
+        self.compactTrigger = compactTrigger
+        self.source = source
+        self.agentID = agentID
+        self.subagentID = subagentID
+        self.backgroundTasks = backgroundTasks
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -119,6 +140,39 @@ public struct ProviderHookPayload: Codable, Equatable, Sendable {
         case transcriptPath = "transcript_path"
         case notificationType = "notification_type"
         case toolName = "tool_name"
+        case promptID = "prompt_id"
+        case permissionMode = "permission_mode"
+        case compactTrigger = "trigger"
+        case source
+        case agentID = "agent_id"
+        case subagentID = "subagent_id"
+        case backgroundTasks = "background_tasks"
+    }
+}
+
+public struct ProviderHookBackgroundTask: Codable, Equatable, Sendable {
+    public let taskID: String?
+    public let taskType: String?
+    public let status: String?
+    public let agentType: String?
+
+    public init(
+        taskID: String? = nil,
+        taskType: String? = nil,
+        status: String? = nil,
+        agentType: String? = nil
+    ) {
+        self.taskID = taskID
+        self.taskType = taskType
+        self.status = status
+        self.agentType = agentType
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case taskID = "id"
+        case taskType = "type"
+        case status
+        case agentType = "agent_type"
     }
 }
 

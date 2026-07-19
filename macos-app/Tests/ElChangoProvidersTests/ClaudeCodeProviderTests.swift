@@ -379,10 +379,6 @@ struct ClaudeCodeProviderTests {
                 "Open a pull request for the current branch."
             ])
         #expect(await automation.dispatchedSubmitCounts() == [2])
-        #expect(
-            await automation.dispatchedEmptyPlaceholders() == [
-                "Type / for commands\n"
-            ])
     }
 
     @Test("Claude hooks overlay only known persistent sessions")
@@ -417,6 +413,39 @@ struct ClaudeCodeProviderTests {
             try await provider.snapshot().sessions.first
         )
 
+        #expect(session.state == .working)
+        #expect(session.confidence == .observed)
+    }
+
+    @Test("Claude reconciles a hook received before inventory persistence")
+    func hookBeforeInventory() async throws {
+        let fixture = try ClaudeTemporaryFixture()
+        let activity = ClaudeActivityStore()
+        let provider = ClaudeCodeProvider(
+            desktopSessionsRootURL: fixture.desktopRoot,
+            projectsRootURL: fixture.projectsRoot,
+            activityStore: activity,
+            clock: { 150 }
+        )
+        _ = try await provider.recordHook(
+            ProviderHookPayload(
+                hookEventName: "UserPromptSubmit",
+                sessionID: "cli-target",
+                cwd: "/tmp/worktree-local_target",
+                transcriptPath: "/tmp/cli-target.jsonl",
+                promptID: "prompt-1"
+            ),
+            observedAtMilliseconds: 100
+        )
+        try fixture.writeRecord(
+            desktopID: "local_target",
+            cliID: "cli-target"
+        )
+        try fixture.writeTranscript(cliID: "cli-target")
+
+        let session = try #require(
+            try await provider.snapshot().sessions.first
+        )
         #expect(session.state == .working)
         #expect(session.confidence == .observed)
     }
@@ -657,7 +686,6 @@ private actor ClaudeAutomation: NativeAutomating {
     private var bundleID: String?
     private var texts: [String] = []
     private var submitCounts: [Int] = []
-    private var emptyPlaceholders: [String?] = []
     private var shortcuts = 0
 
     init(frontmostBundleID: String?) {
@@ -686,7 +714,6 @@ private actor ClaudeAutomation: NativeAutomating {
         _ text: String,
         bundleID: String,
         inputMarker: String,
-        emptyPlaceholderValue: String?,
         focusKeyCode: CGKeyCode?,
         submitCount: Int,
         targetVerifier: @escaping @Sendable () async throws -> Bool
@@ -696,7 +723,6 @@ private actor ClaudeAutomation: NativeAutomating {
         }
         texts.append(text)
         submitCounts.append(submitCount)
-        emptyPlaceholders.append(emptyPlaceholderValue)
         return ProviderActionResult(
             accepted: true,
             verdict: "DISPATCH_VERIFIED",
@@ -726,10 +752,6 @@ private actor ClaudeAutomation: NativeAutomating {
 
     func dispatchedSubmitCounts() -> [Int] {
         submitCounts
-    }
-
-    func dispatchedEmptyPlaceholders() -> [String?] {
-        emptyPlaceholders
     }
 
     func shortcutCount() -> Int {

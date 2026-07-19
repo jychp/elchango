@@ -15,6 +15,41 @@
         "failClosed": false
       }
     ],
+    "preCompact": [
+      {
+        "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider cursor",
+        "timeout": 1,
+        "failClosed": false
+      }
+    ],
+    "subagentStart": [
+      {
+        "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider cursor",
+        "timeout": 1,
+        "failClosed": false
+      }
+    ],
+    "subagentStop": [
+      {
+        "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider cursor",
+        "timeout": 1,
+        "failClosed": false
+      }
+    ],
+    "afterAgentThought": [
+      {
+        "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider cursor",
+        "timeout": 1,
+        "failClosed": false
+      }
+    ],
+    "afterAgentResponse": [
+      {
+        "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider cursor",
+        "timeout": 1,
+        "failClosed": false
+      }
+    ],
     "stop": [
       {
         "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider cursor",

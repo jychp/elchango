@@ -294,7 +294,7 @@ public actor HookRateLimiter {
     private var requests: [String: [Date]] = [:]
 
     public init(
-        limit: Int = 60,
+        limit: Int = 300,
         window: TimeInterval = 60,
         maximumProviderCount: Int = 8
     ) {

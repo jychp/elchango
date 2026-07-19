@@ -34,7 +34,6 @@ public actor CursorProvider: AgentProvider {
     public static let bundleID = "com.todesktop.230313mzl4w4u92"
     public static let inputMarker =
         "tiptapProseMirrorui-prompt-input-editor__inputProseMirror-focused"
-    public static let emptyInputPlaceholder = "Send follow-up\n"
     public static let commands: Set<CommandID> = [
         .accept, .createPR, .commitPush, .compact,
     ]
@@ -94,10 +93,6 @@ public actor CursorProvider: AgentProvider {
                 rawSelectedID,
                 sessions: candidates.map(\.session)
             )
-            activityStore.observeSelection(
-                selectedID,
-                observedAtMilliseconds: observedAtMilliseconds
-            )
             let sessions = candidates.map { candidate in
                 var state = (
                     candidate.session.state,
@@ -106,8 +101,7 @@ public actor CursorProvider: AgentProvider {
                 )
                 if let hookState = activityStore.state(
                     for: candidate.session.nativeID,
-                    observedAtMilliseconds: observedAtMilliseconds,
-                    currentGenerationID: candidate.generationID
+                    observedAtMilliseconds: observedAtMilliseconds
                 ),
                     hookState.0 == .done
                         || hookState.0 == .error
@@ -946,7 +940,6 @@ public actor CursorProvider: AgentProvider {
                 "Open a pull request for the current branch.",
                 bundleID: Self.bundleID,
                 inputMarker: Self.inputMarker,
-                emptyPlaceholderValue: Self.emptyInputPlaceholder,
                 focusKeyCode: 37,
                 submitCount: 1,
                 targetVerifier: {
@@ -958,7 +951,6 @@ public actor CursorProvider: AgentProvider {
                 "Commit the current changes with a Conventional Commit message and push the current branch.",
                 bundleID: Self.bundleID,
                 inputMarker: Self.inputMarker,
-                emptyPlaceholderValue: Self.emptyInputPlaceholder,
                 focusKeyCode: 37,
                 submitCount: 1,
                 targetVerifier: {
@@ -970,7 +962,6 @@ public actor CursorProvider: AgentProvider {
                 "/summarize",
                 bundleID: Self.bundleID,
                 inputMarker: Self.inputMarker,
-                emptyPlaceholderValue: Self.emptyInputPlaceholder,
                 focusKeyCode: 37,
                 submitCount: 2,
                 targetVerifier: {
@@ -1006,21 +997,6 @@ public actor CursorProvider: AgentProvider {
         _ payload: ProviderHookPayload,
         observedAtMilliseconds: Int64
     ) async throws -> ActivityObservation {
-        guard let sessionID = payload.conversationID, !sessionID.isEmpty else {
-            throw ProviderOperationError.invalidHook(
-                "Cursor hook event is missing conversation_id"
-            )
-        }
-        let current = try await snapshot()
-        guard
-            current.sessions.contains(where: {
-                $0.nativeID == sessionID
-            })
-        else {
-            throw ProviderOperationError.invalidHook(
-                "Cursor hook conversation_id is not in current inventory"
-            )
-        }
         return try activityStore.record(
             payload,
             observedAtMilliseconds: observedAtMilliseconds

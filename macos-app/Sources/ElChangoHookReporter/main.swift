@@ -59,6 +59,7 @@ private enum Provider: String {
                 "generation_id",
                 "composer_mode",
                 "status",
+                "subagent_id",
             ]
         case .claudeCode:
             keys = [
@@ -68,6 +69,11 @@ private enum Provider: String {
                 "transcript_path",
                 "notification_type",
                 "tool_name",
+                "prompt_id",
+                "permission_mode",
+                "trigger",
+                "source",
+                "agent_id",
             ]
         }
         return payload.reduce(into: [:]) { result, element in

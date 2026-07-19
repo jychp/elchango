@@ -40,8 +40,7 @@ test("button rendering centers only the icon and title with state color", () => 
   assert.match(image, /text-anchor="middle"/);
   assert.doesNotMatch(image, /must not render/);
   assert.doesNotMatch(image, /stroke=/);
-  assert.doesNotMatch(image, /<svg[^>]+<svg/);
-  assert.match(image, /transform="translate\(42 20\) scale/);
+  assert.match(image, /transform="translate\(40\.42 18\) scale\(0\.135315\)"/);
 });
 
 test("button rendering supports Claude Code session icons", () => {
@@ -57,6 +56,7 @@ test("button rendering supports Claude Code session icons", () => {
   assert.match(image, /Claude/);
   assert.match(image, /fill="#77818b"/);
   assert.match(image, /m19\.6 66\.5 19\.7-11/);
+  assert.match(image, /transform="translate\(36 18\) scale\(0\.72\)"/);
 });
 
 test("button rendering supports every Phosphor icon", () => {
@@ -91,7 +91,7 @@ test("button rendering supports every Phosphor icon", () => {
   for (const icon of icons) {
     const image = decodeSvg(renderButton({ ...buttonAt(0), icon }));
     assert.match(image, /<path d="M/);
-    assert.match(image, /scale\(0\.28125\)/);
+    assert.match(image, /transform="translate\(36 18\) scale\(0\.28125\)"/);
     assert.match(image, /stroke-width="6"/);
   }
 });

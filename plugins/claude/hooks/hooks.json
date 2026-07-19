@@ -47,7 +47,29 @@
         ]
       }
     ],
+    "PostToolBatch": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:8765/api/hooks/claude-code",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
     "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:8765/api/hooks/claude-code",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PermissionDenied": [
       {
         "hooks": [
           {
@@ -82,7 +104,53 @@
     ],
     "Notification": [
       {
-        "matcher": "permission_prompt|idle_prompt|elicitation_dialog|agent_needs_input",
+        "matcher": "permission_prompt|idle_prompt|elicitation_dialog|elicitation_complete|elicitation_response|agent_needs_input|agent_completed",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:8765/api/hooks/claude-code",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:8765/api/hooks/claude-code",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:8765/api/hooks/claude-code",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "manual|auto",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:8765/api/hooks/claude-code",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "matcher": "manual|auto",
         "hooks": [
           {
             "type": "http",

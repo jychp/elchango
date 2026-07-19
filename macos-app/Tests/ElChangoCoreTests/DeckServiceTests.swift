@@ -21,6 +21,29 @@ struct DeckServiceTests {
         #expect(!snapshot.buttons[14].enabled)
     }
 
+    @Test("provider snapshots survive a canceled HTTP task")
+    func canceledCallerStillReadsProviders() async throws {
+        let context = try TestContext()
+        defer { context.remove() }
+        let provider = MutableProvider(snapshot: makeSnapshot(count: 1))
+        let service = try DeckService(
+            providers: [provider],
+            preferences: context.preferences
+        )
+        let task = Task {
+            while !Task.isCancelled {
+                await Task.yield()
+            }
+            return try await service.snapshot()
+        }
+        task.cancel()
+
+        let snapshot = try await task.value
+
+        #expect(snapshot.buttons[0].sessionID != nil)
+        #expect(snapshot.source == "test=test")
+    }
+
     @Test("revisions change only when rendered content changes")
     func stableRevision() async throws {
         let context = try TestContext()

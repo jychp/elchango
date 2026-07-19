@@ -16,7 +16,6 @@ public protocol NativeAutomating: Sendable {
         _ text: String,
         bundleID: String,
         inputMarker: String,
-        emptyPlaceholderValue: String?,
         focusKeyCode: CGKeyCode?,
         submitCount: Int,
         targetVerifier: @escaping @Sendable () async throws -> Bool
@@ -36,6 +35,16 @@ public actor NativeAutomation: NativeAutomating {
         await MainActor.run {
             NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         }
+    }
+
+    nonisolated static func inputIsEmpty(
+        characterCount: Int?,
+        value: String?
+    ) -> Bool {
+        if let characterCount {
+            return characterCount == 0
+        }
+        return value?.isEmpty == true || value == "\n"
     }
 
     public func activate(bundleID: String) async throws {
@@ -122,7 +131,6 @@ public actor NativeAutomation: NativeAutomating {
         _ text: String,
         bundleID: String,
         inputMarker: String,
-        emptyPlaceholderValue: String?,
         focusKeyCode: CGKeyCode?,
         submitCount: Int,
         targetVerifier: @escaping @Sendable () async throws -> Bool
@@ -149,8 +157,7 @@ public actor NativeAutomation: NativeAutomating {
         let focused = try verifiedFocusedInput(
             processIdentifier: identity.processIdentifier,
             marker: inputMarker,
-            requireEmpty: true,
-            emptyPlaceholderValue: emptyPlaceholderValue
+            requireEmpty: true
         )
         _ = try await requireFrontmost(
             bundleID: bundleID,
@@ -159,8 +166,7 @@ public actor NativeAutomation: NativeAutomating {
         try verifyFocusedInput(
             focused,
             marker: inputMarker,
-            requireEmpty: true,
-            emptyPlaceholderValue: emptyPlaceholderValue
+            requireEmpty: true
         )
         guard try await targetVerifier() else {
             throw ProviderOperationError.targetUnverified(
@@ -172,8 +178,7 @@ public actor NativeAutomation: NativeAutomating {
             bundleID: bundleID,
             processIdentifier: identity.processIdentifier,
             focusedElement: focused,
-            marker: inputMarker,
-            emptyPlaceholderValue: emptyPlaceholderValue
+            marker: inputMarker
         )
         for _ in 0..<submitCount {
             try await sleep(milliseconds: 500)
@@ -317,8 +322,7 @@ public actor NativeAutomation: NativeAutomating {
     private func verifiedFocusedInput(
         processIdentifier: pid_t,
         marker: String,
-        requireEmpty: Bool,
-        emptyPlaceholderValue: String? = nil
+        requireEmpty: Bool
     ) throws -> AXUIElement {
         let applicationElement = AXUIElementCreateApplication(
             processIdentifier
@@ -339,8 +343,7 @@ public actor NativeAutomation: NativeAutomating {
         try verifyFocusedInput(
             element,
             marker: marker,
-            requireEmpty: requireEmpty,
-            emptyPlaceholderValue: emptyPlaceholderValue
+            requireEmpty: requireEmpty
         )
         return element
     }
@@ -348,8 +351,7 @@ public actor NativeAutomation: NativeAutomating {
     private func verifyFocusedInput(
         _ element: AXUIElement,
         marker: String,
-        requireEmpty: Bool,
-        emptyPlaceholderValue: String? = nil
+        requireEmpty: Bool
     ) throws {
         let role = try stringAttribute(
             element,
@@ -383,27 +385,21 @@ public actor NativeAutomation: NativeAutomating {
             )
         }
         if requireEmpty {
+            let characterCount = optionalIntegerAttribute(
+                element,
+                name: "AXNumberOfCharacters" as CFString
+            )
             let value = optionalTextAttribute(
                 element,
                 name: kAXValueAttribute as CFString
             )
-            let isEmpty: Bool
-            let count: Int
-            if let value {
-                count = value.count
-                isEmpty =
-                    value.isEmpty
-                    || value == "\n"
-                    || (emptyPlaceholderValue != nil
-                        && value == emptyPlaceholderValue)
-            } else {
-                count = try integerAttribute(
-                    element,
-                    name: "AXNumberOfCharacters" as CFString
+            guard
+                Self.inputIsEmpty(
+                    characterCount: characterCount,
+                    value: value
                 )
-                isEmpty = count == 0
-            }
-            guard isEmpty else {
+            else {
+                let count = characterCount ?? value?.count ?? -1
                 throw ProviderOperationError.targetUnverified(
                     "focused input is not empty (\(count) characters)"
                 )
@@ -416,8 +412,7 @@ public actor NativeAutomation: NativeAutomating {
         bundleID: String,
         processIdentifier: pid_t,
         focusedElement: AXUIElement,
-        marker: String,
-        emptyPlaceholderValue: String?
+        marker: String
     ) async throws {
         let units = Array(text.utf16)
         for start in stride(from: 0, to: units.count, by: 20) {
@@ -428,8 +423,7 @@ public actor NativeAutomation: NativeAutomating {
             try verifyFocusedInput(
                 focusedElement,
                 marker: marker,
-                requireEmpty: start == 0,
-                emptyPlaceholderValue: emptyPlaceholderValue
+                requireEmpty: start == 0
             )
             let chunk = Array(units[start..<min(start + 20, units.count)])
             guard
@@ -585,17 +579,15 @@ public actor NativeAutomation: NativeAutomating {
         return number.boolValue
     }
 
-    private func integerAttribute(
+    private func optionalIntegerAttribute(
         _ element: AXUIElement,
         name: CFString
-    ) throws -> Int {
+    ) -> Int? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, name, &value) == .success,
             let number = value as? NSNumber
         else {
-            throw ProviderOperationError.targetUnverified(
-                "focused element is missing \(name)"
-            )
+            return nil
         }
         return number.intValue
     }

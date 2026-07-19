@@ -111,22 +111,43 @@ executor.
 
 The implemented mapping is:
 
-- `UserPromptSubmit`: blue, working;
+- `UserPromptSubmit`: blue, working, keyed by `(session_id, prompt_id)` when the
+  current Claude Code version supplies `prompt_id`;
 - `PreToolUse` for `AskUserQuestion` or `ExitPlanMode`: orange, waiting;
-- corresponding `PostToolUse`: blue, working after the user responds;
+- corresponding `PostToolUse`, `PostToolBatch`, and `PermissionDenied`: blue,
+  working or retry progress;
 - `PermissionRequest`: orange, waiting for tool approval;
 - `Elicitation`: orange, waiting for MCP input;
-- `ElicitationResult`: blue, working after MCP input;
-- `Notification` with `permission_prompt`, `idle_prompt`, or
-  `elicitation_dialog`, or `agent_needs_input`: orange, waiting;
-- `Stop`: green, done;
+- `ElicitationResult`, `elicitation_complete`, and `elicitation_response`: blue,
+  working after input;
+- `permission_prompt`, `elicitation_dialog`, and `agent_needs_input`: orange,
+  waiting;
+- `idle_prompt`: green, done;
+- `agent_completed`: blue candidate progress only because it does not identify
+  the whole parent turn;
+- `SubagentStart` and `SubagentStop`: bounded blue child progress;
+- `PreCompact` and `PostCompact` for manual or automatic compaction: blue,
+  working;
+- `SessionStart(source: "compact")`: blue resumed progress rather than idle;
+- `Stop`: green only when its authoritative `background_tasks` array is empty;
 - `StopFailure`: error, rendered orange by the four-color deck;
 - `SessionStart` and `SessionEnd`: gray, idle.
 
-The activity store retains no prompt, assistant, notification message, or
-transcript content. Live evidence must still confirm that hook `session_id`
-equals the Desktop record's `cliSessionId` and that the expected event sequences
-reliably represent turns and waiting states.
+When `Stop.background_tasks` is non-empty, the session remains blue. Background
+progress may resume the parent, and only a later `Stop` with an empty registry
+terminates the turn. Older Claude Code versions without the registry fall back
+to tracked subagent IDs conservatively. Hook receipt does not rebuild inventory:
+the next snapshot applies a sanitized observation only to an exact
+`cliSessionId` match.
+
+The activity store retains IDs, event types, status, prompt ID, permission mode,
+session source, compaction trigger, and bounded background task
+ID/type/status/agent-type metadata. It
+retains no prompt, assistant, notification message, summary, command, tool
+input/output, or transcript content. Green completion persists until an
+explicit elChango focus action acknowledges it. Live evidence must still confirm
+that hook `session_id` equals the Desktop record's `cliSessionId` and that the
+expected event sequences reliably represent turns and waiting states.
 
 ## Focus and launch
 
@@ -226,8 +247,10 @@ They do not disable Cursor or prevent the host from starting.
 
 Sessions without fresh hook evidence are gray with persisted confidence. A
 working or waiting signal older than ten minutes without a terminal event
-becomes unknown with explicit degraded detail. This conservative timeout is
-subject to revision after live hook testing.
+becomes unknown with explicit degraded detail. Hooks may arrive before Desktop
+persists a matching record; bounded observations remain inert until an exact
+later inventory match. This conservative timeout is subject to revision after
+live hook testing.
 
 ## Limitations and open questions
 
@@ -237,7 +260,8 @@ subject to revision after live hook testing.
 - Stability of Desktop `sessionId` and `cliSessionId` across resume remains
   unproven.
 - Live evidence is still needed for blue-to-green turn transitions, orange
-  waiting transitions and clearing, and native HTTP reachability.
+  waiting transitions and clearing, native HTTP reachability, compaction,
+  foreground and background subagents, and background-task wakeups.
 - Exact Claude Desktop and Claude Code versions were not captured.
 - Accessibility markers and undocumented sidebar configuration may change.
 - Semantic completion is not proven by successful dispatch.
