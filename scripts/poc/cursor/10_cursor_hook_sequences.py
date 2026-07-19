@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -51,6 +51,7 @@ SUPPORTED_EVENTS = {
     "stop",
     "sessionEnd",
 }
+MAXIMUM_ACTIVE_SUBAGENTS = 64
 
 
 @dataclass
@@ -58,9 +59,14 @@ class Turn:
     generation_id: str | None = None
     state: str = "idle"
     detail: str = "session started"
-    active_subagents: int = 0
+    active_subagent_ids: set[str] = field(default_factory=set)
+    anonymous_subagents: int = 0
     child_failed: bool = False
     deferred_status: str | None = None
+
+    @property
+    def active_subagents(self) -> int:
+        return len(self.active_subagent_ids) + self.anonymous_subagents
 
 
 def sanitize(payload: dict[str, Any]) -> dict[str, str]:
@@ -87,7 +93,6 @@ def apply(turn: Turn, event: dict[str, str]) -> Turn:
     if (
         name != "beforeSubmitPrompt"
         and turn.generation_id
-        and generation
         and generation != turn.generation_id
     ):
         return turn
@@ -105,12 +110,28 @@ def apply(turn: Turn, event: dict[str, str]) -> Turn:
         turn.deferred_status = None
         turn.state, turn.detail = "working", name
     elif name == "subagentStart":
-        turn.active_subagents += 1
+        subagent_id = event.get("subagent_id")
+        if subagent_id:
+            if subagent_id in turn.active_subagent_ids:
+                return turn
+            if turn.active_subagents >= MAXIMUM_ACTIVE_SUBAGENTS:
+                raise ValueError("active subagent limit exceeded")
+            turn.active_subagent_ids.add(subagent_id)
+        else:
+            if turn.active_subagents >= MAXIMUM_ACTIVE_SUBAGENTS:
+                raise ValueError("active subagent limit exceeded")
+            turn.anonymous_subagents += 1
         turn.state, turn.detail = "working", "subagent working"
     elif name == "subagentStop":
-        if not turn.active_subagents:
+        subagent_id = event.get("subagent_id")
+        if subagent_id:
+            if subagent_id not in turn.active_subagent_ids:
+                return turn
+            turn.active_subagent_ids.remove(subagent_id)
+        elif turn.anonymous_subagents:
+            turn.anonymous_subagents -= 1
+        else:
             return turn
-        turn.active_subagents -= 1
         turn.child_failed |= event.get("status") in {"error", "aborted"}
         if turn.active_subagents == 0 and turn.deferred_status:
             state, detail = terminal(turn.deferred_status)
@@ -120,6 +141,7 @@ def apply(turn: Turn, event: dict[str, str]) -> Turn:
         else:
             turn.state, turn.detail = "working", "subagent activity continues"
     elif name == "stop":
+        terminal(event.get("status"))
         if turn.active_subagents:
             turn.deferred_status = event.get("status")
             turn.state, turn.detail = "working", "waiting for subagents"
@@ -165,6 +187,12 @@ def self_check() -> None:
             "subagent_id": "one",
         },
         {
+            "hook_event_name": "subagentStart",
+            "conversation_id": "conversation",
+            "generation_id": "generation",
+            "subagent_id": "one",
+        },
+        {
             "hook_event_name": "stop",
             "conversation_id": "conversation",
             "generation_id": "generation",
@@ -175,6 +203,7 @@ def self_check() -> None:
             "conversation_id": "conversation",
             "generation_id": "generation",
             "status": "completed",
+            "subagent_id": "one",
         },
     ]
     reduced = reduce_events(events)["conversation"]

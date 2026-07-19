@@ -199,6 +199,7 @@ public actor ClaudeCodeProvider: AgentProvider {
                 "unknown non-archived Claude session: \(nativeSessionID)"
             )
         }
+        try await automation.activate(bundleID: Self.bundleID)
         let order = try shortcutOrder(records: beforeRecords)
         guard let index = order.firstIndex(of: nativeSessionID) else {
             return actionResult(
@@ -221,7 +222,6 @@ public actor ClaudeCodeProvider: AgentProvider {
                 $0.lastFocusedAtMilliseconds == beforeMaximum
             }.count == 1
 
-        try await automation.activate(bundleID: Self.bundleID)
         if !targetAlreadySelected {
             let latestRecords = try readRecords().filter {
                 !$0.isArchived
@@ -443,7 +443,28 @@ public actor ClaudeCodeProvider: AgentProvider {
         guard let epitaxy = root["preferences"]?["epitaxyPrefs"],
             let starred = epitaxy["starred-local-code-sessions"]?
                 .stringArray,
-            let localSlice = epitaxy["dframe-local-slice"],
+            let localSlice = epitaxy["dframe-local-slice"]
+        else {
+            throw ClaudeCodeProviderError.readFailed(
+                "cannot read Claude sidebar order"
+            )
+        }
+        let visibleIDs = Set(records.map(\.desktopSessionID))
+        if let pinnedOrder = localSlice["pinnedOrder"]?.stringArray {
+            var persisted: [String] = []
+            for qualified in pinnedOrder
+            where qualified.hasPrefix("code:") {
+                let sessionID = String(qualified.dropFirst("code:".count))
+                if visibleIDs.contains(sessionID),
+                    !persisted.contains(sessionID)
+                {
+                    persisted.append(sessionID)
+                }
+            }
+            appendRemaining(records, to: &persisted)
+            return persisted
+        }
+        guard
             let assignmentEntries = localSlice["customGroupAssignments"]?
                 .objectEntries,
             let groupEntries = localSlice["customGroupOrder"]?
@@ -453,7 +474,6 @@ public actor ClaudeCodeProvider: AgentProvider {
                 "cannot read Claude sidebar order"
             )
         }
-        let visibleIDs = Set(records.map(\.desktopSessionID))
         let assignedKeys = Set(assignmentEntries.map(\.0))
         var persisted: [String] = []
         for sessionID in starred.reversed()
@@ -480,6 +500,14 @@ public actor ClaudeCodeProvider: AgentProvider {
                 }
             }
         }
+        appendRemaining(records, to: &persisted)
+        return persisted
+    }
+
+    private func appendRemaining(
+        _ records: [ClaudeDesktopRecord],
+        to persisted: inout [String]
+    ) {
         let remaining =
             records
             .filter {
@@ -495,7 +523,6 @@ public actor ClaudeCodeProvider: AgentProvider {
                 return $0.desktopSessionID < $1.desktopSessionID
             }
         persisted.append(contentsOf: remaining.map(\.desktopSessionID))
-        return persisted
     }
 
     private static func sessionCapabilities(

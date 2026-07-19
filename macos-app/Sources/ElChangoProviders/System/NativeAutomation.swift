@@ -29,6 +29,8 @@ public protocol NativeAutomating: Sendable {
 }
 
 public actor NativeAutomation: NativeAutomating {
+    private static let maximumDraftBytes = 64 * 1_024
+
     public init() {}
 
     public func frontmostBundleID() async -> String? {
@@ -37,19 +39,21 @@ public actor NativeAutomation: NativeAutomating {
         }
     }
 
-    nonisolated static func inputIsEmpty(
-        characterCount: Int?,
-        value: String?,
-        placeholderValue: String?
+    nonisolated static func boundedDraft(
+        _ value: String?,
+        maximumBytes: Int = maximumDraftBytes
+    ) -> String? {
+        guard let value, value.utf8.count <= maximumBytes else {
+            return nil
+        }
+        return value
+    }
+
+    nonisolated static func inputTextMatches(
+        _ value: String,
+        expected: String
     ) -> Bool {
-        if let characterCount {
-            return characterCount == 0
-        }
-        if value?.isEmpty == true || value == "\n" {
-            return true
-        }
-        return placeholderValue?.isEmpty == false
-            && value == placeholderValue
+        value == expected || value == "\(expected)\n"
     }
 
     public func activate(bundleID: String) async throws {
@@ -159,10 +163,9 @@ public actor NativeAutomation: NativeAutomating {
             )
             try await sleep(milliseconds: 200)
         }
-        let focused = try verifiedFocusedInput(
+        var focused = try verifiedFocusedInput(
             processIdentifier: identity.processIdentifier,
-            marker: inputMarker,
-            requireEmpty: true
+            marker: inputMarker
         )
         _ = try await requireFrontmost(
             bundleID: bundleID,
@@ -170,12 +173,31 @@ public actor NativeAutomation: NativeAutomating {
         )
         try verifyFocusedInput(
             focused,
-            marker: inputMarker,
-            requireEmpty: true
+            marker: inputMarker
         )
         guard try await targetVerifier() else {
             throw ProviderOperationError.targetUnverified(
                 "selected provider session changed before text dispatch"
+            )
+        }
+        focused = try await selectAll(
+            bundleID: bundleID,
+            processIdentifier: identity.processIdentifier,
+            marker: inputMarker,
+            focusedElement: focused
+        )
+        guard try await targetVerifier() else {
+            throw ProviderOperationError.targetUnverified(
+                "selected provider session changed before draft capture"
+            )
+        }
+        guard
+            let draft = Self.boundedDraft(
+                try selectedTextAttribute(focused)
+            )
+        else {
+            throw ProviderOperationError.targetUnverified(
+                "selected provider draft exceeds the safe in-memory limit"
             )
         }
         try await postText(
@@ -185,28 +207,56 @@ public actor NativeAutomation: NativeAutomating {
             focusedElement: focused,
             marker: inputMarker
         )
-        for _ in 0..<submitCount {
-            try await sleep(milliseconds: 500)
-            _ = try await requireFrontmost(
-                bundleID: bundleID,
-                processIdentifier: identity.processIdentifier
-            )
-            try verifyFocusedInput(
-                focused,
-                marker: inputMarker,
-                requireEmpty: false
-            )
-            guard try await targetVerifier() else {
-                throw ProviderOperationError.targetUnverified(
-                    "selected provider session changed before submission"
+        try verifyInputText(focused, expected: text)
+        var submitted = false
+        do {
+            for _ in 0..<submitCount {
+                try await sleep(milliseconds: 500)
+                _ = try await requireFrontmost(
+                    bundleID: bundleID,
+                    processIdentifier: identity.processIdentifier
+                )
+                try verifyFocusedInput(
+                    focused,
+                    marker: inputMarker
+                )
+                guard try await targetVerifier() else {
+                    throw ProviderOperationError.targetUnverified(
+                        "selected provider session changed before submission"
+                    )
+                }
+                try await postFocusedKey(
+                    keyCode: 36,
+                    flags: [],
+                    bundleID: bundleID,
+                    processIdentifier: identity.processIdentifier,
+                    focusedElement: focused,
+                    marker: inputMarker
+                )
+                submitted = true
+            }
+        } catch {
+            if !submitted, try await targetVerifier() {
+                try? await replaceFocusedText(
+                    with: draft,
+                    bundleID: bundleID,
+                    processIdentifier: identity.processIdentifier,
+                    marker: inputMarker
                 )
             }
-            try await postFocusedKey(
-                keyCode: 36,
-                flags: [],
+            throw error
+        }
+        if !draft.isEmpty {
+            try await sleep(milliseconds: 300)
+            guard try await targetVerifier() else {
+                throw ProviderOperationError.targetUnverified(
+                    "selected provider session changed before draft restoration"
+                )
+            }
+            try await restoreDraft(
+                draft,
                 bundleID: bundleID,
                 processIdentifier: identity.processIdentifier,
-                focusedElement: focused,
                 marker: inputMarker
             )
         }
@@ -244,8 +294,7 @@ public actor NativeAutomation: NativeAutomating {
         if let inputMarker {
             focused = try verifiedFocusedInput(
                 processIdentifier: identity.processIdentifier,
-                marker: inputMarker,
-                requireEmpty: false
+                marker: inputMarker
             )
         } else {
             focused = nil
@@ -326,8 +375,7 @@ public actor NativeAutomation: NativeAutomating {
 
     private func verifiedFocusedInput(
         processIdentifier: pid_t,
-        marker: String,
-        requireEmpty: Bool
+        marker: String
     ) throws -> AXUIElement {
         let applicationElement = AXUIElementCreateApplication(
             processIdentifier
@@ -347,16 +395,14 @@ public actor NativeAutomation: NativeAutomating {
         let element = unsafeDowncast(value, to: AXUIElement.self)
         try verifyFocusedInput(
             element,
-            marker: marker,
-            requireEmpty: requireEmpty
+            marker: marker
         )
         return element
     }
 
     private func verifyFocusedInput(
         _ element: AXUIElement,
-        marker: String,
-        requireEmpty: Bool
+        marker: String
     ) throws {
         let role = try stringAttribute(
             element,
@@ -389,32 +435,123 @@ public actor NativeAutomation: NativeAutomating {
                 "focused input marker does not match"
             )
         }
-        if requireEmpty {
-            let characterCount = optionalIntegerAttribute(
-                element,
-                name: "AXNumberOfCharacters" as CFString
-            )
-            let value = optionalTextAttribute(
-                element,
-                name: kAXValueAttribute as CFString
-            )
-            let placeholderValue = optionalTextAttribute(
-                element,
-                name: kAXPlaceholderValueAttribute as CFString
-            )
-            guard
-                Self.inputIsEmpty(
-                    characterCount: characterCount,
-                    value: value,
-                    placeholderValue: placeholderValue
-                )
-            else {
-                let count = characterCount ?? value?.count ?? -1
-                throw ProviderOperationError.targetUnverified(
-                    "focused input is not empty (\(count) characters)"
-                )
-            }
+    }
+
+    private func selectAll(
+        bundleID: String,
+        processIdentifier: pid_t,
+        marker: String,
+        focusedElement: AXUIElement
+    ) async throws -> AXUIElement {
+        try await postFocusedKey(
+            keyCode: 0,
+            flags: .maskCommand,
+            bundleID: bundleID,
+            processIdentifier: processIdentifier,
+            focusedElement: focusedElement,
+            marker: marker
+        )
+        try await sleep(milliseconds: 100)
+        return try verifiedFocusedInput(
+            processIdentifier: processIdentifier,
+            marker: marker
+        )
+    }
+
+    private func selectedTextAttribute(
+        _ element: AXUIElement
+    ) throws -> String {
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(
+            element,
+            kAXSelectedTextAttribute as CFString,
+            &value
+        )
+        if result == .noValue {
+            return ""
         }
+        guard result == .success else {
+            throw ProviderOperationError.targetUnverified(
+                "focused input does not expose selected text"
+            )
+        }
+        if let string = value as? String {
+            return string
+        }
+        if let attributed = value as? NSAttributedString {
+            return attributed.string
+        }
+        throw ProviderOperationError.targetUnverified(
+            "focused input selected text has an unsupported type"
+        )
+    }
+
+    private func replaceFocusedText(
+        with text: String,
+        bundleID: String,
+        processIdentifier: pid_t,
+        marker: String
+    ) async throws {
+        let focused = try verifiedFocusedInput(
+            processIdentifier: processIdentifier,
+            marker: marker
+        )
+        let selected = try await selectAll(
+            bundleID: bundleID,
+            processIdentifier: processIdentifier,
+            marker: marker,
+            focusedElement: focused
+        )
+        if text.isEmpty {
+            try await postFocusedKey(
+                keyCode: 51,
+                flags: [],
+                bundleID: bundleID,
+                processIdentifier: processIdentifier,
+                focusedElement: selected,
+                marker: marker
+            )
+        } else {
+            try await postText(
+                text,
+                bundleID: bundleID,
+                processIdentifier: processIdentifier,
+                focusedElement: selected,
+                marker: marker
+            )
+            try verifyInputText(selected, expected: text)
+        }
+    }
+
+    private func restoreDraft(
+        _ draft: String,
+        bundleID: String,
+        processIdentifier: pid_t,
+        marker: String
+    ) async throws {
+        let focused = try verifiedFocusedInput(
+            processIdentifier: processIdentifier,
+            marker: marker
+        )
+        let selected = try await selectAll(
+            bundleID: bundleID,
+            processIdentifier: processIdentifier,
+            marker: marker,
+            focusedElement: focused
+        )
+        guard try selectedTextAttribute(selected).isEmpty else {
+            throw ProviderOperationError.targetUnverified(
+                "provider input changed before draft restoration"
+            )
+        }
+        try await postText(
+            draft,
+            bundleID: bundleID,
+            processIdentifier: processIdentifier,
+            focusedElement: selected,
+            marker: marker
+        )
+        try verifyInputText(selected, expected: draft)
     }
 
     private func postText(
@@ -424,6 +561,23 @@ public actor NativeAutomation: NativeAutomating {
         focusedElement: AXUIElement,
         marker: String
     ) async throws {
+        let setResult = AXUIElementSetAttributeValue(
+            focusedElement,
+            kAXSelectedTextAttribute as CFString,
+            text as CFString
+        )
+        if setResult == .success {
+            return
+        }
+        guard
+            setResult == .attributeUnsupported
+                || setResult == .illegalArgument
+                || setResult == .notImplemented
+        else {
+            throw ProviderOperationError.system(
+                "macOS failed to replace the selected provider text"
+            )
+        }
         let units = Array(text.utf16)
         for start in stride(from: 0, to: units.count, by: 20) {
             _ = try await requireFrontmost(
@@ -432,8 +586,7 @@ public actor NativeAutomation: NativeAutomating {
             )
             try verifyFocusedInput(
                 focusedElement,
-                marker: marker,
-                requireEmpty: start == 0
+                marker: marker
             )
             let chunk = Array(units[start..<min(start + 20, units.count)])
             guard
@@ -468,6 +621,21 @@ public actor NativeAutomation: NativeAutomating {
         }
     }
 
+    private func verifyInputText(
+        _ element: AXUIElement,
+        expected: String
+    ) throws {
+        let value = try textAttribute(
+            element,
+            name: kAXValueAttribute as CFString
+        )
+        guard Self.inputTextMatches(value, expected: expected) else {
+            throw ProviderOperationError.targetUnverified(
+                "provider input did not accept the command text"
+            )
+        }
+    }
+
     private func postFocusedKey(
         keyCode: CGKeyCode,
         flags: CGEventFlags,
@@ -483,8 +651,7 @@ public actor NativeAutomation: NativeAutomating {
         if let focusedElement, let marker {
             try verifyFocusedInput(
                 focusedElement,
-                marker: marker,
-                requireEmpty: false
+                marker: marker
             )
         }
         guard
@@ -574,6 +741,28 @@ public actor NativeAutomation: NativeAutomating {
         return string
     }
 
+    private func textAttribute(
+        _ element: AXUIElement,
+        name: CFString
+    ) throws -> String {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, name, &value) == .success
+        else {
+            throw ProviderOperationError.targetUnverified(
+                "focused element is missing \(name)"
+            )
+        }
+        if let string = value as? String {
+            return string
+        }
+        if let attributed = value as? NSAttributedString {
+            return attributed.string
+        }
+        throw ProviderOperationError.targetUnverified(
+            "focused element has unsupported text for \(name)"
+        )
+    }
+
     private func booleanAttribute(
         _ element: AXUIElement,
         name: CFString
@@ -587,37 +776,6 @@ public actor NativeAutomation: NativeAutomating {
             )
         }
         return number.boolValue
-    }
-
-    private func optionalIntegerAttribute(
-        _ element: AXUIElement,
-        name: CFString
-    ) -> Int? {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, name, &value) == .success,
-            let number = value as? NSNumber
-        else {
-            return nil
-        }
-        return number.intValue
-    }
-
-    private func optionalTextAttribute(
-        _ element: AXUIElement,
-        name: CFString
-    ) -> String? {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, name, &value) == .success
-        else {
-            return nil
-        }
-        if let string = value as? String {
-            return string
-        }
-        if let attributed = value as? NSAttributedString {
-            return attributed.string
-        }
-        return nil
     }
 
     private func stringListAttribute(

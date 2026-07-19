@@ -4,59 +4,49 @@ import Testing
 
 @Suite("Native input verification")
 struct NativeAutomationTests {
-    @Test("character count is authoritative over placeholder value")
-    func characterCountIsAuthoritative() {
+    @Test("draft capture preserves localized text")
+    func draftCapture() {
         #expect(
-            NativeAutomation.inputIsEmpty(
-                characterCount: 0,
-                value: "Localized contextual placeholder",
-                placeholderValue: nil
-            )
+            NativeAutomation.boundedDraft(
+                "Brouillon localisé"
+            ) == "Brouillon localisé"
         )
         #expect(
-            !NativeAutomation.inputIsEmpty(
-                characterCount: 4,
-                value: "",
-                placeholderValue: ""
-            )
+            NativeAutomation.boundedDraft("") == ""
         )
     }
 
-    @Test("value fallback accepts only empty editor representations")
-    func valueFallback() {
+    @Test("draft capture rejects missing and oversized values")
+    func draftCaptureBounds() {
         #expect(
-            NativeAutomation.inputIsEmpty(
-                characterCount: nil,
-                value: "",
-                placeholderValue: nil
+            NativeAutomation.boundedDraft(nil) == nil
+        )
+        #expect(
+            NativeAutomation.boundedDraft(
+                "12345",
+                maximumBytes: 4
+            ) == nil
+        )
+    }
+
+    @Test("command text must replace the previous draft before submission")
+    func commandReplacementVerification() {
+        #expect(
+            NativeAutomation.inputTextMatches(
+                "Open a pull request.",
+                expected: "Open a pull request."
             )
         )
         #expect(
-            NativeAutomation.inputIsEmpty(
-                characterCount: nil,
-                value: "\n",
-                placeholderValue: nil
+            NativeAutomation.inputTextMatches(
+                "Open a pull request.\n",
+                expected: "Open a pull request."
             )
         )
         #expect(
-            NativeAutomation.inputIsEmpty(
-                characterCount: nil,
-                value: "Localized contextual placeholder",
-                placeholderValue: "Localized contextual placeholder"
-            )
-        )
-        #expect(
-            !NativeAutomation.inputIsEmpty(
-                characterCount: nil,
-                value: "Draft",
-                placeholderValue: "Localized contextual placeholder"
-            )
-        )
-        #expect(
-            !NativeAutomation.inputIsEmpty(
-                characterCount: nil,
-                value: nil,
-                placeholderValue: nil
+            !NativeAutomation.inputTextMatches(
+                "Existing test draft\n",
+                expected: "Open a pull request."
             )
         )
     }

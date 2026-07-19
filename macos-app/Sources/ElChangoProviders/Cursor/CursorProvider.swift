@@ -101,7 +101,8 @@ public actor CursorProvider: AgentProvider {
                 )
                 if let hookState = activityStore.state(
                     for: candidate.session.nativeID,
-                    observedAtMilliseconds: observedAtMilliseconds
+                    observedAtMilliseconds: observedAtMilliseconds,
+                    currentGenerationID: candidate.generationID
                 ),
                     hookState.0 == .done
                         || hookState.0 == .error

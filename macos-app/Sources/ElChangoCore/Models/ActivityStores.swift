@@ -9,9 +9,14 @@ public final class CursorActivityStore: @unchecked Sendable {
     private struct Turn {
         var observation: ActivityObservation
         var generationID: String?
-        var activeSubagentCount = 0
+        var activeSubagentIDs: Set<String> = []
+        var anonymousSubagentCount = 0
         var childFailed = false
         var deferredTerminal: TerminalState?
+
+        var activeSubagentCount: Int {
+            activeSubagentIDs.count + anonymousSubagentCount
+        }
     }
 
     private let ttlMilliseconds: Int64
@@ -67,6 +72,13 @@ public final class CursorActivityStore: @unchecked Sendable {
                 "Cursor hook generation_id must be a non-empty string"
             )
         }
+        if let subagentID = payload.subagentID,
+            subagentID.isEmpty
+        {
+            throw ProviderOperationError.invalidHook(
+                "Cursor hook subagent_id must be a non-empty string"
+            )
+        }
         if let mode = payload.composerMode,
             !Set(["agent", "plan", "ask", "edit"]).contains(mode)
         {
@@ -94,8 +106,7 @@ public final class CursorActivityStore: @unchecked Sendable {
             )
         if event != "beforeSubmitPrompt",
             let currentGenerationID = turn.generationID,
-            let eventGenerationID = payload.generationID,
-            currentGenerationID != eventGenerationID
+            currentGenerationID != payload.generationID
         {
             return turn.observation
         }
@@ -114,7 +125,8 @@ public final class CursorActivityStore: @unchecked Sendable {
             )
         case "beforeSubmitPrompt":
             if turn.generationID != payload.generationID {
-                turn.activeSubagentCount = 0
+                turn.activeSubagentIDs = []
+                turn.anonymousSubagentCount = 0
                 turn.childFailed = false
             }
             turn.generationID = payload.generationID
@@ -142,12 +154,21 @@ public final class CursorActivityStore: @unchecked Sendable {
                 detail: Self.cursorProgressDetail(event)
             )
         case "subagentStart":
+            if let subagentID = payload.subagentID,
+                turn.activeSubagentIDs.contains(subagentID)
+            {
+                return turn.observation
+            }
             guard turn.activeSubagentCount < maximumActiveSubagents else {
                 throw ProviderOperationError.invalidHook(
                     "Cursor active subagent limit exceeded"
                 )
             }
-            turn.activeSubagentCount += 1
+            if let subagentID = payload.subagentID {
+                turn.activeSubagentIDs.insert(subagentID)
+            } else {
+                turn.anonymousSubagentCount += 1
+            }
             turn.observation = Self.observation(
                 sessionID: sessionID,
                 event: event,
@@ -156,10 +177,16 @@ public final class CursorActivityStore: @unchecked Sendable {
                 detail: "Cursor subagent working"
             )
         case "subagentStop":
-            guard turn.activeSubagentCount > 0 else {
-                return turn.observation
+            if let subagentID = payload.subagentID {
+                guard turn.activeSubagentIDs.remove(subagentID) != nil else {
+                    return turn.observation
+                }
+            } else {
+                guard turn.anonymousSubagentCount > 0 else {
+                    return turn.observation
+                }
+                turn.anonymousSubagentCount -= 1
             }
-            turn.activeSubagentCount -= 1
             if payload.status == "error" || payload.status == "aborted" {
                 turn.childFailed = true
             }
@@ -225,11 +252,17 @@ public final class CursorActivityStore: @unchecked Sendable {
 
     public func state(
         for sessionID: String,
-        observedAtMilliseconds: Int64
+        observedAtMilliseconds: Int64,
+        currentGenerationID: String? = nil
     ) -> (SessionState, DeckConfidence, String)? {
         lock.lock()
         defer { lock.unlock() }
         guard let turn = turns[sessionID] else { return nil }
+        if let currentGenerationID,
+            turn.generationID != currentGenerationID
+        {
+            return nil
+        }
         if observedAtMilliseconds
             - turn.observation.observedAtMilliseconds
             > ttlMilliseconds

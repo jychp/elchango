@@ -76,6 +76,14 @@ struct ActivityStoreTests {
             ),
             observedAtMilliseconds: 200
         )
+        _ = try store.record(
+            ProviderHookPayload(
+                hookEventName: "stop",
+                conversationID: "cursor-1",
+                status: "completed"
+            ),
+            observedAtMilliseconds: 250
+        )
 
         #expect(progress.state == .working)
         #expect(progress.detail.contains("planned"))
@@ -161,6 +169,24 @@ struct ActivityStoreTests {
                 observedAtMilliseconds: 100
             )
         }
+        _ = try store.record(
+            ProviderHookPayload(
+                hookEventName: "subagentStart",
+                conversationID: "cursor-1",
+                generationID: "generation-1",
+                subagentID: "child-1"
+            ),
+            observedAtMilliseconds: 125
+        )
+        _ = try store.record(
+            ProviderHookPayload(
+                hookEventName: "subagentStop",
+                conversationID: "cursor-1",
+                generationID: "generation-1",
+                subagentID: "unknown"
+            ),
+            observedAtMilliseconds: 150
+        )
         _ = try store.record(
             ProviderHookPayload(
                 hookEventName: "stop",

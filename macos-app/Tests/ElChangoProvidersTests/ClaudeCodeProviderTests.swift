@@ -345,6 +345,40 @@ struct ClaudeCodeProviderTests {
         #expect(await automation.shortcutCount() == 1)
     }
 
+    @Test("focus supports Claude's pinned sidebar order")
+    func focusWithPinnedOrder() async throws {
+        let fixture = try ClaudeTemporaryFixture()
+        try fixture.writeRecord(
+            desktopID: "local_current",
+            cliID: "cli-current",
+            lastFocusedAt: 500
+        )
+        try fixture.writeRecord(
+            desktopID: "local_target",
+            cliID: "cli-target",
+            lastFocusedAt: 100
+        )
+        let config = try fixture.writePinnedShortcutConfig(
+            pinned: ["local_target", "local_current"]
+        )
+        let automation = ClaudeAutomation(frontmostBundleID: nil)
+        let provider = ClaudeCodeProvider(
+            desktopSessionsRootURL: fixture.desktopRoot,
+            projectsRootURL: fixture.projectsRoot,
+            desktopConfigURL: config,
+            automation: automation,
+            clock: { 1_000 }
+        )
+
+        let result = try await provider.focus(
+            nativeSessionID: "local_target"
+        )
+
+        #expect(result.accepted)
+        #expect(await automation.frontmostBundleID() == ClaudeCodeProvider.bundleID)
+        #expect(await automation.shortcutCount() == 1)
+    }
+
     @Test("verified commands preserve the selected Claude target")
     func verifiedCommand() async throws {
         let fixture = try ClaudeTemporaryFixture()
@@ -614,6 +648,25 @@ private struct ClaudeTemporaryFixture {
                         "dframe-local-slice": [
                             "customGroupAssignments": [:],
                             "customGroupOrder": [:],
+                        ],
+                    ]
+                ]
+            ],
+            options: [.sortedKeys]
+        )
+        try data.write(to: url)
+        return url
+    }
+
+    func writePinnedShortcutConfig(pinned: [String]) throws -> URL {
+        let url = root.appendingPathComponent("claude_desktop_config.json")
+        let data = try JSONSerialization.data(
+            withJSONObject: [
+                "preferences": [
+                    "epitaxyPrefs": [
+                        "starred-local-code-sessions": pinned,
+                        "dframe-local-slice": [
+                            "pinnedOrder": pinned.map { "code:\($0)" }
                         ],
                     ]
                 ]

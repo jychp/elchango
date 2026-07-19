@@ -284,7 +284,32 @@ def load_records(path: Path) -> list[HookRecord]:
             continue
         try:
             value = json.loads(line)
-            records.append(HookRecord(**value))
+            if not isinstance(value, dict):
+                raise TypeError("evidence record must be an object")
+            normalized = dict(value)
+            normalized.pop("reason", None)
+            normalized.pop("error", None)
+            for key in (
+                "prompt_id",
+                "permission_mode",
+                "source",
+                "agent_id",
+                "compact_trigger",
+            ):
+                normalized.setdefault(key, None)
+            normalized.setdefault("background_tasks", [])
+            normalized.setdefault("stop_hook_active", None)
+            allowed = set(HookRecord.__dataclass_fields__)
+            unknown = set(normalized) - allowed
+            if unknown:
+                raise TypeError(
+                    f"unknown evidence fields: {sorted(unknown)}"
+                )
+            background_tasks = normalized["background_tasks"]
+            if not isinstance(background_tasks, (list, tuple)):
+                raise TypeError("background_tasks must be an array")
+            normalized["background_tasks"] = tuple(background_tasks)
+            records.append(HookRecord(**normalized))
         except (json.JSONDecodeError, TypeError) as error:
             raise ProbeError(f"{path}:{line_number}: invalid evidence: {error}") from error
     return records

@@ -140,13 +140,15 @@ to tracked subagent IDs conservatively. Hook receipt does not rebuild inventory:
 the next snapshot applies a sanitized observation only to an exact
 `cliSessionId` match.
 
-The activity store retains IDs, event types, status, prompt ID, permission mode,
-session source, compaction trigger, and bounded background task
-ID/type/status/agent-type metadata. It
-retains no prompt, assistant, notification message, summary, command, tool
-input/output, or transcript content. Green completion persists until an
-explicit elChango focus action acknowledges it. Live evidence must still confirm
-that hook `session_id` equals the Desktop record's `cliSessionId` and that the
+The activity store retains the session ID, current prompt ID, active subagent
+IDs, and the latest event, state, timestamp, confidence, and bounded detail.
+Permission mode, session source, compaction trigger, and bounded background-task
+metadata are validated and used transiently but are not retained. It retains no
+prompt, assistant, notification message, summary, command, tool input/output,
+or transcript content. Green completion survives passive selection changes
+until explicit elChango focus acknowledgement, a new lifecycle event, session
+end, or the bounded one-hour hook TTL. Live evidence must still confirm that
+hook `session_id` equals the Desktop record's `cliSessionId` and that the
 expected event sequences reliably represent turns and waiting states.
 
 ## Focus and launch
@@ -173,12 +175,14 @@ Native shortcuts provided the verifiable focus mechanism:
 - Positions 3 and 10 independently returned `FOCUS_VERIFIED`.
 
 Production reconstructs this order immediately before native keyboard dispatch
-and rechecks the order, selected session, and foreground application. Claude may
-persist `lastFocusedAt` several seconds after its UI changes, so that delayed
-value is not used for immediate surface feedback. Any missing order entry or
-failed preflight rejects the action. For a different target, success means the
-exact sidebar shortcut was dispatched and Claude remained frontmost, not that
-the delayed selected-session record already confirms the target. Commands stay
+from either the legacy grouped fields or the current qualified `pinnedOrder`
+list, activates Claude before resolving the shortcut, and rechecks the order,
+selected session, and foreground application. Claude may persist
+`lastFocusedAt` several seconds after its UI changes, so that delayed value is
+not used for immediate surface feedback. Any missing order entry or failed
+preflight rejects the action. For a different target, success means the exact
+sidebar shortcut was dispatched and Claude remained frontmost, not that the
+delayed selected-session record already confirms the target. Commands stay
 disabled until a later inventory snapshot uniquely selects that session.
 
 If the target is already the uniquely most recently focused session, elChango

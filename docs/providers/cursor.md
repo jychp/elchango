@@ -145,11 +145,12 @@ without weakening identity matching. Cursor does not document that equality,
 so a focused live test remains required. Prompt, thought, response, tool,
 summary, email, and transcript content is discarded.
 
-Green completion persists until an explicit elChango focus action acknowledges
-the session. Passive native selection changes do not clear it. Fresh persisted
-`hasPendingPlan` or `hasBlockingPendingActions` remains the conservative waiting
-signal; plan-mode text and intermediate reasoning are not inferred as idle or
-waiting.
+Green completion survives passive native selection changes until an explicit
+elChango focus action acknowledges the session. A new lifecycle event,
+`sessionEnd`, or the bounded one-hour hook TTL may also clear it. Fresh
+persisted `hasPendingPlan` or `hasBlockingPendingActions` remains the
+conservative waiting signal; plan-mode text and intermediate reasoning are not
+inferred as idle or waiting.
 
 The deck maps working to blue, waiting and rendered terminal error to orange,
 done to green, and idle or unknown to gray.

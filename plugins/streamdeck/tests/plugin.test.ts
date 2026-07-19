@@ -306,6 +306,31 @@ test("API client keeps its timeout active while reading the body", async () => {
   await assert.rejects(client.snapshot(), /request timed out/);
 });
 
+test("API client gives privileged actions their longer timeout", async () => {
+  const fetcher: typeof fetch = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return new Response(
+      JSON.stringify({ accepted: true, action: "focus_session" }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  };
+  const client = new DeckApiClient(
+    "streamdeck",
+    "http://127.0.0.1:8765",
+    fetcher,
+    5,
+    async () => "test-control-token",
+    50,
+  );
+
+  const result = await client.activate("session:one", 4);
+
+  assert.equal(result.accepted, true);
+});
+
 test("surface renders once and activates the button at its position", async () => {
   const activated: Array<[string, number]> = [];
   const api = {
