@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,6 +15,19 @@ const profileID = uuidv5("com.jychp.elchango.profile", uuidv5.DNS);
 const defaultPageID = uuidv5("com.jychp.elchango.profile.default", uuidv5.DNS);
 const deckPageID = uuidv5("com.jychp.elchango.profile.deck", uuidv5.DNS);
 const actionUUID = "com.jychp.elchango.key";
+const pluginManifest = JSON.parse(
+  readFileSync(
+    resolve(root, "com.jychp.elchango.sdPlugin", "manifest.json"),
+    "utf8",
+  ),
+) as { Version?: unknown };
+if (
+  typeof pluginManifest.Version !== "string" ||
+  !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\.0$/.test(pluginManifest.Version)
+) {
+  throw new Error("Stream Deck manifest Version must use X.Y.Z.0 form.");
+}
+const pluginVersion = pluginManifest.Version;
 const archiveRoot = `${profileID}.sdProfile`;
 const archiveTimestamp = new Date("2026-01-01T00:00:00Z");
 
@@ -63,7 +76,7 @@ function action(column: number, row: number): Record<string, unknown> {
     Plugin: {
       Name: "elChango",
       UUID: "com.jychp.elchango",
-      Version: "0.2.0.0",
+      Version: pluginVersion,
     },
     Resources: null,
     Settings: {},

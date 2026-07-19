@@ -10,6 +10,14 @@
       "url": "http://127.0.0.1:8765"
     }
   ],
+  "security": [
+    {
+      "bearerAuth": []
+    },
+    {
+      "sessionCookie": []
+    }
+  ],
   "paths": {
     "/api/health": {
       "get": {
@@ -23,6 +31,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/APIError"
           }
         }
       }
@@ -52,6 +63,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/APIError"
           }
         }
       }
@@ -78,6 +92,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/APIError"
           },
           "409": {
             "$ref": "#/components/responses/APIError"
@@ -108,6 +125,9 @@
               }
             }
           },
+          "401": {
+            "$ref": "#/components/responses/APIError"
+          },
           "409": {
             "$ref": "#/components/responses/APIError"
           }
@@ -116,6 +136,20 @@
     }
   },
   "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "elChango control token",
+        "description": "Owner-only token stored in the local elChango application support directory."
+      },
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "elchango_session",
+        "description": "HttpOnly browser session created by the single-use loopback bootstrap."
+      }
+    },
     "responses": {
       "APIError": {
         "description": "Structured API error",

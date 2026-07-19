@@ -189,6 +189,17 @@ Notarization additionally requires `APPLE_API_KEY_PATH`,
 submits, records `dist/elChango-notarization-receipt.json`, waits on that
 submission, and creates the final ZIP and checksum under `dist/`.
 
+If the local Apple wait times out, do not rerun `make notarize-app-macos`
+because that target intentionally builds and submits a new artifact. Resume the
+preserved submission instead:
+
+```bash
+make finish-notarization-app-macos
+```
+
+Use `make submit-notarization-app-macos` only after a Developer ID signed
+Universal 2 app has been built and no receipt exists for that artifact.
+
 ## Rotation and failure handling
 
 - Revoke and replace the App Store Connect key if its private key may have been

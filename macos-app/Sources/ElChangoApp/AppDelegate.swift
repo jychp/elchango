@@ -131,10 +131,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 } catch {
                     serviceState = .failed(error.localizedDescription)
                 }
+                self.service = nil
+                serviceLease = nil
                 rebuildMenu()
             }
         } catch {
             serviceState = .failed(error.localizedDescription)
+            service = nil
+            serviceLease = nil
             rebuildMenu()
             if case ServiceLeaseError.alreadyRunning = error {
                 showExclusiveLaunchFailure(error.localizedDescription)

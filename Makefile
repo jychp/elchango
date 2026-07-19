@@ -10,6 +10,7 @@ DIST_DIR ?= dist
 	test test-versions test-app-macos test-web test-plugins test-plugin-cursor \
 	test-plugin-claude test-plugin-streamdeck test-pocs test-release-scripts \
 	build build-app-macos build-app-macos-universal notarize-app-macos \
+	submit-notarization-app-macos finish-notarization-app-macos \
 	verify-release-app-macos build-web build-plugins build-plugin-cursor \
 	build-plugin-claude build-plugin-streamdeck \
 	release clean
@@ -86,8 +87,25 @@ build-app-macos-universal: test-versions
 	ELCHANGO_ARCHITECTURES="arm64 x86_64" \
 		./macos-app/Scripts/package-app.sh
 
-notarize-app-macos: build-app-macos-universal
-	./macos-app/Scripts/notarize-app.sh
+notarize-app-macos:
+	@test -n "$${ELCHANGO_CODESIGN_IDENTITY:-}" || { \
+		echo "ERROR: ELCHANGO_CODESIGN_IDENTITY is required for notarization." >&2; \
+		exit 2; \
+	}
+	ELCHANGO_SIGN_MODE=developer-id $(MAKE) build-app-macos-universal
+	$(MAKE) submit-notarization-app-macos
+	$(MAKE) finish-notarization-app-macos
+
+submit-notarization-app-macos:
+	ELCHANGO_EXPECTED_PROFILE=stable \
+	ELCHANGO_EXPECTED_ARCHITECTURES="arm64 x86_64" \
+	ELCHANGO_VERIFY_DISTRIBUTION=1 \
+		./macos-app/Scripts/verify-package.sh \
+			macos-app/dist/elChango.app
+	./macos-app/Scripts/notarize-app.sh submit
+
+finish-notarization-app-macos:
+	./macos-app/Scripts/notarize-app.sh finish
 
 verify-release-app-macos:
 	ELCHANGO_EXPECTED_PROFILE=stable \
