@@ -369,48 +369,148 @@ def _frontmost_bundle_id() -> str | None:
 
 
 def shortcut_order(config_path: Path, sessions: list[Session]) -> tuple[str, ...]:
-    """Return Claude's persisted Cmd+number order for visible starred sessions."""
+    """Return Claude's persisted flattened sidebar order for visible sessions."""
 
     try:
         value = json.loads(config_path.read_text(encoding="utf-8"))
         epitaxy = value["preferences"]["epitaxyPrefs"]
-        starred = epitaxy[
-            "starred-local-code-sessions"
-        ]
         local_slice = epitaxy["dframe-local-slice"]
-        assignments = local_slice["customGroupAssignments"]
-        group_order = local_slice["customGroupOrder"]
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError) as error:
         raise ProbeError(f"{config_path}: cannot read shortcut order: {error}") from error
-    if not isinstance(starred, list) or any(
-        not isinstance(session_id, str) or not session_id for session_id in starred
-    ):
-        raise ProbeError(f"{config_path}: starred session order must be a string list")
-    if not isinstance(assignments, dict) or not isinstance(group_order, dict):
-        raise ProbeError(f"{config_path}: custom group order must be an object")
+    if not isinstance(local_slice, dict):
+        raise ProbeError(f"{config_path}: local sidebar state must be an object")
+    visible = [session for session in sessions if not session.archived]
     visible_ids = {
         session.desktop_session_id
-        for session in sessions
-        if not session.archived
+        for session in visible
     }
-    ungrouped = [
-        session_id
-        for session_id in reversed(starred)
-        if session_id in visible_ids
-        and f"code:{session_id}" not in assignments
-    ]
-    grouped: list[str] = []
-    for ordered_ids in group_order.values():
-        if not isinstance(ordered_ids, list):
-            raise ProbeError(f"{config_path}: group order must contain lists")
-        grouped.extend(
-            qualified.removeprefix("code:")
-            for qualified in ordered_ids
-            if isinstance(qualified, str)
-            and qualified.startswith("code:")
-            and qualified.removeprefix("code:") in visible_ids
+    if "pinnedOrder" in local_slice:
+        pinned_order = local_slice["pinnedOrder"]
+        if not isinstance(pinned_order, list):
+            raise ProbeError(f"{config_path}: pinned order must be a list")
+        scope_keys = {
+            "/".join(Path(session.record_path).parts[-3:-1])
+            for session in visible
+        }
+        if len(scope_keys) > 1:
+            raise ProbeError(
+                f"{config_path}: visible sessions span multiple group scopes"
+            )
+        scopes = epitaxy.get("dframe-group-scopes", {})
+        if not isinstance(scopes, dict):
+            raise ProbeError(f"{config_path}: group scopes must be an object")
+        scope_key = next(iter(scope_keys), None)
+        scope = scopes.get(scope_key, {}) if scope_key is not None else {}
+        if not isinstance(scope, dict):
+            raise ProbeError(f"{config_path}: matching group scope must be an object")
+        if scope_key in scopes and any(
+            field not in scope for field in ("groups", "assignments", "order")
+        ):
+            raise ProbeError(f"{config_path}: matching group scope is incomplete")
+        groups = scope.get("groups", [])
+        assignments = scope.get("assignments", {})
+        order = scope.get("order", {})
+        if (
+            not isinstance(groups, list)
+            or not isinstance(assignments, dict)
+            or not isinstance(order, dict)
+        ):
+            raise ProbeError(f"{config_path}: group scope is malformed")
+        group_ids: list[str] = []
+        for group in groups:
+            if (
+                not isinstance(group, dict)
+                or not isinstance(group.get("id"), str)
+                or not group["id"]
+            ):
+                raise ProbeError(f"{config_path}: group IDs must be nonempty strings")
+            group_ids.append(group["id"])
+        if any(
+            not isinstance(qualified, str) or not isinstance(group_id, str)
+            for qualified, group_id in assignments.items()
+        ):
+            raise ProbeError(f"{config_path}: group assignments must be strings")
+        persisted = list(
+            dict.fromkeys(
+                qualified.removeprefix("code:")
+                for qualified in pinned_order
+                if isinstance(qualified, str)
+                and qualified.startswith("code:")
+                and qualified.removeprefix("code:") in visible_ids
+                and qualified not in assignments
+            )
         )
-    persisted = tuple(dict.fromkeys([*ungrouped, *grouped]))
+        for group_id in group_ids:
+            qualified_ids = order.get(group_id, [])
+            if not isinstance(qualified_ids, list) or any(
+                not isinstance(qualified, str) for qualified in qualified_ids
+            ):
+                raise ProbeError(f"{config_path}: group order must contain string lists")
+            for qualified in qualified_ids:
+                session_id = qualified.removeprefix("code:")
+                if session_id not in visible_ids:
+                    continue
+                if assignments.get(qualified) != group_id:
+                    raise ProbeError(
+                        f"{config_path}: group assignment and order disagree"
+                    )
+                if session_id not in persisted:
+                    persisted.append(session_id)
+        if any(
+            f"code:{session.desktop_session_id}" in assignments
+            and session.desktop_session_id not in persisted
+            for session in visible
+        ):
+            raise ProbeError(
+                f"{config_path}: group order omits a visible assigned session"
+            )
+        remaining = sorted(
+            (
+                session
+                for session in visible
+                if session.desktop_session_id not in persisted
+                and f"code:{session.desktop_session_id}" not in assignments
+            ),
+            key=lambda session: (
+                -session.last_activity_at_ms,
+                session.desktop_session_id,
+            ),
+        )
+        return (
+            *persisted,
+            *(session.desktop_session_id for session in remaining),
+        )
+    else:
+        starred = epitaxy.get("starred-local-code-sessions")
+        if not isinstance(starred, list) or any(
+            not isinstance(session_id, str) or not session_id
+            for session_id in starred
+        ):
+            raise ProbeError(
+                f"{config_path}: starred session order must be a string list"
+            )
+        assignments = local_slice.get("customGroupAssignments")
+        group_order = local_slice.get("customGroupOrder")
+        if not isinstance(assignments, dict) or not isinstance(group_order, dict):
+            raise ProbeError(f"{config_path}: custom group order must be an object")
+        ungrouped = [
+            session_id
+            for session_id in reversed(starred)
+            if session_id in visible_ids
+            and f"code:{session_id}" not in assignments
+        ]
+        grouped: list[str] = []
+        for ordered_ids in group_order.values():
+            if not isinstance(ordered_ids, list):
+                raise ProbeError(f"{config_path}: group order must contain lists")
+            grouped.extend(
+                qualified.removeprefix("code:")
+                for qualified in ordered_ids
+                if isinstance(qualified, str)
+                and qualified.startswith("code:")
+                and qualified.removeprefix("code:") in visible_ids
+            )
+        persisted = tuple(dict.fromkeys([*ungrouped, *grouped]))
     persisted_ids = set(persisted)
     remaining = sorted(
         (

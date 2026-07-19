@@ -103,6 +103,12 @@ mkdir -p "${BUILD_ROOT}"
 
 declare -a APP_BINARIES=()
 declare -a HOOK_BINARIES=()
+declare -a PROFILE_SWIFT_FLAGS=()
+if [[ "${PROFILE}" == "debug" ]]; then
+  PROFILE_SWIFT_FLAGS=(-Xswiftc -DELCHANGO_DEBUG_PROFILE)
+else
+  PROFILE_SWIFT_FLAGS=(-Xswiftc -DELCHANGO_STABLE_PROFILE)
+fi
 for architecture in "${ARCHITECTURE_LIST[@]}"; do
   case "${architecture}" in
     arm64|x86_64) ;;
@@ -120,6 +126,7 @@ for architecture in "${ARCHITECTURE_LIST[@]}"; do
       --scratch-path "${scratch_path}" \
       --configuration "${CONFIGURATION}" \
       --triple "${triple}" \
+      "${PROFILE_SWIFT_FLAGS[@]}" \
       --product "${product}"
   done
   bin_dir="$(

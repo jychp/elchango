@@ -175,6 +175,82 @@ struct CursorProviderTests {
         #expect(session.stateDetail == "user action or plan pending")
     }
 
+    @Test("reconciles a hook received before inventory persistence")
+    func hookBeforeInventory() async throws {
+        let fixture = try Fixture()
+        let activity = CursorActivityStore()
+        let databaseURL = fixture.temporaryRoot.appendingPathComponent(
+            "state.vscdb"
+        )
+        let provider = CursorProvider(
+            databaseURL: databaseURL,
+            workspaceStorageURL: fixture.root.appendingPathComponent(
+                "workspaceStorage"
+            ),
+            activityStore: activity,
+            clock: { 200 }
+        )
+        _ = try await provider.recordHook(
+            ProviderHookPayload(
+                hookEventName: "stop",
+                conversationID: "composer-1",
+                generationID: "generation-1",
+                status: "completed"
+            ),
+            observedAtMilliseconds: 150
+        )
+        _ = try fixture.makeDatabase()
+
+        let session = try #require(
+            try await provider.snapshot().sessions.first {
+                $0.nativeID == "composer-1"
+            }
+        )
+        #expect(session.state == .done)
+        #expect(session.confidence == .observed)
+    }
+
+    @Test("does not apply terminal state from another generation")
+    func hookGenerationMismatch() async throws {
+        let fixture = try Fixture()
+        let activity = CursorActivityStore()
+        let databaseURL = try fixture.makeDatabase()
+        try fixture.execute(
+            """
+            UPDATE cursorDiskKV
+            SET value = '{"latestChatGenerationUUID":"generation-current"}'
+            WHERE key = 'composerData:composer-1'
+            """,
+            at: databaseURL
+        )
+        let provider = CursorProvider(
+            databaseURL: databaseURL,
+            workspaceStorageURL: fixture.root.appendingPathComponent(
+                "workspaceStorage"
+            ),
+            activityStore: activity,
+            clock: { 200 }
+        )
+        _ = try await provider.recordHook(
+            ProviderHookPayload(
+                hookEventName: "stop",
+                conversationID: "composer-1",
+                generationID: "generation-old",
+                status: "completed"
+            ),
+            observedAtMilliseconds: 150
+        )
+
+        let session = try #require(
+            try await provider.snapshot().sessions.first {
+                $0.nativeID == "composer-1"
+            }
+        )
+
+        #expect(session.state != .done)
+        #expect(session.confidence == .candidate)
+    }
+
     @Test("missing Cursor data degrades without creating a database")
     func missingDatabase() async throws {
         let directory = FileManager.default.temporaryDirectory
@@ -435,12 +511,22 @@ private actor FakeNativeAutomation: NativeAutomating {
         shortcuts += 1
     }
 
+    func postHeldModifierShortcut(
+        modifierKeyCode: CGKeyCode,
+        keyCode: CGKeyCode,
+        flags: CGEventFlags,
+        repeatCount: Int,
+        bundleID: String
+    ) async throws {
+        shortcuts += repeatCount
+    }
+
     func dispatchText(
         _ text: String,
         bundleID: String,
         inputMarker: String,
-        emptyPlaceholderValue: String?,
         focusKeyCode: CGKeyCode?,
+        unfocusedPolicy: UnfocusedTextDispatchPolicy,
         submitCount: Int,
         targetVerifier: @escaping @Sendable () async throws -> Bool
     ) async throws -> ProviderActionResult {

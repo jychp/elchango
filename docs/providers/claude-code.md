@@ -111,22 +111,45 @@ executor.
 
 The implemented mapping is:
 
-- `UserPromptSubmit`: blue, working;
+- `UserPromptSubmit`: blue, working, keyed by `(session_id, prompt_id)` when the
+  current Claude Code version supplies `prompt_id`;
 - `PreToolUse` for `AskUserQuestion` or `ExitPlanMode`: orange, waiting;
-- corresponding `PostToolUse`: blue, working after the user responds;
+- corresponding `PostToolUse`, `PostToolBatch`, and `PermissionDenied`: blue,
+  working or retry progress;
 - `PermissionRequest`: orange, waiting for tool approval;
 - `Elicitation`: orange, waiting for MCP input;
-- `ElicitationResult`: blue, working after MCP input;
-- `Notification` with `permission_prompt`, `idle_prompt`, or
-  `elicitation_dialog`, or `agent_needs_input`: orange, waiting;
-- `Stop`: green, done;
+- `ElicitationResult`, `elicitation_complete`, and `elicitation_response`: blue,
+  working after input;
+- `permission_prompt`, `elicitation_dialog`, and `agent_needs_input`: orange,
+  waiting;
+- `idle_prompt`: green, done;
+- `agent_completed`: blue candidate progress only because it does not identify
+  the whole parent turn;
+- `SubagentStart` and `SubagentStop`: bounded blue child progress;
+- `PreCompact` and `PostCompact` for manual or automatic compaction: blue,
+  working;
+- `SessionStart(source: "compact")`: blue resumed progress rather than idle;
+- `Stop`: green only when its authoritative `background_tasks` array is empty;
 - `StopFailure`: error, rendered orange by the four-color deck;
 - `SessionStart` and `SessionEnd`: gray, idle.
 
-The activity store retains no prompt, assistant, notification message, or
-transcript content. Live evidence must still confirm that hook `session_id`
-equals the Desktop record's `cliSessionId` and that the expected event sequences
-reliably represent turns and waiting states.
+When `Stop.background_tasks` is non-empty, the session remains blue. Background
+progress may resume the parent, and only a later `Stop` with an empty registry
+terminates the turn. Older Claude Code versions without the registry fall back
+to tracked subagent IDs conservatively. Hook receipt does not rebuild inventory:
+the next snapshot applies a sanitized observation only to an exact
+`cliSessionId` match.
+
+The activity store retains the session ID, current prompt ID, active subagent
+IDs, and the latest event, state, timestamp, confidence, and bounded detail.
+Permission mode, session source, compaction trigger, and bounded background-task
+metadata are validated and used transiently but are not retained. It retains no
+prompt, assistant, notification message, summary, command, tool input/output,
+or transcript content. Green completion survives passive selection changes
+until explicit elChango focus acknowledgement, a new lifecycle event, session
+end, or the bounded one-hour hook TTL. Live evidence must still confirm that
+hook `session_id` equals the Desktop record's `cliSessionId` and that the
+expected event sequences reliably represent turns and waiting states.
 
 ## Focus and launch
 
@@ -143,22 +166,31 @@ select the target or change its `lastFocusedAt`; the verdict was
 Native shortcuts provided the verifiable focus mechanism:
 
 - `Cmd+1` through `Cmd+9` select corresponding persisted sidebar sessions.
-- Order comes from `claude_desktop_config.json`: ungrouped
-  `starred-local-code-sessions` in reverse persisted order, then sessions in
-  `customGroupOrder`, then non-starred sessions by descending
-  `lastActivityAt`.
+- Current order comes from `claude_desktop_config.json`: unassigned sessions
+  from qualified `pinnedOrder`, then custom groups from the matching
+  `dframe-group-scopes.groups` array and each group's `order`, then the virtual
+  Ungrouped section by descending `lastActivityAt`.
+- A `pinnedOrder` entry assigned to a custom group is placed only in that
+  group. Stale persisted IDs are ignored, but visible assigned sessions missing
+  from their group order fail closed.
+- Legacy installations use ungrouped `starred-local-code-sessions` in reverse
+  persisted order, then sessions in `customGroupOrder`, then remaining sessions
+  by descending `lastActivityAt`.
 - Positions after 9 use `Cmd+9`, followed by one `Ctrl+Tab` for each additional
   position.
 - Positions 3 and 10 independently returned `FOCUS_VERIFIED`.
 
 Production reconstructs this order immediately before native keyboard dispatch
-and rechecks the order, selected session, and foreground application. Claude may
-persist `lastFocusedAt` several seconds after its UI changes, so that delayed
-value is not used for immediate surface feedback. Any missing order entry or
-failed preflight rejects the action. For a different target, success means the
-exact sidebar shortcut was dispatched and Claude remained frontmost, not that
-the delayed selected-session record already confirms the target. Commands stay
-disabled until a later inventory snapshot uniquely selects that session.
+from either the legacy grouped fields or the current qualified pinned, scoped
+group, and Ungrouped fields. The current section and group ordering was
+validated against the visible Claude sidebar on July 19, 2026, without
+dispatching a shortcut. Production activates Claude before resolving the
+shortcut and rechecks the order, selected session, and foreground application.
+Claude may persist
+`lastFocusedAt` several seconds after its UI changes, so focus dispatch does not
+wait for that delayed record. Any missing order entry, stale order, or failed
+preflight rejects the action. Commands stay disabled until a later inventory
+snapshot uniquely confirms the selected session.
 
 If the target is already the uniquely most recently focused session, elChango
 activates Claude without navigation and verifies that the same target remains
@@ -170,10 +202,12 @@ Current verdict: `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
 
 The observed Claude composer is an enabled `AXTextArea` with description
 `Prompt` and exact `AXDOMClassList` value
-`tiptapProseMirrorProseMirror-focused`. Text recipes require that exact marker
-and an empty draft. The POC and product scripts perform two preflights and
-recheck the frontmost bundle, selected target, enabled input role, marker, and
-draft immediately before dispatch.
+`tiptapProseMirrorProseMirror-focused`. Product text dispatch follows the shared
+[native text command dispatch contract](../command-dispatch.md): activate
+Claude, verify the foreground process, selected target, enabled input role, and
+exact marker, then capture, replace, submit, and restore any existing draft.
+The POC remains a dry-run-first evidence probe and does not define the product
+transaction.
 
 Provider mappings:
 
@@ -206,13 +240,19 @@ Claude understood or completed the semantic operation.
 - Provider actions share one serialized native automation boundary with Cursor.
 - Every privileged action rechecks the exact selected session and frontmost
   bundle immediately before dispatch.
-- Text dispatch additionally requires the enabled, empty, provider-specific
-  Accessibility target.
+- Text dispatch additionally requires the enabled provider-specific
+  Accessibility target and bounded draft capture when the input is focused.
+  If Accessibility successfully reports the observed non-text `AXGroup` role,
+  elChango uses the documented best-effort exception. Exact application and
+  session verification remain, but input verification, draft capture, deletion,
+  and restoration are skipped. Claude then routes application-level typing to
+  its prompt. Other roles, input mismatches, disabled inputs, and Accessibility
+  read failures reject the action without typing.
 - Shortcuts target the verified process. Text and submission events use the
-  global HID tap only after an atomic foreground, selected-session, and
-  exact-input preflight because the observed Electron editor ignored
-  PID-targeted Unicode events. Each recipe is sent at most once, with no
-  automatic retry.
+  global HID tap because the observed Electron editor ignored PID-targeted
+  Unicode events. The verified path requires foreground, selected-session, and
+  exact-input preflight; the best-effort exception omits only the input
+  preflight. Each recipe is sent at most once, with no automatic retry.
 - Existing-session focus requires exact preflight and bounded shortcut
   verification. A newly focused Claude target is not considered selected for
   command eligibility until later inventory uniquely confirms it.
@@ -226,8 +266,10 @@ They do not disable Cursor or prevent the host from starting.
 
 Sessions without fresh hook evidence are gray with persisted confidence. A
 working or waiting signal older than ten minutes without a terminal event
-becomes unknown with explicit degraded detail. This conservative timeout is
-subject to revision after live hook testing.
+becomes unknown with explicit degraded detail. Hooks may arrive before Desktop
+persists a matching record; bounded observations remain inert until an exact
+later inventory match. This conservative timeout is subject to revision after
+live hook testing.
 
 ## Limitations and open questions
 
@@ -237,7 +279,8 @@ subject to revision after live hook testing.
 - Stability of Desktop `sessionId` and `cliSessionId` across resume remains
   unproven.
 - Live evidence is still needed for blue-to-green turn transitions, orange
-  waiting transitions and clearing, and native HTTP reachability.
+  waiting transitions and clearing, native HTTP reachability, compaction,
+  foreground and background subagents, and background-task wakeups.
 - Exact Claude Desktop and Claude Code versions were not captured.
 - Accessibility markers and undocumented sidebar configuration may change.
 - Semantic completion is not proven by successful dispatch.

@@ -19,6 +19,10 @@
   const STALE_AFTER_MS = 3_000
   const SLOT_COUNT = 15
 
+  const demoMode =
+    import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).get('demo') === 'true'
+
   let snapshot = $state.raw<DeckSnapshot | null>(null)
   let connectionState = $state<ConnectionState>('connecting')
   let errorMessage = $state('')
@@ -89,6 +93,8 @@
     button: DeckButton | null,
     endpoint: '/api/activate' | '/api/long-press',
   ): Promise<void> {
+    if (demoMode) return
+
     const currentSnapshot = snapshot
 
     if (
@@ -160,6 +166,27 @@
 
   onMount(() => {
     let stopped = false
+
+    if (import.meta.env.DEV && demoMode) {
+      void import('./lib/demo-deck')
+        .then(({ demoSnapshot }) => {
+          if (stopped) return
+          snapshot = demoSnapshot
+          connectionState = 'connected'
+          errorMessage = ''
+        })
+        .catch((error: unknown) => {
+          if (stopped) return
+          connectionState = 'error'
+          errorMessage =
+            error instanceof Error ? error.message : 'Demo deck unavailable'
+        })
+
+      return () => {
+        stopped = true
+      }
+    }
+
     let timer: ReturnType<typeof setTimeout> | undefined
     let activeRequest: AbortController | undefined
 
@@ -240,8 +267,10 @@
           {button}
           slot={index}
           busy={pendingButtonId !== null && pendingButtonId === button?.id}
-          onactivate={() => void performButtonAction(button, '/api/activate')}
-          onlongpress={longPressHandler(button)}
+          onactivate={demoMode
+            ? undefined
+            : () => void performButtonAction(button, '/api/activate')}
+          onlongpress={demoMode ? undefined : longPressHandler(button)}
         />
       {/each}
     </div>

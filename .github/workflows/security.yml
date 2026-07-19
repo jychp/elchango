@@ -1,34 +1,28 @@
 name: Security
 
 on:
-  pull_request:
   push:
     branches:
       - main
+  pull_request:
+  workflow_dispatch:
 
 permissions: {}
 
-concurrency:
-  group: security-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   zizmor:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    name: zizmor workflow
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       security-events: write
     steps:
       - name: Check out repository
-        timeout-minutes: 5
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+
       - name: Run zizmor
-        timeout-minutes: 5
         uses: zizmorcore/zizmor-action@6599ee8b7a49aef6a770f63d261d214911a7ce02 # v0.6.0
         with:
-          inputs: .
-          persona: pedantic
-          min-severity: high
-          version: 1.27.0
+          advanced-security: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}

@@ -119,12 +119,26 @@ export function positionFromCoordinates(row: number, column: number): number {
 
 function iconSvg(icon: DeckIconName, color: string): string {
   if (icon === "cursor") {
-    return `<g transform="translate(42 20) scale(0.128553 0.135316)" fill="${color}"><path d="${CURSOR_PATH}"/></g>`;
+    return iconGroup(CURSOR_PATH, 40.42, 18, 0.135315, color);
   }
   if (icon === "claude") {
-    return `<g transform="translate(24 12) scale(0.96)" fill="${color}"><path d="${CLAUDE_PATH}"/></g>`;
+    return iconGroup(CLAUDE_PATH, 36, 18, 0.72, color);
   }
-  return `<g transform="translate(36 18) scale(0.28125)" fill="${color}" stroke="${color}" stroke-width="6" stroke-linejoin="round"><path d="${PHOSPHOR_PATHS[icon]}"/></g>`;
+  return iconGroup(PHOSPHOR_PATHS[icon], 36, 18, 0.28125, color, true);
+}
+
+function iconGroup(
+  path: string,
+  x: number,
+  y: number,
+  scale: number,
+  color: string,
+  stroked = false,
+): string {
+  const stroke = stroked
+    ? ` stroke="${color}" stroke-width="6" stroke-linejoin="round"`
+    : "";
+  return `<g transform="translate(${x} ${y}) scale(${scale})" fill="${color}"${stroke}><path d="${path}"/></g>`;
 }
 
 function truncate(value: string, maximum: number): string {

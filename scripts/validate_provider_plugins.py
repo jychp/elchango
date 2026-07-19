@@ -151,6 +151,11 @@ def validate_cursor() -> None:
     expected = {
         "sessionStart",
         "beforeSubmitPrompt",
+        "preCompact",
+        "subagentStart",
+        "subagentStop",
+        "afterAgentThought",
+        "afterAgentResponse",
         "stop",
         "sessionEnd",
     }
@@ -183,12 +188,20 @@ def validate_claude() -> None:
         "UserPromptSubmit": None,
         "PreToolUse": "AskUserQuestion|ExitPlanMode",
         "PostToolUse": "AskUserQuestion|ExitPlanMode",
+        "PostToolBatch": None,
         "PermissionRequest": None,
+        "PermissionDenied": None,
         "Elicitation": None,
         "ElicitationResult": None,
         "Notification": (
-            "permission_prompt|idle_prompt|elicitation_dialog|agent_needs_input"
+            "permission_prompt|idle_prompt|elicitation_dialog|"
+            "elicitation_complete|elicitation_response|agent_needs_input|"
+            "agent_completed"
         ),
+        "SubagentStart": None,
+        "SubagentStop": None,
+        "PreCompact": "manual|auto",
+        "PostCompact": "manual|auto",
         "Stop": None,
         "StopFailure": None,
         "SessionEnd": None,

@@ -1,26 +1,39 @@
 import Foundation
 
 public final class CursorActivityStore: @unchecked Sendable {
-    private struct Signal {
-        let observation: ActivityObservation
-        let generationID: String?
+    private struct TerminalState {
+        let state: SessionState
+        let detail: String
+    }
+
+    private struct Turn {
+        var observation: ActivityObservation
+        var generationID: String?
+        var activeSubagentIDs: Set<String> = []
+        var anonymousSubagentCount = 0
+        var childFailed = false
+        var deferredTerminal: TerminalState?
+
+        var activeSubagentCount: Int {
+            activeSubagentIDs.count + anonymousSubagentCount
+        }
     }
 
     private let ttlMilliseconds: Int64
     private let maximumSignals: Int
+    private let maximumActiveSubagents: Int
     private let lock = NSLock()
-    private var signals: [String: Signal] = [:]
-    private var composerModes: [String: String] = [:]
+    private var turns: [String: Turn] = [:]
     private var acknowledgedAt: [String: Int64] = [:]
-    private var selectedSessionID: String?
-    private var selectionInitialized = false
 
     public init(
         ttlMilliseconds: Int64 = 60 * 60 * 1_000,
-        maximumSignals: Int = 1_000
+        maximumSignals: Int = 1_000,
+        maximumActiveSubagents: Int = 64
     ) {
         self.ttlMilliseconds = ttlMilliseconds
         self.maximumSignals = maximumSignals
+        self.maximumActiveSubagents = maximumActiveSubagents
     }
 
     public func record(
@@ -28,7 +41,15 @@ public final class CursorActivityStore: @unchecked Sendable {
         observedAtMilliseconds: Int64
     ) throws -> ActivityObservation {
         let supported = Set([
-            "sessionStart", "beforeSubmitPrompt", "stop", "sessionEnd",
+            "sessionStart",
+            "beforeSubmitPrompt",
+            "preCompact",
+            "subagentStart",
+            "subagentStop",
+            "afterAgentThought",
+            "afterAgentResponse",
+            "stop",
+            "sessionEnd",
         ])
         guard let event = payload.hookEventName,
             supported.contains(event)
@@ -51,8 +72,15 @@ public final class CursorActivityStore: @unchecked Sendable {
                 "Cursor hook generation_id must be a non-empty string"
             )
         }
+        if let subagentID = payload.subagentID,
+            subagentID.isEmpty
+        {
+            throw ProviderOperationError.invalidHook(
+                "Cursor hook subagent_id must be a non-empty string"
+            )
+        }
         if let mode = payload.composerMode,
-            mode != "agent" && mode != "plan"
+            !Set(["agent", "plan", "ask", "edit"]).contains(mode)
         {
             throw ProviderOperationError.invalidHook(
                 "unsupported Cursor composer mode: \(mode)"
@@ -63,30 +91,163 @@ public final class CursorActivityStore: @unchecked Sendable {
         defer { lock.unlock() }
         purgeExpired(at: observedAtMilliseconds)
         evictOldestIfNeeded(for: sessionID)
-        if event == "beforeSubmitPrompt" {
-            composerModes[sessionID] = payload.composerMode
+
+        var turn =
+            turns[sessionID]
+            ?? Turn(
+                observation: Self.observation(
+                    sessionID: sessionID,
+                    event: "sessionStart",
+                    observedAtMilliseconds: observedAtMilliseconds,
+                    state: .idle,
+                    detail: "Cursor session started"
+                ),
+                generationID: nil
+            )
+        if event != "beforeSubmitPrompt",
+            let currentGenerationID = turn.generationID,
+            currentGenerationID != payload.generationID
+        {
+            return turn.observation
         }
-        let mapped = try Self.cursorState(
-            event: event,
-            status: payload.status,
-            composerMode: composerModes[sessionID]
-        )
-        let observation = ActivityObservation(
-            sessionID: sessionID,
-            event: event,
-            observedAtMilliseconds: observedAtMilliseconds,
-            state: mapped.state,
-            confidence: mapped.confidence,
-            detail: mapped.detail
-        )
-        signals[sessionID] = Signal(
-            observation: observation,
-            generationID: payload.generationID
-        )
-        if event == "sessionEnd" {
-            composerModes.removeValue(forKey: sessionID)
+
+        switch event {
+        case "sessionStart":
+            turn = Turn(
+                observation: Self.observation(
+                    sessionID: sessionID,
+                    event: event,
+                    observedAtMilliseconds: observedAtMilliseconds,
+                    state: .idle,
+                    detail: "Cursor session started"
+                ),
+                generationID: payload.generationID
+            )
+        case "beforeSubmitPrompt":
+            if turn.generationID != payload.generationID {
+                turn.activeSubagentIDs = []
+                turn.anonymousSubagentCount = 0
+                turn.childFailed = false
+            }
+            turn.generationID = payload.generationID
+            turn.deferredTerminal = nil
+            turn.observation = Self.observation(
+                sessionID: sessionID,
+                event: event,
+                observedAtMilliseconds: observedAtMilliseconds,
+                state: .working,
+                detail: "Cursor prompt submitted"
+            )
+        case "preCompact", "afterAgentThought", "afterAgentResponse":
+            if turn.deferredTerminal == nil,
+                turn.observation.state == .done
+                    || turn.observation.state == .error
+            {
+                return turn.observation
+            }
+            turn.deferredTerminal = nil
+            turn.observation = Self.observation(
+                sessionID: sessionID,
+                event: event,
+                observedAtMilliseconds: observedAtMilliseconds,
+                state: .working,
+                detail: Self.cursorProgressDetail(event)
+            )
+        case "subagentStart":
+            if let subagentID = payload.subagentID,
+                turn.activeSubagentIDs.contains(subagentID)
+            {
+                return turn.observation
+            }
+            guard turn.activeSubagentCount < maximumActiveSubagents else {
+                throw ProviderOperationError.invalidHook(
+                    "Cursor active subagent limit exceeded"
+                )
+            }
+            if let subagentID = payload.subagentID {
+                turn.activeSubagentIDs.insert(subagentID)
+            } else {
+                turn.anonymousSubagentCount += 1
+            }
+            turn.observation = Self.observation(
+                sessionID: sessionID,
+                event: event,
+                observedAtMilliseconds: observedAtMilliseconds,
+                state: .working,
+                detail: "Cursor subagent working"
+            )
+        case "subagentStop":
+            if let subagentID = payload.subagentID {
+                guard turn.activeSubagentIDs.remove(subagentID) != nil else {
+                    return turn.observation
+                }
+            } else {
+                guard turn.anonymousSubagentCount > 0 else {
+                    return turn.observation
+                }
+                turn.anonymousSubagentCount -= 1
+            }
+            if payload.status == "error" || payload.status == "aborted" {
+                turn.childFailed = true
+            }
+            if turn.activeSubagentCount == 0,
+                let deferred = turn.deferredTerminal
+            {
+                turn.deferredTerminal = nil
+                turn.observation = Self.observation(
+                    sessionID: sessionID,
+                    event: event,
+                    observedAtMilliseconds: observedAtMilliseconds,
+                    state: turn.childFailed ? .error : deferred.state,
+                    detail: turn.childFailed
+                        ? "Cursor subagent failed or aborted"
+                        : deferred.detail
+                )
+            } else {
+                turn.observation = Self.observation(
+                    sessionID: sessionID,
+                    event: event,
+                    observedAtMilliseconds: observedAtMilliseconds,
+                    state: .working,
+                    detail: "Cursor subagent activity continues"
+                )
+            }
+        case "stop":
+            let terminal = try Self.cursorTerminalState(status: payload.status)
+            if turn.activeSubagentCount > 0 {
+                turn.deferredTerminal = terminal
+                turn.observation = Self.observation(
+                    sessionID: sessionID,
+                    event: event,
+                    observedAtMilliseconds: observedAtMilliseconds,
+                    state: .working,
+                    detail: "Cursor parent stopped; subagents still working"
+                )
+            } else {
+                turn.observation = Self.observation(
+                    sessionID: sessionID,
+                    event: event,
+                    observedAtMilliseconds: observedAtMilliseconds,
+                    state: terminal.state,
+                    detail: terminal.detail
+                )
+            }
+        case "sessionEnd":
+            turn = Turn(
+                observation: Self.observation(
+                    sessionID: sessionID,
+                    event: event,
+                    observedAtMilliseconds: observedAtMilliseconds,
+                    state: .idle,
+                    detail: "Cursor session ended"
+                ),
+                generationID: payload.generationID
+            )
+        default:
+            preconditionFailure("validated Cursor event was not handled")
         }
-        return observation
+        turns[sessionID] = turn
+        return turn.observation
     }
 
     public func state(
@@ -96,51 +257,30 @@ public final class CursorActivityStore: @unchecked Sendable {
     ) -> (SessionState, DeckConfidence, String)? {
         lock.lock()
         defer { lock.unlock() }
-        guard let signal = signals[sessionID] else { return nil }
+        guard let turn = turns[sessionID] else { return nil }
+        if let currentGenerationID,
+            turn.generationID != currentGenerationID
+        {
+            return nil
+        }
         if observedAtMilliseconds
-            - signal.observation.observedAtMilliseconds
+            - turn.observation.observedAtMilliseconds
             > ttlMilliseconds
         {
             remove(sessionID)
             return nil
         }
-        if signal.observation.state == .done
-            || signal.observation.state == .waiting,
-            let signalGenerationID = signal.generationID,
-            let currentGenerationID,
-            signalGenerationID != currentGenerationID
-        {
-            return nil
-        }
-        if signal.observation.state == .done,
+        if turn.observation.state == .done,
             let acknowledged = acknowledgedAt[sessionID],
-            acknowledged >= signal.observation.observedAtMilliseconds
+            acknowledged >= turn.observation.observedAtMilliseconds
         {
             return (.idle, .observed, "completion acknowledged by focus")
         }
         return (
-            signal.observation.state,
-            signal.observation.confidence,
-            signal.observation.detail
+            turn.observation.state,
+            turn.observation.confidence,
+            turn.observation.detail
         )
-    }
-
-    public func observeSelection(
-        _ sessionID: String?,
-        observedAtMilliseconds: Int64
-    ) {
-        lock.lock()
-        defer { lock.unlock() }
-        guard selectionInitialized else {
-            selectedSessionID = sessionID
-            selectionInitialized = true
-            return
-        }
-        guard sessionID != selectedSessionID else { return }
-        selectedSessionID = sessionID
-        if let sessionID {
-            acknowledgedAt[sessionID] = observedAtMilliseconds
-        }
     }
 
     public func acknowledge(
@@ -153,9 +293,9 @@ public final class CursorActivityStore: @unchecked Sendable {
     }
 
     private func purgeExpired(at observedAtMilliseconds: Int64) {
-        let expired = signals.compactMap { sessionID, signal in
+        let expired = turns.compactMap { sessionID, turn in
             observedAtMilliseconds
-                - signal.observation.observedAtMilliseconds
+                - turn.observation.observedAtMilliseconds
                 > ttlMilliseconds
                 ? sessionID
                 : nil
@@ -166,9 +306,9 @@ public final class CursorActivityStore: @unchecked Sendable {
     }
 
     private func evictOldestIfNeeded(for sessionID: String) {
-        guard signals[sessionID] == nil,
-            signals.count >= maximumSignals,
-            let oldest = signals.min(by: {
+        guard turns[sessionID] == nil,
+            turns.count >= maximumSignals,
+            let oldest = turns.min(by: {
                 $0.value.observation.observedAtMilliseconds
                     < $1.value.observation.observedAtMilliseconds
             })?.key
@@ -179,67 +319,92 @@ public final class CursorActivityStore: @unchecked Sendable {
     }
 
     private func remove(_ sessionID: String) {
-        signals.removeValue(forKey: sessionID)
-        composerModes.removeValue(forKey: sessionID)
+        turns.removeValue(forKey: sessionID)
         acknowledgedAt.removeValue(forKey: sessionID)
     }
 
-    private static func cursorState(
+    private static func observation(
+        sessionID: String,
         event: String,
-        status: String?,
-        composerMode: String?
-    ) throws -> (state: SessionState, confidence: DeckConfidence, detail: String) {
+        observedAtMilliseconds: Int64,
+        state: SessionState,
+        detail: String
+    ) -> ActivityObservation {
+        ActivityObservation(
+            sessionID: sessionID,
+            event: event,
+            observedAtMilliseconds: observedAtMilliseconds,
+            state: state,
+            confidence: .observed,
+            detail: detail
+        )
+    }
+
+    private static func cursorProgressDetail(_ event: String) -> String {
         switch event {
-        case "beforeSubmitPrompt":
-            return (.working, .observed, "Cursor prompt submitted")
-        case "stop":
-            switch status {
-            case "error":
-                return (
-                    .waiting,
-                    .observed,
-                    "Cursor agent stopped with error"
-                )
-            case "completed":
-                if composerMode == "plan" {
-                    return (
-                        .waiting,
-                        .observed,
-                        "Cursor plan awaiting approval"
-                    )
-                }
-                return (.done, .observed, "Cursor agent completed")
-            case "aborted":
-                return (.idle, .observed, "Cursor agent aborted")
-            default:
-                throw ProviderOperationError.invalidHook(
-                    "unsupported Cursor stop status: \(status ?? "nil")"
-                )
-            }
-        case "sessionEnd":
-            return (.idle, .observed, "Cursor session ended")
+        case "preCompact":
+            "Cursor is compacting context"
+        case "afterAgentThought":
+            "Cursor planned its next move"
+        case "afterAgentResponse":
+            "Cursor produced a response"
         default:
-            return (.idle, .observed, "Cursor session started")
+            "Cursor agent working"
+        }
+    }
+
+    private static func cursorTerminalState(
+        status: String?
+    ) throws -> TerminalState {
+        switch status {
+        case "completed":
+            return TerminalState(
+                state: .done,
+                detail: "Cursor agent completed"
+            )
+        case "error":
+            return TerminalState(
+                state: .error,
+                detail: "Cursor agent stopped with error"
+            )
+        case "aborted":
+            return TerminalState(
+                state: .error,
+                detail: "Cursor agent aborted"
+            )
+        default:
+            throw ProviderOperationError.invalidHook(
+                "unsupported Cursor stop status: \(status ?? "nil")"
+            )
         }
     }
 }
 
 public final class ClaudeActivityStore: @unchecked Sendable {
+    private struct Turn {
+        var observation: ActivityObservation
+        var promptID: String?
+        var activeAgentIDs: Set<String> = []
+    }
+
     private let terminalDeadlineMilliseconds: Int64
     private let ttlMilliseconds: Int64
     private let maximumSignals: Int
+    private let maximumActiveSubagents: Int
     private let lock = NSLock()
-    private var signals: [String: ActivityObservation] = [:]
+    private var turns: [String: Turn] = [:]
     private var acknowledgedAt: [String: Int64] = [:]
 
     public init(
         terminalDeadlineMilliseconds: Int64 = 10 * 60 * 1_000,
         ttlMilliseconds: Int64 = 60 * 60 * 1_000,
-        maximumSignals: Int = 1_000
+        maximumSignals: Int = 1_000,
+        maximumActiveSubagents: Int = 64
     ) {
         self.terminalDeadlineMilliseconds = terminalDeadlineMilliseconds
         self.ttlMilliseconds = ttlMilliseconds
         self.maximumSignals = maximumSignals
+        self.maximumActiveSubagents = maximumActiveSubagents
     }
 
     public func record(
@@ -268,34 +433,149 @@ public final class ClaudeActivityStore: @unchecked Sendable {
                 "Claude Code hook event is missing transcript_path"
             )
         }
+        if let promptID = payload.promptID, promptID.isEmpty {
+            throw ProviderOperationError.invalidHook(
+                "Claude Code prompt_id must be a non-empty string"
+            )
+        }
+        if let permissionMode = payload.permissionMode,
+            !Set([
+                "default",
+                "plan",
+                "acceptEdits",
+                "auto",
+                "dontAsk",
+                "bypassPermissions",
+            ]).contains(permissionMode)
+        {
+            throw ProviderOperationError.invalidHook(
+                "unsupported Claude Code permission_mode: \(permissionMode)"
+            )
+        }
+        if let backgroundTasks = payload.backgroundTasks {
+            guard backgroundTasks.count <= 64,
+                backgroundTasks.allSatisfy({ task in
+                    [
+                        task.taskID,
+                        task.taskType,
+                        task.status,
+                        task.agentType,
+                    ].allSatisfy { value in
+                        value.map {
+                            (1...256).contains($0.utf8.count)
+                        } ?? true
+                    }
+                })
+            else {
+                throw ProviderOperationError.invalidHook(
+                    "Claude Code background task metadata exceeds limits"
+                )
+            }
+        }
         let mapped = try Self.claudeState(
             event: event,
             notificationType: payload.notificationType,
-            toolName: payload.toolName
-        )
-        let observation = ActivityObservation(
-            sessionID: sessionID,
-            event: event,
-            observedAtMilliseconds: observedAtMilliseconds,
-            state: mapped.state,
-            confidence: mapped.confidence,
-            detail: mapped.detail
+            toolName: payload.toolName,
+            compactTrigger: payload.compactTrigger,
+            source: payload.source
         )
         lock.lock()
         defer { lock.unlock() }
         purgeExpired(at: observedAtMilliseconds)
-        if signals[sessionID] == nil,
-            signals.count >= maximumSignals,
-            let oldest = signals.min(by: {
-                $0.value.observedAtMilliseconds
-                    < $1.value.observedAtMilliseconds
+        if turns[sessionID] == nil,
+            turns.count >= maximumSignals,
+            let oldest = turns.min(by: {
+                $0.value.observation.observedAtMilliseconds
+                    < $1.value.observation.observedAtMilliseconds
             })?.key
         {
-            signals.removeValue(forKey: oldest)
+            turns.removeValue(forKey: oldest)
             acknowledgedAt.removeValue(forKey: oldest)
         }
-        signals[sessionID] = observation
-        return observation
+        var turn =
+            turns[sessionID]
+            ?? Turn(
+                observation: ActivityObservation(
+                    sessionID: sessionID,
+                    event: "SessionStart",
+                    observedAtMilliseconds: observedAtMilliseconds,
+                    state: .idle,
+                    confidence: .observed,
+                    detail: "Claude Code session started"
+                ),
+                promptID: nil
+            )
+        if event == "UserPromptSubmit" {
+            if turn.promptID != payload.promptID {
+                turn.activeAgentIDs.removeAll()
+            }
+            turn.promptID = payload.promptID
+        } else if let currentPromptID = turn.promptID,
+            let eventPromptID = payload.promptID,
+            currentPromptID != eventPromptID
+        {
+            return turn.observation
+        }
+
+        if event == "SubagentStart" {
+            guard let agentID = payload.agentID, !agentID.isEmpty else {
+                throw ProviderOperationError.invalidHook(
+                    "Claude Code SubagentStart is missing agent_id"
+                )
+            }
+            if turn.activeAgentIDs.contains(agentID) {
+                return turn.observation
+            }
+            guard turn.activeAgentIDs.count < maximumActiveSubagents else {
+                throw ProviderOperationError.invalidHook(
+                    "Claude Code active subagent limit exceeded"
+                )
+            }
+            turn.activeAgentIDs.insert(agentID)
+        } else if event == "SubagentStop" {
+            guard let agentID = payload.agentID, !agentID.isEmpty else {
+                throw ProviderOperationError.invalidHook(
+                    "Claude Code SubagentStop is missing agent_id"
+                )
+            }
+            guard turn.activeAgentIDs.remove(agentID) != nil else {
+                return turn.observation
+            }
+        }
+
+        var state = mapped.state
+        var detail = mapped.detail
+        if event == "Stop" {
+            let hasBackgroundTasks =
+                payload.backgroundTasks?.isEmpty == false
+                || (payload.backgroundTasks == nil
+                    && !turn.activeAgentIDs.isEmpty)
+            if hasBackgroundTasks {
+                state = .working
+                detail = "Claude Code background tasks still working"
+            }
+        } else if event != "UserPromptSubmit"
+            && !(event == "SessionStart" && payload.source == "compact"),
+            turn.observation.state == .done
+                || turn.observation.state == .error,
+            mapped.state == .working
+        {
+            return turn.observation
+        }
+        turn.observation = ActivityObservation(
+            sessionID: sessionID,
+            event: event,
+            observedAtMilliseconds: observedAtMilliseconds,
+            state: state,
+            confidence: mapped.confidence,
+            detail: detail
+        )
+        if event == "SessionEnd" {
+            turn.activeAgentIDs.removeAll()
+            turn.promptID = nil
+        }
+        turns[sessionID] = turn
+        return turn.observation
     }
 
     public func state(
@@ -304,10 +584,11 @@ public final class ClaudeActivityStore: @unchecked Sendable {
     ) -> (SessionState, DeckConfidence, String)? {
         lock.lock()
         defer { lock.unlock() }
-        guard let signal = signals[sessionID] else { return nil }
+        guard let turn = turns[sessionID] else { return nil }
+        let signal = turn.observation
         let age = observedAtMilliseconds - signal.observedAtMilliseconds
         if age > ttlMilliseconds {
-            signals.removeValue(forKey: sessionID)
+            turns.removeValue(forKey: sessionID)
             acknowledgedAt.removeValue(forKey: sessionID)
             return nil
         }
@@ -339,14 +620,14 @@ public final class ClaudeActivityStore: @unchecked Sendable {
     }
 
     private func purgeExpired(at observedAtMilliseconds: Int64) {
-        let expired = signals.compactMap { sessionID, signal in
-            observedAtMilliseconds - signal.observedAtMilliseconds
+        let expired = turns.compactMap { sessionID, turn in
+            observedAtMilliseconds - turn.observation.observedAtMilliseconds
                 > ttlMilliseconds
                 ? sessionID
                 : nil
         }
         for sessionID in expired {
-            signals.removeValue(forKey: sessionID)
+            turns.removeValue(forKey: sessionID)
             acknowledgedAt.removeValue(forKey: sessionID)
         }
     }
@@ -354,7 +635,9 @@ public final class ClaudeActivityStore: @unchecked Sendable {
     private static func claudeState(
         event: String,
         notificationType: String?,
-        toolName: String?
+        toolName: String?,
+        compactTrigger: String?,
+        source: String?
     ) throws -> (state: SessionState, confidence: DeckConfidence, detail: String) {
         switch event {
         case "UserPromptSubmit":
@@ -366,7 +649,13 @@ public final class ClaudeActivityStore: @unchecked Sendable {
         case "SessionEnd":
             return (.idle, .observed, "Claude Code session ended")
         case "SessionStart":
-            return (.idle, .observed, "Claude Code session started")
+            return source == "compact"
+                ? (
+                    .working,
+                    .observed,
+                    "Claude Code resumed after compaction"
+                )
+                : (.idle, .observed, "Claude Code session started")
         case "PermissionRequest":
             guard let toolName, !toolName.isEmpty else {
                 throw ProviderOperationError.invalidHook(
@@ -390,6 +679,42 @@ public final class ClaudeActivityStore: @unchecked Sendable {
                 .observed,
                 "Claude Code MCP input received"
             )
+        case "PostToolBatch":
+            return (
+                .working,
+                .observed,
+                "Claude Code completed a tool batch"
+            )
+        case "PermissionDenied":
+            guard let toolName, !toolName.isEmpty else {
+                throw ProviderOperationError.invalidHook(
+                    "Claude Code PermissionDenied is missing tool_name"
+                )
+            }
+            return (
+                .working,
+                .observed,
+                "Claude Code permission was denied; agent may retry"
+            )
+        case "SubagentStart":
+            return (.working, .observed, "Claude Code subagent started")
+        case "SubagentStop":
+            return (.working, .observed, "Claude Code subagent stopped")
+        case "PreCompact", "PostCompact":
+            guard let compactTrigger,
+                compactTrigger == "manual" || compactTrigger == "auto"
+            else {
+                throw ProviderOperationError.invalidHook(
+                    "Claude Code \(event) has an unsupported trigger"
+                )
+            }
+            return (
+                .working,
+                .observed,
+                event == "PreCompact"
+                    ? "Claude Code is compacting context"
+                    : "Claude Code context compaction completed"
+            )
         case "PreToolUse", "PostToolUse":
             let waitingTools = Set(["AskUserQuestion", "ExitPlanMode"])
             guard let toolName, waitingTools.contains(toolName) else {
@@ -411,7 +736,6 @@ public final class ClaudeActivityStore: @unchecked Sendable {
         case "Notification":
             let waitingNotifications = Set([
                 "permission_prompt",
-                "idle_prompt",
                 "elicitation_dialog",
                 "agent_needs_input",
             ])
@@ -427,10 +751,31 @@ public final class ClaudeActivityStore: @unchecked Sendable {
                     "Claude Code is waiting: \(notificationType)"
                 )
             }
-            return (
-                .idle,
-                .candidate,
-                "Claude Code notification does not prove a deck state: \(notificationType)"
+            if notificationType == "idle_prompt" {
+                return (
+                    .done,
+                    .observed,
+                    "Claude Code turn completed: \(notificationType)"
+                )
+            }
+            if notificationType == "agent_completed" {
+                return (
+                    .working,
+                    .candidate,
+                    "Claude Code agent completion requires reconciliation"
+                )
+            }
+            if notificationType == "elicitation_complete"
+                || notificationType == "elicitation_response"
+            {
+                return (
+                    .working,
+                    .observed,
+                    "Claude Code input received: \(notificationType)"
+                )
+            }
+            throw ProviderOperationError.invalidHook(
+                "unsupported Claude Code notification: \(notificationType)"
             )
         default:
             throw ProviderOperationError.invalidHook(

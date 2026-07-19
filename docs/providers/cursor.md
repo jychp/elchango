@@ -122,17 +122,35 @@ terminal lifecycle event. Genuine cancellation, waiting, and error
 differentiation from database data alone remain unvalidated.
 
 Documented Cursor hooks provide low-latency event name, `conversation_id`,
-`generation_id`, and terminal status. The native reporter accepts sanitized:
+`generation_id`, and terminal status. The native reporter accepts only bounded
+lifecycle metadata:
 
 - `sessionStart`: idle lifecycle evidence;
-- `beforeSubmitPrompt`: working;
-- `stop`: done or terminal error according to status;
+- `beforeSubmitPrompt`: starts a working generation;
+- `preCompact`, `afterAgentThought`, and `afterAgentResponse`: working progress;
+- `subagentStart` and `subagentStop`: bounded parallel-child progress;
+- parent `stop`: done or terminal error according to status;
 - `sessionEnd`: idle.
 
-The in-memory hook overlay applies only when `conversation_id` exactly matches
-a current SQLite composer ID. Cursor does not document that equality, so a
-focused live test remains required. Prompt, response, tool, email, and
-transcript content is discarded.
+Turns are keyed by conversation and generation. Events from an older
+generation cannot terminate the current turn. A parent stop received while
+subagents remain active is deferred until the final child stops. A failed or
+aborted child makes the deferred terminal result an error. Renewed parent
+progress clears a deferred result and requires a later authoritative stop.
+
+Hook receipt never reads the database. It stores sanitized observations, then
+the next snapshot applies them only when `conversation_id` exactly matches a
+current SQLite composer ID. This permits hooks to arrive before persistence
+without weakening identity matching. Cursor does not document that equality,
+so a focused live test remains required. Prompt, thought, response, tool,
+summary, email, and transcript content is discarded.
+
+Green completion survives passive native selection changes until an explicit
+elChango focus action acknowledges the session. A new lifecycle event,
+`sessionEnd`, or the bounded one-hour hook TTL may also clear it. Fresh
+persisted `hasPendingPlan` or `hasBlockingPendingActions` remains the
+conservative waiting signal; plan-mode text and intermediate reasoning are not
+inferred as idle or waiting.
 
 The deck maps working to blue, waiting and rendered terminal error to orange,
 done to green, and idle or unknown to gray.
@@ -176,9 +194,11 @@ Current verdict: `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
 The observed Cursor composer is an enabled `AXTextArea` with exact
 `AXDOMClassList` value
 `tiptapProseMirrorui-prompt-input-editor__inputProseMirror-focused`. `Cmd+L`
-focuses it from the conversation area. Text dispatch then atomically rechecks
-the foreground Cursor identity, selected composer, enabled role, exact class,
-and empty draft.
+focuses it from the conversation area when it is not already focused. Text
+dispatch follows the shared
+[native text command dispatch contract](../command-dispatch.md): activate
+Cursor, verify the foreground process, selected composer, enabled role, and
+exact class, then capture, replace, submit, and restore any existing draft.
 
 Provider mappings:
 
@@ -212,7 +232,8 @@ completion.
 - Rebuild sidebar order, selected session, and foreground evidence immediately
   before native input.
 - Verify the exact selected composer after focus.
-- Require the exact enabled, empty composer marker for text recipes.
+- Require the exact enabled composer marker and bounded draft capture for text
+  recipes.
 - Serialize privileged actions across providers. Shortcuts target the verified
   process ID. Text and submission events use the global HID tap only after an
   atomic foreground, selected-session, and exact-input preflight because the
@@ -247,8 +268,10 @@ terminal evidence supports another state. Unmatched hook events are ignored.
 - Does the persisted sidebar order remain stable across Cursor versions?
 - Does the observed composer Accessibility marker remain stable?
 - Can `accept` be observed against a real pending approval without ambiguity?
-- Waiting, genuine cancellation, and error differentiation remain incomplete
-  without authoritative terminal hook evidence.
+- Waiting remains limited to fresh explicit pending-plan or blocking-action
+  evidence. Cursor exposes no general authoritative "needs user input" hook.
+- Live behavior still needs manual confirmation for automatic and manual
+  compaction plus foreground and background parallel subagents.
 
 ## POCs
 
@@ -273,6 +296,9 @@ terminal evidence supports another state. Unmatched hook events are ignored.
 - `scripts/poc/cursor/09_cursor_command_dispatch.py`: dry-run-first,
   exact-composer, one-shot semantic command dispatch. Verdict:
   `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
+- `scripts/poc/cursor/10_cursor_hook_sequences.py`: sanitized generation,
+  compaction, subagent, and terminal reducer. Verdict:
+  `REDUCER_SUPPORTED_LIVE_ID_CORRELATION_UNPROVEN`.
 
 ## References
 

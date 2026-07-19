@@ -24,7 +24,9 @@ struct ElChangoHookReporter {
         else {
             return
         }
-        let sanitized = provider.sanitize(payload)
+        guard let sanitized = provider.sanitize(payload) else {
+            return
+        }
         guard JSONSerialization.isValidJSONObject(sanitized),
             let body = try? JSONSerialization.data(withJSONObject: sanitized),
             let url = URL(
@@ -49,7 +51,7 @@ private enum Provider: String {
     case cursor
     case claudeCode = "claude-code"
 
-    func sanitize(_ payload: [String: Any]) -> [String: String] {
+    func sanitize(_ payload: [String: Any]) -> [String: Any]? {
         let keys: Set<String>
         switch self {
         case .cursor:
@@ -59,6 +61,7 @@ private enum Provider: String {
                 "generation_id",
                 "composer_mode",
                 "status",
+                "subagent_id",
             ]
         case .claudeCode:
             keys = [
@@ -68,9 +71,16 @@ private enum Provider: String {
                 "transcript_path",
                 "notification_type",
                 "tool_name",
+                "prompt_id",
+                "permission_mode",
+                "trigger",
+                "source",
+                "agent_id",
             ]
         }
-        return payload.reduce(into: [:]) { result, element in
+        var sanitized: [String: Any] = payload.reduce(into: [:]) {
+            result,
+            element in
             guard keys.contains(element.key),
                 let value = element.value as? String,
                 !value.isEmpty
@@ -79,5 +89,29 @@ private enum Provider: String {
             }
             result[element.key] = value
         }
+        if self == .claudeCode,
+            let rawTasks = payload["background_tasks"]
+        {
+            guard let tasks = rawTasks as? [[String: Any]],
+                tasks.count <= 64
+            else {
+                return nil
+            }
+            let taskKeys = Set(["id", "type", "status", "agent_type"])
+            var sanitizedTasks: [[String: String]] = []
+            for task in tasks {
+                var sanitizedTask: [String: String] = [:]
+                for (key, rawValue) in task where taskKeys.contains(key) {
+                    if let value = rawValue as? String,
+                        (1...256).contains(value.utf8.count)
+                    {
+                        sanitizedTask[key] = value
+                    }
+                }
+                sanitizedTasks.append(sanitizedTask)
+            }
+            sanitized["background_tasks"] = sanitizedTasks
+        }
+        return sanitized
     }
 }

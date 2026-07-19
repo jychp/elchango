@@ -12,6 +12,7 @@ import {
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:8765";
 const REQUEST_TIMEOUT_MS = 2_000;
+const ACTION_TIMEOUT_MS = 10_000;
 const CONTROL_TOKEN_PATH = path.join(
   os.homedir(),
   "Library",
@@ -38,6 +39,7 @@ export class DeckApiClient {
     private readonly fetcher: typeof fetch = fetch,
     private readonly requestTimeoutMs = REQUEST_TIMEOUT_MS,
     private readonly tokenReader: () => Promise<string> = readControlToken,
+    private readonly actionTimeoutMs = ACTION_TIMEOUT_MS,
   ) {}
 
   async snapshot(): Promise<DeckSnapshot> {
@@ -67,21 +69,29 @@ export class DeckApiClient {
   ): Promise<DeckActivationResponse> {
     const url = new URL(path, this.endpoint);
     return parseActivationResponse(
-      await this.request(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          client_id: this.clientId,
-          button_id: buttonId,
-          revision,
-        }),
-      }),
+      await this.request(
+        url,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            client_id: this.clientId,
+            button_id: buttonId,
+            revision,
+          }),
+        },
+        this.actionTimeoutMs,
+      ),
     );
   }
 
-  private async request(url: URL, init: RequestInit): Promise<unknown> {
+  private async request(
+    url: URL,
+    init: RequestInit,
+    timeoutMs = this.requestTimeoutMs,
+  ): Promise<unknown> {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const token = await this.tokenReader();
       const response = await this.fetcher(url, {

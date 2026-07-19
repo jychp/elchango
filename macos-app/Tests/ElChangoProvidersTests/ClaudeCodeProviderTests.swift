@@ -345,6 +345,140 @@ struct ClaudeCodeProviderTests {
         #expect(await automation.shortcutCount() == 1)
     }
 
+    @Test("focus supports Claude's pinned sidebar order")
+    func focusWithPinnedOrder() async throws {
+        let fixture = try ClaudeTemporaryFixture()
+        try fixture.writeRecord(
+            desktopID: "local_current",
+            cliID: "cli-current",
+            lastFocusedAt: 500
+        )
+        try fixture.writeRecord(
+            desktopID: "local_target",
+            cliID: "cli-target",
+            lastFocusedAt: 100
+        )
+        try fixture.writeTranscript(cliID: "cli-current")
+        try fixture.writeTranscript(cliID: "cli-target")
+        let config = try fixture.writePinnedShortcutConfig(
+            pinned: ["local_target", "local_current"]
+        )
+        let automation = ClaudeAutomation(frontmostBundleID: nil)
+        let provider = ClaudeCodeProvider(
+            desktopSessionsRootURL: fixture.desktopRoot,
+            projectsRootURL: fixture.projectsRoot,
+            desktopConfigURL: config,
+            automation: automation,
+            clock: { 1_000 }
+        )
+
+        let snapshot = try await provider.snapshot()
+        let result = try await provider.focus(
+            nativeSessionID: "local_target"
+        )
+
+        #expect(
+            snapshot.sessions.allSatisfy {
+                $0.capabilities.contains(.focusSession)
+            }
+        )
+        #expect(result.accepted)
+        #expect(await automation.frontmostBundleID() == ClaudeCodeProvider.bundleID)
+        #expect(await automation.shortcutCount() == 1)
+    }
+
+    @Test("focus follows pinned, custom group, and active ungrouped order")
+    func focusWithCurrentGroupedOrder() async throws {
+        let fixture = try ClaudeTemporaryFixture()
+        let activities: [String: Int64] = [
+            "local_pinned": 100,
+            "local_group_a": 100,
+            "local_group_b": 100,
+            "local_ungrouped_new": 500,
+            "local_ungrouped_old": 200,
+        ]
+        for (id, activity) in activities {
+            try fixture.writeRecord(
+                desktopID: id,
+                cliID: "cli-\(id)",
+                lastActivityAt: activity
+            )
+        }
+        let config = try fixture.writeCurrentShortcutConfig(
+            pinned: [
+                "local_group_a",
+                "local_pinned",
+                "local_group_b",
+            ],
+            groups: ["group-b", "group-a"],
+            assignments: [
+                "local_group_a": "group-a",
+                "local_group_b": "group-b",
+            ],
+            order: [
+                "group-a": ["local_group_a"],
+                "group-b": ["local_group_b"],
+            ]
+        )
+        let expectedKeyCodes: [String: CGKeyCode] = [
+            "local_pinned": 18,
+            "local_group_b": 19,
+            "local_group_a": 20,
+            "local_ungrouped_new": 21,
+            "local_ungrouped_old": 23,
+        ]
+
+        for (target, expectedKeyCode) in expectedKeyCodes {
+            let automation = ClaudeAutomation(
+                frontmostBundleID: ClaudeCodeProvider.bundleID
+            )
+            let provider = ClaudeCodeProvider(
+                desktopSessionsRootURL: fixture.desktopRoot,
+                projectsRootURL: fixture.projectsRoot,
+                desktopConfigURL: config,
+                automation: automation,
+                clock: { 1_000 }
+            )
+
+            let result = try await provider.focus(nativeSessionID: target)
+
+            #expect(result.accepted)
+            #expect(await automation.shortcutKeyCodes() == [expectedKeyCode])
+        }
+    }
+
+    @Test("focus holds Control while navigating beyond shortcut nine")
+    func focusBeyondNine() async throws {
+        let fixture = try ClaudeTemporaryFixture()
+        let ids = (1...10).map { "local_\($0)" }
+        for (index, id) in ids.enumerated() {
+            try fixture.writeRecord(
+                desktopID: id,
+                cliID: "cli-\(index + 1)",
+                lastFocusedAt: index == 0 ? 500 : 100
+            )
+        }
+        let config = try fixture.writePinnedShortcutConfig(pinned: ids)
+        let automation = ClaudeAutomation(
+            frontmostBundleID: ClaudeCodeProvider.bundleID
+        )
+        let provider = ClaudeCodeProvider(
+            desktopSessionsRootURL: fixture.desktopRoot,
+            projectsRootURL: fixture.projectsRoot,
+            desktopConfigURL: config,
+            automation: automation,
+            clock: { 1_000 }
+        )
+
+        let result = try await provider.focus(
+            nativeSessionID: "local_10"
+        )
+
+        #expect(result.accepted)
+        #expect(await automation.shortcutCount() == 1)
+        #expect(await automation.heldShortcutRepeatCounts() == [1])
+    }
+
     @Test("verified commands preserve the selected Claude target")
     func verifiedCommand() async throws {
         let fixture = try ClaudeTemporaryFixture()
@@ -379,10 +513,6 @@ struct ClaudeCodeProviderTests {
                 "Open a pull request for the current branch."
             ])
         #expect(await automation.dispatchedSubmitCounts() == [2])
-        #expect(
-            await automation.dispatchedEmptyPlaceholders() == [
-                "Type / for commands\n"
-            ])
     }
 
     @Test("Claude hooks overlay only known persistent sessions")
@@ -417,6 +547,39 @@ struct ClaudeCodeProviderTests {
             try await provider.snapshot().sessions.first
         )
 
+        #expect(session.state == .working)
+        #expect(session.confidence == .observed)
+    }
+
+    @Test("Claude reconciles a hook received before inventory persistence")
+    func hookBeforeInventory() async throws {
+        let fixture = try ClaudeTemporaryFixture()
+        let activity = ClaudeActivityStore()
+        let provider = ClaudeCodeProvider(
+            desktopSessionsRootURL: fixture.desktopRoot,
+            projectsRootURL: fixture.projectsRoot,
+            activityStore: activity,
+            clock: { 150 }
+        )
+        _ = try await provider.recordHook(
+            ProviderHookPayload(
+                hookEventName: "UserPromptSubmit",
+                sessionID: "cli-target",
+                cwd: "/tmp/worktree-local_target",
+                transcriptPath: "/tmp/cli-target.jsonl",
+                promptID: "prompt-1"
+            ),
+            observedAtMilliseconds: 100
+        )
+        try fixture.writeRecord(
+            desktopID: "local_target",
+            cliID: "cli-target"
+        )
+        try fixture.writeTranscript(cliID: "cli-target")
+
+        let session = try #require(
+            try await provider.snapshot().sessions.first
+        )
         #expect(session.state == .working)
         #expect(session.confidence == .observed)
     }
@@ -594,6 +757,64 @@ private struct ClaudeTemporaryFixture {
         try data.write(to: url)
         return url
     }
+
+    func writePinnedShortcutConfig(pinned: [String]) throws -> URL {
+        let url = root.appendingPathComponent("claude_desktop_config.json")
+        let data = try JSONSerialization.data(
+            withJSONObject: [
+                "preferences": [
+                    "epitaxyPrefs": [
+                        "dframe-local-slice": [
+                            "pinnedOrder": pinned.map { "code:\($0)" }
+                        ]
+                    ]
+                ]
+            ],
+            options: [.sortedKeys]
+        )
+        try data.write(to: url)
+        return url
+    }
+
+    func writeCurrentShortcutConfig(
+        pinned: [String],
+        groups: [String],
+        assignments: [String: String],
+        order: [String: [String]]
+    ) throws -> URL {
+        let url = root.appendingPathComponent("claude_desktop_config.json")
+        let qualifiedAssignments = Dictionary(
+            uniqueKeysWithValues: assignments.map {
+                ("code:\($0.key)", $0.value)
+            }
+        )
+        let qualifiedOrder = order.mapValues {
+            $0.map { "code:\($0)" }
+        }
+        let data = try JSONSerialization.data(
+            withJSONObject: [
+                "preferences": [
+                    "epitaxyPrefs": [
+                        "dframe-local-slice": [
+                            "pinnedOrder": pinned.map { "code:\($0)" }
+                        ],
+                        "dframe-group-scopes": [
+                            "account/workspace": [
+                                "groups": groups.map {
+                                    ["id": $0, "name": $0]
+                                },
+                                "assignments": qualifiedAssignments,
+                                "order": qualifiedOrder,
+                            ]
+                        ],
+                    ]
+                ]
+            ],
+            options: [.sortedKeys]
+        )
+        try data.write(to: url)
+        return url
+    }
 }
 
 private struct ClaudeExpectedInventory: Codable, Equatable {
@@ -657,8 +878,9 @@ private actor ClaudeAutomation: NativeAutomating {
     private var bundleID: String?
     private var texts: [String] = []
     private var submitCounts: [Int] = []
-    private var emptyPlaceholders: [String?] = []
     private var shortcuts = 0
+    private var shortcutKeyCodeValues: [CGKeyCode] = []
+    private var heldShortcutRepeats: [Int] = []
 
     init(frontmostBundleID: String?) {
         bundleID = frontmostBundleID
@@ -680,14 +902,25 @@ private actor ClaudeAutomation: NativeAutomating {
         bundleID: String
     ) async throws {
         shortcuts += 1
+        shortcutKeyCodeValues.append(keyCode)
+    }
+
+    func postHeldModifierShortcut(
+        modifierKeyCode: CGKeyCode,
+        keyCode: CGKeyCode,
+        flags: CGEventFlags,
+        repeatCount: Int,
+        bundleID: String
+    ) async throws {
+        heldShortcutRepeats.append(repeatCount)
     }
 
     func dispatchText(
         _ text: String,
         bundleID: String,
         inputMarker: String,
-        emptyPlaceholderValue: String?,
         focusKeyCode: CGKeyCode?,
+        unfocusedPolicy: UnfocusedTextDispatchPolicy,
         submitCount: Int,
         targetVerifier: @escaping @Sendable () async throws -> Bool
     ) async throws -> ProviderActionResult {
@@ -696,7 +929,6 @@ private actor ClaudeAutomation: NativeAutomating {
         }
         texts.append(text)
         submitCounts.append(submitCount)
-        emptyPlaceholders.append(emptyPlaceholderValue)
         return ProviderActionResult(
             accepted: true,
             verdict: "DISPATCH_VERIFIED",
@@ -728,11 +960,15 @@ private actor ClaudeAutomation: NativeAutomating {
         submitCounts
     }
 
-    func dispatchedEmptyPlaceholders() -> [String?] {
-        emptyPlaceholders
-    }
-
     func shortcutCount() -> Int {
         shortcuts
+    }
+
+    func shortcutKeyCodes() -> [CGKeyCode] {
+        shortcutKeyCodeValues
+    }
+
+    func heldShortcutRepeatCounts() -> [Int] {
+        heldShortcutRepeats
     }
 }

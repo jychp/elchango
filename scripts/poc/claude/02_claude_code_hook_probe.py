@@ -19,9 +19,13 @@ The ``config`` command prints, but never installs, a settings snippet for:
 * ``SessionStart``
 * ``UserPromptSubmit``
 * ``PreToolUse`` and ``PostToolUse`` for interactive question tools
+* ``PostToolBatch``
 * ``PermissionRequest``
+* ``PermissionDenied``
 * ``Notification``
 * ``Elicitation`` and ``ElicitationResult``
+* ``SubagentStart`` and ``SubagentStop``
+* ``PreCompact`` and ``PostCompact``
 * ``Stop``
 * ``StopFailure``
 * ``SessionEnd``
@@ -85,17 +89,22 @@ OBSERVED_EVENTS = (
     "UserPromptSubmit",
     "PreToolUse",
     "PostToolUse",
+    "PostToolBatch",
     "PermissionRequest",
+    "PermissionDenied",
     "Notification",
     "Elicitation",
     "ElicitationResult",
+    "SubagentStart",
+    "SubagentStop",
+    "PreCompact",
+    "PostCompact",
     "Stop",
     "StopFailure",
     "SessionEnd",
 )
 WAITING_NOTIFICATIONS = {
     "permission_prompt",
-    "idle_prompt",
     "elicitation_dialog",
     "agent_needs_input",
 }
@@ -118,9 +127,12 @@ class HookRecord:
     transcript_path: str
     notification_type: str | None
     tool_name: str | None
+    prompt_id: str | None
+    permission_mode: str | None
     source: str | None
-    reason: str | None
-    error: str | None
+    agent_id: str | None
+    compact_trigger: str | None
+    background_tasks: tuple[dict[str, str], ...]
     stop_hook_active: bool | None
 
 
@@ -198,6 +210,26 @@ def optional_string(payload: dict[str, Any], key: str) -> str | None:
     return value
 
 
+def sanitized_background_tasks(payload: dict[str, Any]) -> tuple[dict[str, str], ...]:
+    value = payload.get("background_tasks")
+    if value is None:
+        return ()
+    if not isinstance(value, list) or len(value) > 64:
+        raise ProbeError("background_tasks must be a bounded array")
+    tasks: list[dict[str, str]] = []
+    for task in value:
+        if not isinstance(task, dict):
+            raise ProbeError("background task metadata must be an object")
+        metadata = {
+            key: field
+            for key in ("id", "type", "status", "agent_type")
+            if isinstance((field := task.get(key)), str)
+            and 1 <= len(field.encode()) <= 256
+        }
+        tasks.append(metadata)
+    return tuple(tasks)
+
+
 def sanitize_hook_payload(payload: Any) -> HookRecord:
     """Validate common official fields and retain no conversational content."""
 
@@ -217,9 +249,12 @@ def sanitize_hook_payload(payload: Any) -> HookRecord:
         transcript_path=required_string(payload, "transcript_path"),
         notification_type=optional_string(payload, "notification_type"),
         tool_name=optional_string(payload, "tool_name"),
+        prompt_id=optional_string(payload, "prompt_id"),
+        permission_mode=optional_string(payload, "permission_mode"),
         source=optional_string(payload, "source"),
-        reason=optional_string(payload, "reason"),
-        error=optional_string(payload, "error"),
+        agent_id=optional_string(payload, "agent_id"),
+        compact_trigger=optional_string(payload, "trigger"),
+        background_tasks=sanitized_background_tasks(payload),
         stop_hook_active=stop_hook_active,
     )
 
@@ -250,7 +285,32 @@ def load_records(path: Path) -> list[HookRecord]:
             continue
         try:
             value = json.loads(line)
-            records.append(HookRecord(**value))
+            if not isinstance(value, dict):
+                raise TypeError("evidence record must be an object")
+            normalized = dict(value)
+            normalized.pop("reason", None)
+            normalized.pop("error", None)
+            for key in (
+                "prompt_id",
+                "permission_mode",
+                "source",
+                "agent_id",
+                "compact_trigger",
+            ):
+                normalized.setdefault(key, None)
+            normalized.setdefault("background_tasks", [])
+            normalized.setdefault("stop_hook_active", None)
+            allowed = set(HookRecord.__dataclass_fields__)
+            unknown = set(normalized) - allowed
+            if unknown:
+                raise TypeError(
+                    f"unknown evidence fields: {sorted(unknown)}"
+                )
+            background_tasks = normalized["background_tasks"]
+            if not isinstance(background_tasks, (list, tuple)):
+                raise TypeError("background_tasks must be an array")
+            normalized["background_tasks"] = tuple(background_tasks)
+            records.append(HookRecord(**normalized))
         except (json.JSONDecodeError, TypeError) as error:
             raise ProbeError(f"{path}:{line_number}: invalid evidence: {error}") from error
     return records
@@ -353,6 +413,18 @@ def hook_config(python: str, script: Path, log: Path) -> dict[str, Any]:
     hooks["PostToolUse"] = [
         {"matcher": "AskUserQuestion|ExitPlanMode", **handler[0]}
     ]
+    hooks["Notification"] = [
+        {
+            "matcher": (
+                "permission_prompt|idle_prompt|elicitation_dialog|"
+                "elicitation_complete|elicitation_response|agent_needs_input|"
+                "agent_completed"
+            ),
+            **handler[0],
+        }
+    ]
+    for event in ("PreCompact", "PostCompact"):
+        hooks[event] = [{"matcher": "manual|auto", **handler[0]}]
     return {"hooks": hooks}
 
 

@@ -23,6 +23,12 @@ Use these sources according to their role:
 - Discuss and validate development points with the user before implementing them.
 - Keep the roadmap limited to decisions and development points validated together.
 - Record durable project-wide directives in this file.
+- Never disable or remove an existing product capability without the user's
+  explicit approval.
+- Never run a live provider experiment that changes application focus, session
+  selection, editor contents, or agent state without the user's explicit
+  approval immediately before that experiment. Static inspection, fixtures,
+  and automated tests that do not touch live provider sessions remain allowed.
 - Record provider-specific findings in `docs/providers/<provider>.md`, not here.
 - Prefer evidence from a focused experiment over premature abstractions.
 - Keep provider, surface, and bridge contracts minimal until experiments justify
