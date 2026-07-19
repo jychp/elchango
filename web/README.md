@@ -45,6 +45,20 @@ Start the native app first. Vite reads the owner-only control token from the
 application support directory and adds it to proxied `/api` requests. The
 token remains in the Vite process and is not included in browser code.
 
+### Demo deck
+
+For a deterministic 15-key deck suitable for documentation screenshots, run
+the development server without the native service:
+
+```bash
+npm --prefix web run dev -- --open '/?demo=true'
+```
+
+The exact URL is `http://localhost:5173/?demo=true`. Demo keys are inert, and
+the page neither polls snapshots nor sends action requests. The demo is
+statically gated to Vite development builds, so production and packaged builds
+ignore the query parameter.
+
 ## Checks and builds
 
 From the repository root:

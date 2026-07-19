@@ -224,6 +224,7 @@
   aria-pressed={button?.kind === 'session' ? button.selected : undefined}
   data-confidence={button?.confidence}
   data-disabled={!button || !button.enabled}
+  data-icon={button?.icon}
   onpointerdown={handlePointerDown}
   onpointermove={handlePointerMove}
   onpointerup={handlePointerUp}

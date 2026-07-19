@@ -10,7 +10,47 @@ import type {
 afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
+  window.history.replaceState({}, '', '/')
   document.body.replaceChildren()
+})
+
+describe('App demo mode', () => {
+  test('renders the deterministic inert deck without API requests', async () => {
+    vi.useFakeTimers()
+    window.history.replaceState({}, '', '/?demo=true')
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const component = mount(App, { target: document.body })
+
+    await vi.waitFor(() =>
+      expect(document.body.textContent).toContain('Connected'),
+    )
+    await vi.waitFor(() =>
+      expect(document.body.querySelectorAll('button')).toHaveLength(15),
+    )
+
+    const expectedSessions = [
+      ['Debug', 'Cursor', 'bug', 'done'],
+      ['Log analysis', 'Cursor', 'eye', 'waiting'],
+      ['Vibecoding', 'Claude Code', 'claude', 'working'],
+      ['Monkeycoding', 'Cursor', 'cursor', 'working'],
+      ['Lazy Coding', 'Local agent', 'robot', 'idle'],
+    ] as const
+
+    for (const [label, detail, icon, color] of expectedSessions) {
+      const key = requiredButton(`${label}, ${detail}`)
+      expect(key.dataset.icon).toBe(icon)
+      expect(key.classList).toContain(`deck-key--${color}`)
+      expect(key.classList).not.toContain('deck-key--disabled')
+      expect(key.getAttribute('aria-disabled')).toBe('true')
+    }
+
+    await vi.advanceTimersByTimeAsync(5_000)
+    for (const key of document.body.querySelectorAll('button')) key.click()
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    unmount(component)
+  })
 })
 
 describe('App safety behavior', () => {
