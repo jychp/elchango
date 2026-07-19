@@ -4,12 +4,12 @@ import Testing
 
 @Suite("Native input verification")
 struct NativeAutomationTests {
-    @Test("draft capture preserves localized text")
+    @Test("full input value capture preserves localized and multiline drafts")
     func draftCapture() {
         #expect(
             NativeAutomation.boundedDraft(
-                "Brouillon localisé"
-            ) == "Brouillon localisé"
+                "Brouillon localisé\nDeuxième ligne"
+            ) == "Brouillon localisé\nDeuxième ligne"
         )
         #expect(
             NativeAutomation.boundedDraft("") == ""

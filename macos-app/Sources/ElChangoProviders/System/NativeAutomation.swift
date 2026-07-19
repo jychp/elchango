@@ -12,6 +12,13 @@ public protocol NativeAutomating: Sendable {
         flags: CGEventFlags,
         bundleID: String
     ) async throws
+    func postHeldModifierShortcut(
+        modifierKeyCode: CGKeyCode,
+        keyCode: CGKeyCode,
+        flags: CGEventFlags,
+        repeatCount: Int,
+        bundleID: String
+    ) async throws
     func dispatchText(
         _ text: String,
         bundleID: String,
@@ -57,6 +64,7 @@ public actor NativeAutomation: NativeAutomating {
     }
 
     public func activate(bundleID: String) async throws {
+        DebugTrace.emit("native-automation", "activate.start \(bundleID)")
         let outcome = await MainActor.run {
             let running = NSRunningApplication.runningApplications(
                 withBundleIdentifier: bundleID
@@ -87,9 +95,14 @@ public actor NativeAutomation: NativeAutomating {
                 "cannot activate application \(bundleID)"
             )
         }
+        DebugTrace.emit("native-automation", "activate.requested \(bundleID)")
         let deadline = ContinuousClock.now.advanced(by: .seconds(3))
         repeat {
             if (try? await requireFrontmost(bundleID: bundleID)) != nil {
+                DebugTrace.emit(
+                    "native-automation",
+                    "activate.frontmost \(bundleID)"
+                )
                 return
             }
             try await sleep(milliseconds: 100)
@@ -136,6 +149,44 @@ public actor NativeAutomation: NativeAutomating {
         )
     }
 
+    public func postHeldModifierShortcut(
+        modifierKeyCode: CGKeyCode,
+        keyCode: CGKeyCode,
+        flags: CGEventFlags,
+        repeatCount: Int,
+        bundleID: String
+    ) async throws {
+        guard repeatCount > 0 else {
+            throw ProviderOperationError.system(
+                "held shortcut repeat count must be positive"
+            )
+        }
+        try requireAccessibilityPermission()
+        let identity = try await requireFrontmost(bundleID: bundleID)
+        try postGlobalKey(
+            modifierKeyCode,
+            down: true,
+            flags: flags
+        )
+        defer {
+            try? postGlobalKey(
+                modifierKeyCode,
+                down: false,
+                flags: []
+            )
+        }
+        for _ in 0..<repeatCount {
+            _ = try await requireFrontmost(
+                bundleID: bundleID,
+                processIdentifier: identity.processIdentifier
+            )
+            try postGlobalKey(keyCode, down: true, flags: flags)
+            try await sleep(milliseconds: 80)
+            try postGlobalKey(keyCode, down: false, flags: flags)
+            try await sleep(milliseconds: 120)
+        }
+    }
+
     public func dispatchText(
         _ text: String,
         bundleID: String,
@@ -144,6 +195,7 @@ public actor NativeAutomation: NativeAutomating {
         submitCount: Int,
         targetVerifier: @escaping @Sendable () async throws -> Bool
     ) async throws -> ProviderActionResult {
+        DebugTrace.emit("native-automation", "dispatch_text.start \(bundleID)")
         guard !text.isEmpty, submitCount > 0 else {
             throw ProviderOperationError.system(
                 "command text and submit count must be valid"
@@ -151,10 +203,21 @@ public actor NativeAutomation: NativeAutomating {
         }
         try requireAccessibilityPermission()
         let started = ContinuousClock.now
+        try await activate(bundleID: bundleID)
         let identity = try await requireFrontmost(bundleID: bundleID)
+        DebugTrace.emit("native-automation", "dispatch_text.activated")
+        guard try await targetVerifier() else {
+            throw ProviderOperationError.targetUnverified(
+                "selected provider session changed after application activation"
+            )
+        }
         prepareAccessibility(processIdentifier: identity.processIdentifier)
         try await sleep(milliseconds: 200)
-        if let focusKeyCode {
+        var focused = try? verifiedFocusedInput(
+            processIdentifier: identity.processIdentifier,
+            marker: inputMarker
+        )
+        if focused == nil, let focusKeyCode {
             try await postShortcut(
                 keyCode: focusKeyCode,
                 flags: .maskCommand,
@@ -163,10 +226,18 @@ public actor NativeAutomation: NativeAutomating {
             )
             try await sleep(milliseconds: 200)
         }
-        var focused = try verifiedFocusedInput(
-            processIdentifier: identity.processIdentifier,
-            marker: inputMarker
-        )
+        if focused == nil {
+            focused = try verifiedFocusedInput(
+                processIdentifier: identity.processIdentifier,
+                marker: inputMarker
+            )
+        }
+        guard var focused else {
+            throw ProviderOperationError.targetUnverified(
+                "provider has no verified focused input"
+            )
+        }
+        DebugTrace.emit("native-automation", "dispatch_text.input_verified")
         _ = try await requireFrontmost(
             bundleID: bundleID,
             processIdentifier: identity.processIdentifier
@@ -180,36 +251,43 @@ public actor NativeAutomation: NativeAutomating {
                 "selected provider session changed before text dispatch"
             )
         }
-        focused = try await selectAll(
-            bundleID: bundleID,
-            processIdentifier: identity.processIdentifier,
-            marker: inputMarker,
-            focusedElement: focused
-        )
-        guard try await targetVerifier() else {
-            throw ProviderOperationError.targetUnverified(
-                "selected provider session changed before draft capture"
-            )
-        }
         guard
             let draft = Self.boundedDraft(
-                try selectedTextAttribute(focused)
+                try textAttribute(
+                    focused,
+                    name: kAXValueAttribute as CFString
+                )
             )
         else {
             throw ProviderOperationError.targetUnverified(
                 "selected provider draft exceeds the safe in-memory limit"
             )
         }
-        try await postText(
-            text,
-            bundleID: bundleID,
-            processIdentifier: identity.processIdentifier,
-            focusedElement: focused,
-            marker: inputMarker
+        DebugTrace.emit(
+            "native-automation",
+            "dispatch_text.draft_captured units=\(draft.utf16.count)"
         )
-        try verifyInputText(focused, expected: text)
-        var submitted = false
+        guard try await targetVerifier() else {
+            throw ProviderOperationError.targetUnverified(
+                "selected provider session changed before text replacement"
+            )
+        }
+        var submitAttempted = false
         do {
+            DebugTrace.emit("native-automation", "dispatch_text.replace.start")
+            try await replaceFocusedText(
+                with: text,
+                bundleID: bundleID,
+                processIdentifier: identity.processIdentifier,
+                marker: inputMarker
+            )
+            DebugTrace.emit("native-automation", "dispatch_text.replace.complete")
+            focused = try verifiedFocusedInput(
+                processIdentifier: identity.processIdentifier,
+                marker: inputMarker
+            )
+            try verifyInputText(focused, expected: text)
+            DebugTrace.emit("native-automation", "dispatch_text.command_verified")
             for _ in 0..<submitCount {
                 try await sleep(milliseconds: 500)
                 _ = try await requireFrontmost(
@@ -233,37 +311,75 @@ public actor NativeAutomation: NativeAutomating {
                     focusedElement: focused,
                     marker: inputMarker
                 )
-                submitted = true
+                submitAttempted = true
+                DebugTrace.emit("native-automation", "dispatch_text.submit_posted")
+            }
+            DebugTrace.emit("native-automation", "dispatch_text.wait_empty.start")
+            focused = try await waitForEmptyFocusedInput(
+                bundleID: bundleID,
+                processIdentifier: identity.processIdentifier,
+                marker: inputMarker,
+                targetVerifier: targetVerifier
+            )
+            DebugTrace.emit("native-automation", "dispatch_text.wait_empty.complete")
+            if !draft.isEmpty {
+                DebugTrace.emit("native-automation", "dispatch_text.restore.start")
+                try await postKeyboardText(
+                    draft,
+                    bundleID: bundleID,
+                    processIdentifier: identity.processIdentifier,
+                    focusedElement: focused,
+                    marker: inputMarker
+                )
+                try await sleep(milliseconds: 100)
+                try verifyInputText(focused, expected: draft)
+                DebugTrace.emit("native-automation", "dispatch_text.restore.complete")
+            }
+            guard try await targetVerifier() else {
+                throw ProviderOperationError.targetUnverified(
+                    "selected provider session changed during draft restoration"
+                )
             }
         } catch {
-            if !submitted, try await targetVerifier() {
-                try? await replaceFocusedText(
-                    with: draft,
-                    bundleID: bundleID,
+            DebugTrace.failure(
+                "native-automation",
+                "dispatch_text.failed",
+                error: error
+            )
+            if (try? await targetVerifier()) == true {
+                let current = try? verifiedFocusedInput(
                     processIdentifier: identity.processIdentifier,
                     marker: inputMarker
                 )
+                let currentText: String?
+                if let current {
+                    currentText = try? textAttribute(
+                        current,
+                        name: kAXValueAttribute as CFString
+                    )
+                } else {
+                    currentText = nil
+                }
+                if !submitAttempted
+                    || currentText.map({
+                        Self.inputTextMatches($0, expected: text)
+                    }) == true
+                {
+                    try? await replaceFocusedText(
+                        with: draft,
+                        bundleID: bundleID,
+                        processIdentifier: identity.processIdentifier,
+                        marker: inputMarker
+                    )
+                }
             }
             throw error
-        }
-        if !draft.isEmpty {
-            try await sleep(milliseconds: 300)
-            guard try await targetVerifier() else {
-                throw ProviderOperationError.targetUnverified(
-                    "selected provider session changed before draft restoration"
-                )
-            }
-            try await restoreDraft(
-                draft,
-                bundleID: bundleID,
-                processIdentifier: identity.processIdentifier,
-                marker: inputMarker
-            )
         }
         _ = try await requireFrontmost(
             bundleID: bundleID,
             processIdentifier: identity.processIdentifier
         )
+        DebugTrace.emit("native-automation", "dispatch_text.complete")
         return dispatchResult(
             started: started,
             message: "Command text was submitted to the verified provider input."
@@ -278,10 +394,23 @@ public actor NativeAutomation: NativeAutomating {
     ) async throws -> ProviderActionResult {
         try requireAccessibilityPermission()
         let started = ContinuousClock.now
+        try await activate(bundleID: bundleID)
         let identity = try await requireFrontmost(bundleID: bundleID)
+        guard try await targetVerifier() else {
+            throw ProviderOperationError.targetUnverified(
+                "selected provider session changed after application activation"
+            )
+        }
         prepareAccessibility(processIdentifier: identity.processIdentifier)
         try await sleep(milliseconds: 200)
-        if let focusKeyCode {
+        var focused: AXUIElement?
+        if let inputMarker {
+            focused = try? verifiedFocusedInput(
+                processIdentifier: identity.processIdentifier,
+                marker: inputMarker
+            )
+        }
+        if focused == nil, let focusKeyCode {
             try await postShortcut(
                 keyCode: focusKeyCode,
                 flags: .maskCommand,
@@ -290,14 +419,11 @@ public actor NativeAutomation: NativeAutomating {
             )
             try await sleep(milliseconds: 200)
         }
-        let focused: AXUIElement?
-        if let inputMarker {
+        if focused == nil, let inputMarker {
             focused = try verifiedFocusedInput(
                 processIdentifier: identity.processIdentifier,
                 marker: inputMarker
             )
-        } else {
-            focused = nil
         }
         _ = try await requireFrontmost(
             bundleID: bundleID,
@@ -458,34 +584,6 @@ public actor NativeAutomation: NativeAutomating {
         )
     }
 
-    private func selectedTextAttribute(
-        _ element: AXUIElement
-    ) throws -> String {
-        var value: CFTypeRef?
-        let result = AXUIElementCopyAttributeValue(
-            element,
-            kAXSelectedTextAttribute as CFString,
-            &value
-        )
-        if result == .noValue {
-            return ""
-        }
-        guard result == .success else {
-            throw ProviderOperationError.targetUnverified(
-                "focused input does not expose selected text"
-            )
-        }
-        if let string = value as? String {
-            return string
-        }
-        if let attributed = value as? NSAttributedString {
-            return attributed.string
-        }
-        throw ProviderOperationError.targetUnverified(
-            "focused input selected text has an unsupported type"
-        )
-    }
-
     private func replaceFocusedText(
         with text: String,
         bundleID: String,
@@ -502,83 +600,77 @@ public actor NativeAutomation: NativeAutomating {
             marker: marker,
             focusedElement: focused
         )
-        if text.isEmpty {
-            try await postFocusedKey(
-                keyCode: 51,
-                flags: [],
-                bundleID: bundleID,
-                processIdentifier: processIdentifier,
-                focusedElement: selected,
-                marker: marker
-            )
-        } else {
-            try await postText(
+        try await postFocusedKey(
+            keyCode: 51,
+            flags: [],
+            bundleID: bundleID,
+            processIdentifier: processIdentifier,
+            focusedElement: selected,
+            marker: marker
+        )
+        try await sleep(milliseconds: 100)
+        try verifyInputText(selected, expected: "")
+        if !text.isEmpty {
+            try await postKeyboardText(
                 text,
                 bundleID: bundleID,
                 processIdentifier: processIdentifier,
                 focusedElement: selected,
                 marker: marker
             )
-            try verifyInputText(selected, expected: text)
+            try await sleep(milliseconds: 100)
         }
+        try verifyInputText(selected, expected: text)
     }
 
-    private func restoreDraft(
-        _ draft: String,
+    private func waitForEmptyFocusedInput(
         bundleID: String,
         processIdentifier: pid_t,
-        marker: String
-    ) async throws {
-        let focused = try verifiedFocusedInput(
-            processIdentifier: processIdentifier,
-            marker: marker
-        )
-        let selected = try await selectAll(
-            bundleID: bundleID,
-            processIdentifier: processIdentifier,
-            marker: marker,
-            focusedElement: focused
-        )
-        guard try selectedTextAttribute(selected).isEmpty else {
-            throw ProviderOperationError.targetUnverified(
-                "provider input changed before draft restoration"
+        marker: String,
+        targetVerifier: @escaping @Sendable () async throws -> Bool
+    ) async throws -> AXUIElement {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        repeat {
+            _ = try await requireFrontmost(
+                bundleID: bundleID,
+                processIdentifier: processIdentifier
             )
-        }
-        try await postText(
-            draft,
-            bundleID: bundleID,
-            processIdentifier: processIdentifier,
-            focusedElement: selected,
-            marker: marker
+            guard try await targetVerifier() else {
+                throw ProviderOperationError.targetUnverified(
+                    "selected provider session changed after submission"
+                )
+            }
+            if let focused = try? verifiedFocusedInput(
+                processIdentifier: processIdentifier,
+                marker: marker
+            ),
+                let value = try? textAttribute(
+                    focused,
+                    name: kAXValueAttribute as CFString
+                ),
+                Self.inputTextMatches(value, expected: "")
+            {
+                return focused
+            }
+            try await sleep(milliseconds: 100)
+        } while ContinuousClock.now < deadline
+        throw ProviderOperationError.targetUnverified(
+            "provider input did not clear after command submission"
         )
-        try verifyInputText(selected, expected: draft)
     }
 
-    private func postText(
+    private func postKeyboardText(
         _ text: String,
         bundleID: String,
         processIdentifier: pid_t,
         focusedElement: AXUIElement,
         marker: String
     ) async throws {
-        let setResult = AXUIElementSetAttributeValue(
-            focusedElement,
-            kAXSelectedTextAttribute as CFString,
-            text as CFString
-        )
-        if setResult == .success {
-            return
-        }
-        guard
-            setResult == .attributeUnsupported
-                || setResult == .illegalArgument
-                || setResult == .notImplemented
-        else {
-            throw ProviderOperationError.system(
-                "macOS failed to replace the selected provider text"
-            )
-        }
         let units = Array(text.utf16)
+        DebugTrace.emit(
+            "native-automation",
+            "keyboard_text.start units=\(units.count) chunks=\((units.count + 19) / 20)"
+        )
         for start in stride(from: 0, to: units.count, by: 20) {
             _ = try await requireFrontmost(
                 bundleID: bundleID,
@@ -619,6 +711,7 @@ public actor NativeAutomation: NativeAutomating {
             up.post(tap: .cghidEventTap)
             try await sleep(milliseconds: 20)
         }
+        DebugTrace.emit("native-automation", "keyboard_text.complete")
     }
 
     private func verifyInputText(
@@ -644,6 +737,10 @@ public actor NativeAutomation: NativeAutomating {
         focusedElement: AXUIElement?,
         marker: String?
     ) async throws {
+        DebugTrace.emit(
+            "native-automation",
+            "focused_key.start key=\(keyCode)"
+        )
         _ = try await requireFrontmost(
             bundleID: bundleID,
             processIdentifier: processIdentifier
@@ -674,6 +771,10 @@ public actor NativeAutomation: NativeAutomating {
         up.flags = flags
         down.post(tap: .cghidEventTap)
         up.post(tap: .cghidEventTap)
+        DebugTrace.emit(
+            "native-automation",
+            "focused_key.complete key=\(keyCode)"
+        )
     }
 
     private func postShortcut(
@@ -724,6 +825,26 @@ public actor NativeAutomation: NativeAutomating {
         }
         event.flags = flags
         event.postToPid(processIdentifier)
+    }
+
+    private func postGlobalKey(
+        _ keyCode: CGKeyCode,
+        down: Bool,
+        flags: CGEventFlags
+    ) throws {
+        guard
+            let event = CGEvent(
+                keyboardEventSource: nil,
+                virtualKey: keyCode,
+                keyDown: down
+            )
+        else {
+            throw ProviderOperationError.system(
+                "macOS failed to create a global keyboard event"
+            )
+        }
+        event.flags = flags
+        event.post(tap: .cghidEventTap)
     }
 
     private func stringAttribute(

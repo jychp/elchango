@@ -265,11 +265,13 @@ public struct FoundationHTTPHandler: HTTPHandler {
             }
             return try await activate(payload)
         } catch let error as DeckServiceError {
+            DebugTrace.failure("http-action", "request.failed", error: error)
             return try jsonResponse(
                 .conflict,
                 APIErrorResponse(error: error.localizedDescription)
             )
         } catch let error as PreferencesStoreError {
+            DebugTrace.failure("http-action", "request.failed", error: error)
             return try jsonResponse(
                 .serviceUnavailable,
                 APIErrorResponse(
@@ -278,6 +280,7 @@ public struct FoundationHTTPHandler: HTTPHandler {
                 )
             )
         } catch let error as ProviderOperationError {
+            DebugTrace.failure("http-action", "request.failed", error: error)
             return try jsonResponse(
                 .serviceUnavailable,
                 APIErrorResponse(
@@ -286,6 +289,7 @@ public struct FoundationHTTPHandler: HTTPHandler {
                 )
             )
         } catch {
+            DebugTrace.failure("http-action", "request.failed", error: error)
             return try jsonResponse(
                 .serviceUnavailable,
                 APIErrorResponse(
@@ -411,9 +415,11 @@ public struct FoundationHTTPHandler: HTTPHandler {
     private func activate(
         _ request: DeckActionRequest
     ) async throws -> HTTPResponse {
+        DebugTrace.emit("http-action", "activate.start")
         let snapshot = try await deckService.snapshot(
             clientID: request.clientID
         )
+        DebugTrace.emit("http-action", "activate.snapshot_loaded")
         guard
             let button = snapshot.buttons.first(
                 where: { $0.id == request.buttonID && $0.enabled }
@@ -423,10 +429,16 @@ public struct FoundationHTTPHandler: HTTPHandler {
                 "button is not actionable in the current snapshot"
             )
         }
+        DebugTrace.emit(
+            "http-action",
+            "activate.button_resolved kind=\(button.kind.rawValue)"
+        )
         if button.kind == .session, let sessionID = button.sessionID {
+            DebugTrace.emit("http-action", "activate.focus.start")
             let focus = try await deckService.focusSession(
                 sessionID: sessionID
             )
+            DebugTrace.emit("http-action", "activate.focus.complete")
             return try jsonResponse(
                 focus.accepted ? .ok : .conflict,
                 JSONValue.object([
@@ -536,10 +548,12 @@ public struct FoundationHTTPHandler: HTTPHandler {
                     "command button has no verified target"
                 )
             }
+            DebugTrace.emit("http-action", "activate.command.start")
             let command = try await deckService.executeCommand(
                 sessionID: sessionID,
                 commandID: commandID
             )
+            DebugTrace.emit("http-action", "activate.command.complete")
             return try jsonResponse(
                 command.accepted ? .ok : .conflict,
                 JSONValue.object([

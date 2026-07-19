@@ -166,24 +166,31 @@ select the target or change its `lastFocusedAt`; the verdict was
 Native shortcuts provided the verifiable focus mechanism:
 
 - `Cmd+1` through `Cmd+9` select corresponding persisted sidebar sessions.
-- Order comes from `claude_desktop_config.json`: ungrouped
-  `starred-local-code-sessions` in reverse persisted order, then sessions in
-  `customGroupOrder`, then non-starred sessions by descending
-  `lastActivityAt`.
+- Current order comes from `claude_desktop_config.json`: unassigned sessions
+  from qualified `pinnedOrder`, then custom groups from the matching
+  `dframe-group-scopes.groups` array and each group's `order`, then the virtual
+  Ungrouped section by descending `lastActivityAt`.
+- A `pinnedOrder` entry assigned to a custom group is placed only in that
+  group. Stale persisted IDs are ignored, but visible assigned sessions missing
+  from their group order fail closed.
+- Legacy installations use ungrouped `starred-local-code-sessions` in reverse
+  persisted order, then sessions in `customGroupOrder`, then remaining sessions
+  by descending `lastActivityAt`.
 - Positions after 9 use `Cmd+9`, followed by one `Ctrl+Tab` for each additional
   position.
 - Positions 3 and 10 independently returned `FOCUS_VERIFIED`.
 
 Production reconstructs this order immediately before native keyboard dispatch
-from either the legacy grouped fields or the current qualified `pinnedOrder`
-list, activates Claude before resolving the shortcut, and rechecks the order,
-selected session, and foreground application. Claude may persist
-`lastFocusedAt` several seconds after its UI changes, so that delayed value is
-not used for immediate surface feedback. Any missing order entry or failed
-preflight rejects the action. For a different target, success means the exact
-sidebar shortcut was dispatched and Claude remained frontmost, not that the
-delayed selected-session record already confirms the target. Commands stay
-disabled until a later inventory snapshot uniquely selects that session.
+from either the legacy grouped fields or the current qualified pinned, scoped
+group, and Ungrouped fields. The current section and group ordering was
+validated against the visible Claude sidebar on July 19, 2026, without
+dispatching a shortcut. Production activates Claude before resolving the
+shortcut and rechecks the order, selected session, and foreground application.
+Claude may persist
+`lastFocusedAt` several seconds after its UI changes, so focus dispatch does not
+wait for that delayed record. Any missing order entry, stale order, or failed
+preflight rejects the action. Commands stay disabled until a later inventory
+snapshot uniquely confirms the selected session.
 
 If the target is already the uniquely most recently focused session, elChango
 activates Claude without navigation and verifies that the same target remains
@@ -195,10 +202,12 @@ Current verdict: `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
 
 The observed Claude composer is an enabled `AXTextArea` with description
 `Prompt` and exact `AXDOMClassList` value
-`tiptapProseMirrorProseMirror-focused`. Text recipes require that exact marker
-and an empty draft. The POC and product scripts perform two preflights and
-recheck the frontmost bundle, selected target, enabled input role, marker, and
-draft immediately before dispatch.
+`tiptapProseMirrorProseMirror-focused`. Product text dispatch follows the shared
+[native text command dispatch contract](../command-dispatch.md): activate
+Claude, verify the foreground process, selected target, enabled input role, and
+exact marker, then capture, replace, submit, and restore any existing draft.
+The POC remains a dry-run-first evidence probe and does not define the product
+transaction.
 
 Provider mappings:
 
@@ -231,8 +240,8 @@ Claude understood or completed the semantic operation.
 - Provider actions share one serialized native automation boundary with Cursor.
 - Every privileged action rechecks the exact selected session and frontmost
   bundle immediately before dispatch.
-- Text dispatch additionally requires the enabled, empty, provider-specific
-  Accessibility target.
+- Text dispatch additionally requires the enabled provider-specific
+  Accessibility target and bounded draft capture.
 - Shortcuts target the verified process. Text and submission events use the
   global HID tap only after an atomic foreground, selected-session, and
   exact-input preflight because the observed Electron editor ignored

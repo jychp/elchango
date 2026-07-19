@@ -30,6 +30,11 @@ enum OrderedJSON {
         return strings.count == values.count ? strings : nil
     }
 
+    var arrayValues: [OrderedJSON]? {
+        guard case .array(let values) = self else { return nil }
+        return values
+    }
+
     var objectEntries: [(String, OrderedJSON)]? {
         guard case .object(let entries) = self else { return nil }
         return entries

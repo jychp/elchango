@@ -194,9 +194,11 @@ Current verdict: `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
 The observed Cursor composer is an enabled `AXTextArea` with exact
 `AXDOMClassList` value
 `tiptapProseMirrorui-prompt-input-editor__inputProseMirror-focused`. `Cmd+L`
-focuses it from the conversation area. Text dispatch then atomically rechecks
-the foreground Cursor identity, selected composer, enabled role, exact class,
-and empty draft.
+focuses it from the conversation area when it is not already focused. Text
+dispatch follows the shared
+[native text command dispatch contract](../command-dispatch.md): activate
+Cursor, verify the foreground process, selected composer, enabled role, and
+exact class, then capture, replace, submit, and restore any existing draft.
 
 Provider mappings:
 
@@ -230,7 +232,8 @@ completion.
 - Rebuild sidebar order, selected session, and foreground evidence immediately
   before native input.
 - Verify the exact selected composer after focus.
-- Require the exact enabled, empty composer marker for text recipes.
+- Require the exact enabled composer marker and bounded draft capture for text
+  recipes.
 - Serialize privileged actions across providers. Shortcuts target the verified
   process ID. Text and submission events use the global HID tap only after an
   atomic foreground, selected-session, and exact-input preflight because the

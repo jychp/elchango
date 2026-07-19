@@ -511,6 +511,16 @@ private actor FakeNativeAutomation: NativeAutomating {
         shortcuts += 1
     }
 
+    func postHeldModifierShortcut(
+        modifierKeyCode: CGKeyCode,
+        keyCode: CGKeyCode,
+        flags: CGEventFlags,
+        repeatCount: Int,
+        bundleID: String
+    ) async throws {
+        shortcuts += repeatCount
+    }
+
     func dispatchText(
         _ text: String,
         bundleID: String,

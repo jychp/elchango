@@ -188,8 +188,13 @@ public actor ClaudeCodeProvider: AgentProvider {
     private func performFocus(
         nativeSessionID: String
     ) async throws -> ProviderActionResult {
+        DebugTrace.emit("claude-focus", "focus.start")
         let started = ContinuousClock.now
         let beforeRecords = try readRecords().filter { !$0.isArchived }
+        DebugTrace.emit(
+            "claude-focus",
+            "focus.inventory_loaded count=\(beforeRecords.count)"
+        )
         guard
             let target = beforeRecords.first(where: {
                 $0.desktopSessionID == nativeSessionID
@@ -200,6 +205,7 @@ public actor ClaudeCodeProvider: AgentProvider {
             )
         }
         try await automation.activate(bundleID: Self.bundleID)
+        DebugTrace.emit("claude-focus", "focus.activated")
         let order = try shortcutOrder(records: beforeRecords)
         guard let index = order.firstIndex(of: nativeSessionID) else {
             return actionResult(
@@ -223,6 +229,10 @@ public actor ClaudeCodeProvider: AgentProvider {
             }.count == 1
 
         if !targetAlreadySelected {
+            DebugTrace.emit(
+                "claude-focus",
+                "focus.preflight.start shortcut=\(index + 1)"
+            )
             let latestRecords = try readRecords().filter {
                 !$0.isArchived
             }
@@ -244,7 +254,9 @@ public actor ClaudeCodeProvider: AgentProvider {
                     details: ["session_id": .string(nativeSessionID)]
                 )
             }
+            DebugTrace.emit("claude-focus", "focus.preflight.complete")
             try await sendClaudeSidebarShortcut(index: index + 1)
+            DebugTrace.emit("claude-focus", "focus.shortcut_posted")
         }
         guard try await isFrontmost() else {
             return actionResult(
@@ -260,6 +272,7 @@ public actor ClaudeCodeProvider: AgentProvider {
             target.cliSessionID,
             observedAtMilliseconds: clock()
         )
+        DebugTrace.emit("claude-focus", "focus.complete")
         return actionResult(
             accepted: true,
             verdict: targetAlreadySelected
@@ -441,8 +454,6 @@ public actor ClaudeCodeProvider: AgentProvider {
     ) throws -> [String] {
         let root = try OrderedJSON(data: Data(contentsOf: desktopConfigURL))
         guard let epitaxy = root["preferences"]?["epitaxyPrefs"],
-            let starred = epitaxy["starred-local-code-sessions"]?
-                .stringArray,
             let localSlice = epitaxy["dframe-local-slice"]
         else {
             throw ClaudeCodeProviderError.readFailed(
@@ -451,20 +462,74 @@ public actor ClaudeCodeProvider: AgentProvider {
         }
         let visibleIDs = Set(records.map(\.desktopSessionID))
         if let pinnedOrder = localSlice["pinnedOrder"]?.stringArray {
+            let scopeKeys = Set(records.map(\.groupScopeKey))
+            guard scopeKeys.count <= 1 else {
+                throw ClaudeCodeProviderError.readFailed(
+                    "Claude visible sessions span multiple sidebar group scopes"
+                )
+            }
+            let groupScope = try scopeKeys.first.flatMap { scopeKey in
+                try currentGroupScope(
+                    epitaxy: epitaxy,
+                    scopeKey: scopeKey
+                )
+            }
+            let assignments = groupScope?.assignments ?? [:]
             var persisted: [String] = []
             for qualified in pinnedOrder
             where qualified.hasPrefix("code:") {
                 let sessionID = String(qualified.dropFirst("code:".count))
                 if visibleIDs.contains(sessionID),
+                    assignments[qualified] == nil,
                     !persisted.contains(sessionID)
                 {
                     persisted.append(sessionID)
                 }
             }
-            appendRemaining(records, to: &persisted)
+            if let groupScope {
+                for groupID in groupScope.groupIDs {
+                    for qualified in groupScope.order[groupID, default: []]
+                    where qualified.hasPrefix("code:") {
+                        let sessionID = String(
+                            qualified.dropFirst("code:".count)
+                        )
+                        guard
+                            !visibleIDs.contains(sessionID)
+                                || assignments[qualified] == groupID
+                        else {
+                            throw ClaudeCodeProviderError.readFailed(
+                                "Claude group assignment and order disagree"
+                            )
+                        }
+                        if visibleIDs.contains(sessionID),
+                            !persisted.contains(sessionID)
+                        {
+                            persisted.append(sessionID)
+                        }
+                    }
+                }
+                let orderedIDs = Set(persisted)
+                let missingAssigned = records.contains {
+                    assignments["code:\($0.desktopSessionID)"] != nil
+                        && !orderedIDs.contains($0.desktopSessionID)
+                }
+                guard !missingAssigned else {
+                    throw ClaudeCodeProviderError.readFailed(
+                        "Claude group order omits a visible assigned session"
+                    )
+                }
+            }
+            appendRemaining(
+                records.filter {
+                    assignments["code:\($0.desktopSessionID)"] == nil
+                },
+                to: &persisted
+            )
             return persisted
         }
         guard
+            let starred = epitaxy["starred-local-code-sessions"]?
+                .stringArray,
             let assignmentEntries = localSlice["customGroupAssignments"]?
                 .objectEntries,
             let groupEntries = localSlice["customGroupOrder"]?
@@ -502,6 +567,64 @@ public actor ClaudeCodeProvider: AgentProvider {
         }
         appendRemaining(records, to: &persisted)
         return persisted
+    }
+
+    private func currentGroupScope(
+        epitaxy: OrderedJSON,
+        scopeKey: String
+    ) throws -> ClaudeGroupScope? {
+        guard let scopes = epitaxy["dframe-group-scopes"] else {
+            return nil
+        }
+        guard let scopeEntries = scopes.objectEntries else {
+            throw ClaudeCodeProviderError.readFailed(
+                "Claude group scopes must be an object"
+            )
+        }
+        guard let scope = scopeEntries.first(where: { $0.0 == scopeKey })?.1
+        else {
+            return nil
+        }
+        guard let groups = scope["groups"]?.arrayValues,
+            let assignmentEntries = scope["assignments"]?.objectEntries,
+            let orderEntries = scope["order"]?.objectEntries
+        else {
+            throw ClaudeCodeProviderError.readFailed(
+                "Claude group scope is malformed"
+            )
+        }
+        let groupIDs = try groups.map { group in
+            guard let groupID = group["id"]?.stringValue, !groupID.isEmpty
+            else {
+                throw ClaudeCodeProviderError.readFailed(
+                    "Claude group ID must be a nonempty string"
+                )
+            }
+            return groupID
+        }
+        var assignments: [String: String] = [:]
+        for (qualified, value) in assignmentEntries {
+            guard let groupID = value.stringValue else {
+                throw ClaudeCodeProviderError.readFailed(
+                    "Claude group assignments must contain string IDs"
+                )
+            }
+            assignments[qualified] = groupID
+        }
+        var order: [String: [String]] = [:]
+        for (groupID, value) in orderEntries {
+            guard let qualifiedIDs = value.stringArray else {
+                throw ClaudeCodeProviderError.readFailed(
+                    "Claude group order must contain string lists"
+                )
+            }
+            order[groupID] = qualifiedIDs
+        }
+        return ClaudeGroupScope(
+            groupIDs: groupIDs,
+            assignments: assignments,
+            order: order
+        )
     }
 
     private func appendRemaining(
@@ -552,14 +675,13 @@ public actor ClaudeCodeProvider: AgentProvider {
         )
         if index > direct {
             try await Task.sleep(for: .milliseconds(150))
-            for _ in direct..<index {
-                try await automation.postShortcut(
-                    keyCode: 48,
-                    flags: .maskControl,
-                    bundleID: Self.bundleID
-                )
-                try await Task.sleep(for: .milliseconds(120))
-            }
+            try await automation.postHeldModifierShortcut(
+                modifierKeyCode: 59,
+                keyCode: 48,
+                flags: .maskControl,
+                repeatCount: index - direct,
+                bundleID: Self.bundleID
+            )
         }
     }
 
@@ -753,7 +875,12 @@ public actor ClaudeCodeProvider: AgentProvider {
             ),
             lastFocusedAtMilliseconds: lastFocusedAtMilliseconds,
             isArchived: isArchived,
-            title: title
+            title: title,
+            groupScopeKey: [
+                url.deletingLastPathComponent()
+                    .deletingLastPathComponent().lastPathComponent,
+                url.deletingLastPathComponent().lastPathComponent,
+            ].joined(separator: "/")
         )
     }
 
@@ -886,6 +1013,13 @@ private struct ClaudeDesktopRecord {
     let lastFocusedAtMilliseconds: Int64?
     let isArchived: Bool
     let title: String?
+    let groupScopeKey: String
+}
+
+private struct ClaudeGroupScope {
+    let groupIDs: [String]
+    let assignments: [String: String]
+    let order: [String: [String]]
 }
 
 private struct CachedClaudeRecord {
