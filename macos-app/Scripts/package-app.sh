@@ -215,30 +215,10 @@ cat > "${CONTENTS_DIR}/Info.plist" <<PLIST
 PLIST
 
 plutil -lint "${CONTENTS_DIR}/Info.plist"
-sign_path() {
-  local identifier="$1"
-  local path="$2"
-  if [[ "${SIGN_MODE}" == "developer-id" ]]; then
-    codesign \
-      --force \
-      --sign "${SIGN_IDENTITY}" \
-      --options runtime \
-      --timestamp \
-      --identifier "${identifier}" \
-      "${path}"
-  else
-    codesign \
-      --force \
-      --sign "${SIGN_IDENTITY}" \
-      --identifier "${identifier}" \
-      "${path}"
-  fi
-}
-
-sign_path \
-  "${HOOK_IDENTIFIER}" \
-  "${MACOS_CONTENTS_DIR}/${HOOK_EXECUTABLE_NAME}"
-sign_path "${BUNDLE_IDENTIFIER}" "${APP_DIR}"
+ELCHANGO_PROFILE="${PROFILE}" \
+ELCHANGO_SIGN_MODE="${SIGN_MODE}" \
+ELCHANGO_CODESIGN_IDENTITY="${SIGN_IDENTITY}" \
+  "${SCRIPT_DIR}/sign-app.sh" "${APP_DIR}"
 
 ELCHANGO_EXPECTED_PROFILE="${PROFILE}" \
 ELCHANGO_EXPECTED_ARCHITECTURES="${ARCHITECTURES}" \

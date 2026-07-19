@@ -88,14 +88,27 @@ The Release workflow supports manual dispatch from `main`. A manual run:
 
 1. verifies that the selected commit exactly matches `origin/main`;
 2. packages the Stream Deck plugin;
-3. builds `arm64` and `x86_64` app executables;
+3. builds `arm64` and `x86_64` app executables without release credentials;
 4. combines them into a Universal 2 application;
-5. signs the helper and outer app with Developer ID, Hardened Runtime, and an
-   Apple timestamp;
-6. submits the app to Apple and waits for an `Accepted` result;
-7. staples and validates the notarization ticket;
-8. checks Gatekeeper acceptance;
-9. uploads private workflow artifacts without creating a GitHub Release.
+5. signs the helper and outer app in a protected job with Developer ID,
+   Hardened Runtime, and an Apple timestamp;
+6. submits the exact signed archive and immediately preserves it with a receipt
+   containing the Apple submission ID, source commit, version, and SHA-256;
+7. waits for an `Accepted` result in a separate job;
+8. staples and validates the notarization ticket;
+9. checks Gatekeeper acceptance;
+10. uploads private workflow artifacts without creating a GitHub Release.
+
+Every workflow job and step has a bounded timeout. The Apple waiter uses a
+shorter native timeout than its job, leaving time for credential cleanup.
+Apple continues processing after a local or GitHub timeout.
+
+If **Wait for and staple macOS app** times out, use **Re-run failed jobs** on
+the same workflow run. The successful submission job is not rerun, so the
+failed job downloads the preserved signed archive and receipt, waits on the
+same Apple submission ID, and never submits a duplicate. Do not choose
+**Re-run all jobs** for this recovery path because that intentionally creates
+a new submission.
 
 Download the manual run's macOS artifact and verify it on another Mac or a clean
 user account:
@@ -173,7 +186,8 @@ make build-app-macos-universal
 
 Notarization additionally requires `APPLE_API_KEY_PATH`,
 `APPLE_API_KEY_ID`, and `APPLE_API_ISSUER_ID`. `make notarize-app-macos`
-creates the final ZIP and checksum under `dist/`.
+submits, records `dist/elChango-notarization-receipt.json`, waits on that
+submission, and creates the final ZIP and checksum under `dist/`.
 
 ## Rotation and failure handling
 
@@ -188,5 +202,11 @@ creates the final ZIP and checksum under `dist/`.
 - If Apple rejects a submission, inspect the `notarytool log` emitted by the
   workflow. Do not retry blindly. Fix the reported signing or bundle issue and
   build a new artifact.
+- If Apple remains in progress beyond the workflow timeout, rerun only the
+  failed wait job. The receipt binds recovery to the original commit and exact
+  signed archive checksum.
+- The cleanup steps run after ordinary failures and bounded Apple waits. A
+  GitHub-hosted runner is ephemeral, so runner disposal remains the final
+  cleanup boundary if GitHub forcibly terminates a job.
 - Never publish an ad hoc signed artifact or bypass Gatekeeper to make a failed
   release appear installable.

@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release
   cancel-in-progress: false
 
 jobs:
@@ -22,12 +22,14 @@ jobs:
       version: ${{ steps.version.outputs.value }}
     steps:
       - name: Check out release commit
+        timeout-minutes: 3
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Verify release ref and current main
+        timeout-minutes: 5
         env:
           EVENT_NAME: ${{ github.event_name }}
           RELEASE_REF: ${{ github.ref }}
@@ -55,6 +57,7 @@ jobs:
           fi
 
       - name: Read release version
+        timeout-minutes: 1
         id: version
         run: echo "value=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
 
@@ -65,24 +68,28 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Check out release commit
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        timeout-minutes: 3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: Set up Node.js
+        timeout-minutes: 3
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: plugins/streamdeck/package-lock.json
+          package-manager-cache: false
 
       - name: Install Stream Deck dependencies
+        timeout-minutes: 7
         run: npm ci
         working-directory: plugins/streamdeck
 
       - name: Validate and package Stream Deck plugin
+        timeout-minutes: 10
         run: make build-plugin-streamdeck
 
       - name: Create SHA-256 checksum
+        timeout-minutes: 2
         id: artifact
         shell: bash
         run: |
@@ -102,6 +109,7 @@ jobs:
           echo "package=$package" >> "$GITHUB_OUTPUT"
 
       - name: Upload Stream Deck release files
+        timeout-minutes: 5
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: streamdeck-release
@@ -111,30 +119,89 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  macos:
-    name: Sign and notarize macOS app
+  macos-build:
+    name: Build macOS app
     needs: validate
     runs-on: macos-26
-    timeout-minutes: 60
-    environment: release
+    timeout-minutes: 45
     steps:
       - name: Check out release commit
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        timeout-minutes: 3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        timeout-minutes: 3
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: web/package-lock.json
+          package-manager-cache: false
 
       - name: Install web dependencies
+        timeout-minutes: 8
         run: npm ci
         working-directory: web
 
+      - name: Build secret-free Universal 2 app
+        timeout-minutes: 30
+        env:
+          ELCHANGO_BUILD: ${{ github.run_number }}
+          ELCHANGO_SIGN_MODE: adhoc
+        run: make build-app-macos-universal
+
+      - name: Archive app for artifact transport
+        timeout-minutes: 5
+        run: |
+          ditto \
+            -c \
+            -k \
+            --sequesterRsrc \
+            --keepParent \
+            macos-app/dist/elChango.app \
+            elChango-secret-free.zip
+
+      - name: Upload secret-free macOS app
+        timeout-minutes: 5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-secret-free
+          path: elChango-secret-free.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  macos-submit:
+    name: Sign and submit macOS app
+    needs:
+      - validate
+      - macos-build
+    runs-on: macos-26
+    timeout-minutes: 30
+    environment: release
+    steps:
+      - name: Check out release commit
+        timeout-minutes: 3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Download secret-free macOS app
+        timeout-minutes: 5
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: macos-secret-free
+          path: secret-free
+
+      - name: Extract secret-free macOS app
+        timeout-minutes: 3
+        run: |
+          mkdir -p macos-app/dist
+          ditto -x -k \
+            secret-free/elChango-secret-free.zip \
+            macos-app/dist
+
       - name: Import Developer ID certificate and API key
+        timeout-minutes: 5
         id: signing
         env:
           CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
@@ -182,31 +249,50 @@ jobs:
           echo "identity=$identity" >> "$GITHUB_OUTPUT"
           echo "api-key-path=$api_key_path" >> "$GITHUB_OUTPUT"
 
-      - name: Build, sign, notarize, and archive app
+      - name: Sign app with Developer ID
+        timeout-minutes: 5
         env:
           ELCHANGO_SIGN_MODE: developer-id
           ELCHANGO_CODESIGN_IDENTITY: ${{ steps.signing.outputs.identity }}
-          ELCHANGO_BUILD: ${{ github.run_number }}
           ELCHANGO_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          ELCHANGO_PROFILE: stable
+        run: |
+          : "${ELCHANGO_TEAM_ID:?Missing APPLE_TEAM_ID environment variable}"
+          ./macos-app/Scripts/sign-app.sh \
+            macos-app/dist/elChango.app
+          ELCHANGO_EXPECTED_PROFILE=stable \
+          ELCHANGO_EXPECTED_ARCHITECTURES="arm64 x86_64" \
+          ELCHANGO_VERIFY_DISTRIBUTION=1 \
+            ./macos-app/Scripts/verify-package.sh \
+              macos-app/dist/elChango.app
+
+      - name: Submit app to Apple
+        timeout-minutes: 12
+        env:
           APPLE_API_KEY_PATH: ${{ steps.signing.outputs.api-key-path }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          ELCHANGO_SOURCE_COMMIT: ${{ github.sha }}
         run: |
-          : "${ELCHANGO_TEAM_ID:?Missing APPLE_TEAM_ID environment variable}"
           : "${APPLE_API_ISSUER_ID:?Missing APPLE_API_ISSUER_ID}"
-          make notarize-app-macos
+          ./macos-app/Scripts/notarize-app.sh submit \
+            macos-app/dist/elChango.app \
+            dist/elChango-notarization-pending.zip \
+            dist/elChango-notarization-receipt.json
 
-      - name: Upload macOS release files
+      - name: Preserve submitted app and receipt
+        timeout-minutes: 5
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: macos-release
+          name: macos-notarization-pending
           path: |
-            dist/elChango-${{ needs.validate.outputs.version }}-macos-universal.zip
-            dist/elChango-${{ needs.validate.outputs.version }}-macos-universal.zip.sha256
+            dist/elChango-notarization-pending.zip
+            dist/elChango-notarization-receipt.json
           if-no-files-found: error
           retention-days: 7
 
       - name: Remove signing material
+        timeout-minutes: 5
         if: always()
         env:
           API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
@@ -217,13 +303,83 @@ jobs:
             "$RUNNER_TEMP/developer-id.p12" \
             "$RUNNER_TEMP/AuthKey_${API_KEY_ID}.p8"
 
+  macos-notarize:
+    name: Wait for and staple macOS app
+    needs:
+      - validate
+      - macos-submit
+    runs-on: macos-26
+    timeout-minutes: 50
+    environment: release
+    steps:
+      - name: Check out release commit
+        timeout-minutes: 3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Download submitted app and receipt
+        timeout-minutes: 5
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: macos-notarization-pending
+          path: dist
+
+      - name: Restore notarization API key
+        timeout-minutes: 3
+        id: api-key
+        env:
+          API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        run: |
+          : "${API_KEY_BASE64:?Missing APPLE_API_KEY_P8_BASE64}"
+          : "${API_KEY_ID:?Missing APPLE_API_KEY_ID}"
+          api_key_path="$RUNNER_TEMP/AuthKey_${API_KEY_ID}.p8"
+          printf '%s' "$API_KEY_BASE64" | base64 -D > "$api_key_path"
+          chmod 600 "$api_key_path"
+          echo "path=$api_key_path" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for Apple, staple, and archive
+        timeout-minutes: 40
+        env:
+          APPLE_API_KEY_PATH: ${{ steps.api-key.outputs.path }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          ELCHANGO_NOTARY_TIMEOUT: 30m
+          ELCHANGO_SOURCE_COMMIT: ${{ github.sha }}
+          ELCHANGO_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+        run: |
+          : "${ELCHANGO_TEAM_ID:?Missing APPLE_TEAM_ID environment variable}"
+          : "${APPLE_API_ISSUER_ID:?Missing APPLE_API_ISSUER_ID}"
+          ./macos-app/Scripts/notarize-app.sh finish \
+            dist/elChango-notarization-pending.zip \
+            dist/elChango-notarization-receipt.json
+
+      - name: Upload macOS release files
+        timeout-minutes: 5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-release
+          path: |
+            dist/elChango-${{ needs.validate.outputs.version }}-macos-universal.zip
+            dist/elChango-${{ needs.validate.outputs.version }}-macos-universal.zip.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Remove notarization API key
+        timeout-minutes: 3
+        if: always()
+        env:
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        run: rm -f "$RUNNER_TEMP/AuthKey_${API_KEY_ID}.p8"
+
   publish:
     name: Publish GitHub Release
     if: github.event_name == 'push'
     needs:
       - validate
       - streamdeck
-      - macos
+      - macos-notarize
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: release
@@ -231,6 +387,7 @@ jobs:
       contents: write
     steps:
       - name: Download release files
+        timeout-minutes: 5
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: "*-release"
@@ -238,6 +395,7 @@ jobs:
           merge-multiple: true
 
       - name: Create GitHub Release
+        timeout-minutes: 5
         uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
         with:
           files: release-assets/*
@@ -245,6 +403,7 @@ jobs:
           generate_release_notes: true
 
       - name: Dispatch Homebrew Cask update
+        timeout-minutes: 5
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           VERSION: ${{ needs.validate.outputs.version }}

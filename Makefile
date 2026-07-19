@@ -8,7 +8,7 @@ DIST_DIR ?= dist
 	setup \
 	generate-contracts test-contracts \
 	test test-versions test-app-macos test-web test-plugins test-plugin-cursor \
-	test-plugin-claude test-plugin-streamdeck test-pocs \
+	test-plugin-claude test-plugin-streamdeck test-pocs test-release-scripts \
 	build build-app-macos build-app-macos-universal notarize-app-macos \
 	verify-release-app-macos build-web build-plugins build-plugin-cursor \
 	build-plugin-claude build-plugin-streamdeck \
@@ -19,7 +19,9 @@ setup:
 	npm --prefix plugins/streamdeck ci
 	swift package --package-path macos-app resolve
 
-test: test-versions test-contracts test-app-macos test-web test-plugins test-pocs
+test: \
+	test-versions test-contracts test-app-macos test-web test-plugins test-pocs \
+	test-release-scripts
 	git diff --check
 
 generate-contracts:
@@ -70,6 +72,9 @@ test-pocs:
 		$(PYTHON) -m py_compile "$$poc"; \
 		$(PYTHON) "$$poc" --help >/dev/null; \
 	done
+
+test-release-scripts:
+	./macos-app/Tests/Scripts/notarize-app-tests.sh
 
 build: build-app-macos build-plugins
 
@@ -133,7 +138,10 @@ release:
 		echo "ERROR: tag v$(VERSION) already exists." >&2; \
 		exit 2; \
 	fi
-	git tag -a "v$(VERSION)" -m "v$(VERSION)"
+	@git tag -s "v$(VERSION)" -m "v$(VERSION)" || { \
+		echo "ERROR: release tags must be signed with the configured Git signing key." >&2; \
+		exit 2; \
+	}
 	git push origin "v$(VERSION)"
 
 clean:
