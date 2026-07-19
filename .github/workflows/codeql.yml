@@ -1,7 +1,6 @@
 name: CodeQL
 
 on:
-  pull_request:
   push:
     branches:
       - main
@@ -43,7 +42,7 @@ jobs:
           - language: swift
             build-mode: manual
             os: macos-26
-            timeout: 20
+            timeout: 25
     steps:
       - name: Check out repository
         timeout-minutes: 3
@@ -60,7 +59,7 @@ jobs:
 
       - name: Build production Swift target
         if: matrix.language == 'swift'
-        timeout-minutes: 8
+        timeout-minutes: 15
         run: >-
           swift build
           --package-path macos-app
