@@ -10,9 +10,9 @@ sessions at a glance, then let you return to the right session, start a new one,
 and run a small set of verified commands without leaving the hardware.
 
 The physical Stream Deck MK.2 experience is the main product. You can try the
-same layout first with the Stream Deck Mobile app, then move to the physical
-device without learning a different workflow. A browser deck is included as a
-fallback for setup, testing, and troubleshooting.
+integration first with the six free keys in Stream Deck Mobile. Reproducing the
+complete 5-by-3 layout on a mobile device requires Stream Deck Mobile Pro. A
+browser deck is included as a fallback for setup, testing, and troubleshooting.
 
 The app is designed to fail closed. If elChango cannot verify the provider,
 session, or command target, it disables or rejects the action instead of
@@ -21,8 +21,8 @@ guessing.
 ## What you get
 
 - A Stream Deck MK.2 profile with a complete 5-by-3 physical control surface.
-- Support for Stream Deck Mobile so you can test the experience before buying
-  the physical hardware.
+- Support for the six-key free Stream Deck Mobile tier, with Mobile Pro required
+  for the complete 5-by-3 layout.
 - A native menu bar app that discovers local Cursor and Claude Code sessions.
 - A browser fallback for setup, testing, and troubleshooting.
 - Shared working, waiting, done, error, idle, and degraded status.
@@ -100,9 +100,10 @@ Download the `.streamDeckPlugin` file from the matching
 it. The package installs the plugin and an `elChango` Stream Deck MK.2 profile
 with all 15 keys populated.
 
-Use the profile with Stream Deck Mobile to try the full 15-key workflow before
-buying a physical Stream Deck. The browser deck remains available when you only
-need a quick setup or troubleshooting fallback.
+The free Stream Deck Mobile tier exposes six keys, which is enough to test the
+plugin before buying physical hardware. Stream Deck Mobile Pro is required to
+use a 5-by-3 mobile layout and expose the full 15-key workflow. The browser deck
+remains available when you need a complete setup or troubleshooting fallback.
 
 The profile stores positions, not session identities. Before each action, the
 plugin requests a fresh button ID and revision from the local app. See the
