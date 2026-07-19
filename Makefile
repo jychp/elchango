@@ -8,7 +8,8 @@ DIST_DIR ?= dist
 	setup \
 	test test-versions test-app-macos test-web test-plugins test-plugin-cursor \
 	test-plugin-claude test-plugin-streamdeck test-pocs \
-	build build-app-macos build-web build-plugins build-plugin-cursor \
+	build build-app-macos build-app-macos-universal notarize-app-macos \
+	verify-release-app-macos build-web build-plugins build-plugin-cursor \
 	build-plugin-claude build-plugin-streamdeck \
 	release clean
 
@@ -61,6 +62,20 @@ build: build-app-macos build-plugins
 
 build-app-macos: test-versions
 	./macos-app/Scripts/package-app.sh
+
+build-app-macos-universal: test-versions
+	ELCHANGO_ARCHITECTURES="arm64 x86_64" \
+		./macos-app/Scripts/package-app.sh
+
+notarize-app-macos: build-app-macos-universal
+	./macos-app/Scripts/notarize-app.sh
+
+verify-release-app-macos:
+	ELCHANGO_VERIFY_DISTRIBUTION=1 \
+	ELCHANGO_VERIFY_NOTARIZATION=1 \
+	ELCHANGO_EXPECTED_ARCHITECTURES="arm64 x86_64" \
+		./macos-app/Scripts/verify-package.sh \
+			macos-app/dist/elChango.app
 
 build-web: test-versions
 	npm --prefix web run build

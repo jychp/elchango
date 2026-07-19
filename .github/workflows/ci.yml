@@ -47,7 +47,7 @@ jobs:
       - name: Test macOS app
         run: make test-app-macos
       - name: Build macOS app
-        run: make build-app-macos
+        run: make build-app-macos-universal
 
   web:
     name: Web Svelte
