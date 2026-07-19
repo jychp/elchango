@@ -8,6 +8,7 @@ REPO_DIR="$(cd "${MACOS_DIR}/.." && pwd)"
 
 SIGN_MODE="${ELCHANGO_SIGN_MODE:-adhoc}"
 CONFIGURATION="${ELCHANGO_CONFIGURATION:-release}"
+ARCHITECTURES="${ELCHANGO_ARCHITECTURES:-$(uname -m)}"
 APP_VERSION="$(tr -d '[:space:]' < "${REPO_DIR}/VERSION")"
 APP_BUILD="${ELCHANGO_BUILD:-1}"
 APP_DIR="${MACOS_DIR}/dist/elChango.app"
@@ -18,6 +19,10 @@ ICON_SOURCE="${REPO_DIR}/docs/assets/elchango-logo.png"
 
 if [[ ! "${APP_VERSION}" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
   echo "ERROR: VERSION must contain strict SemVer in X.Y.Z form." >&2
+  exit 2
+fi
+if [[ ! "${APP_BUILD}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR: ELCHANGO_BUILD must be a positive integer." >&2
   exit 2
 fi
 
@@ -32,28 +37,62 @@ case "${SIGN_MODE}" in
     fi
     SIGN_IDENTITY="${ELCHANGO_CODESIGN_IDENTITY}"
     ;;
+  developer-id)
+    if [[ -z "${ELCHANGO_CODESIGN_IDENTITY:-}" ]]; then
+      echo "ERROR: ELCHANGO_CODESIGN_IDENTITY is required for Developer ID signing." >&2
+      exit 2
+    fi
+    SIGN_IDENTITY="${ELCHANGO_CODESIGN_IDENTITY}"
+    ;;
   *)
-    echo "ERROR: ELCHANGO_SIGN_MODE must be 'adhoc' or 'identity'." >&2
+    echo "ERROR: ELCHANGO_SIGN_MODE must be 'adhoc', 'identity', or 'developer-id'." >&2
     exit 2
     ;;
 esac
 
 npm --prefix "${REPO_DIR}/web" run build
-swift build \
-  --package-path "${MACOS_DIR}" \
-  --configuration "${CONFIGURATION}" \
-  --product ElChangoApp
-swift build \
-  --package-path "${MACOS_DIR}" \
-  --configuration "${CONFIGURATION}" \
-  --product ElChangoHookReporter
 
-BIN_DIR="$(
-  swift build \
-    --package-path "${MACOS_DIR}" \
-    --configuration "${CONFIGURATION}" \
-    --show-bin-path
-)"
+read -r -a ARCHITECTURE_LIST <<<"${ARCHITECTURES}"
+if [[ "${#ARCHITECTURE_LIST[@]}" -eq 0 ]]; then
+  echo "ERROR: ELCHANGO_ARCHITECTURES must name at least one architecture." >&2
+  exit 2
+fi
+
+BUILD_ROOT="${MACOS_DIR}/.build/elchango-package"
+mkdir -p "${BUILD_ROOT}"
+
+declare -a APP_BINARIES=()
+declare -a HOOK_BINARIES=()
+for architecture in "${ARCHITECTURE_LIST[@]}"; do
+  case "${architecture}" in
+    arm64|x86_64) ;;
+    *)
+      echo "ERROR: unsupported macOS architecture '${architecture}'." >&2
+      exit 2
+      ;;
+  esac
+
+  scratch_path="${BUILD_ROOT}/${architecture}"
+  triple="${architecture}-apple-macosx14.0"
+  for product in ElChangoApp ElChangoHookReporter; do
+    swift build \
+      --package-path "${MACOS_DIR}" \
+      --scratch-path "${scratch_path}" \
+      --configuration "${CONFIGURATION}" \
+      --triple "${triple}" \
+      --product "${product}"
+  done
+  bin_dir="$(
+    swift build \
+      --package-path "${MACOS_DIR}" \
+      --scratch-path "${scratch_path}" \
+      --configuration "${CONFIGURATION}" \
+      --triple "${triple}" \
+      --show-bin-path
+  )"
+  APP_BINARIES+=("${bin_dir}/ElChangoApp")
+  HOOK_BINARIES+=("${bin_dir}/ElChangoHookReporter")
+done
 
 ICON_WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "${ICON_WORK_DIR}"' EXIT
@@ -85,10 +124,17 @@ iconutil \
 
 rm -rf "${APP_DIR}"
 mkdir -p "${MACOS_CONTENTS_DIR}" "${RESOURCES_DIR}/Web"
-cp "${BIN_DIR}/ElChangoApp" "${MACOS_CONTENTS_DIR}/elChango"
-cp \
-  "${BIN_DIR}/ElChangoHookReporter" \
-  "${MACOS_CONTENTS_DIR}/elChangoHookReporter"
+if [[ "${#ARCHITECTURE_LIST[@]}" -eq 1 ]]; then
+  cp "${APP_BINARIES[0]}" "${MACOS_CONTENTS_DIR}/elChango"
+  cp "${HOOK_BINARIES[0]}" "${MACOS_CONTENTS_DIR}/elChangoHookReporter"
+else
+  lipo -create \
+    "${APP_BINARIES[@]}" \
+    -output "${MACOS_CONTENTS_DIR}/elChango"
+  lipo -create \
+    "${HOOK_BINARIES[@]}" \
+    -output "${MACOS_CONTENTS_DIR}/elChangoHookReporter"
+fi
 cp "${ICON_WORK_DIR}/elChango.icns" "${RESOURCES_DIR}/elChango.icns"
 cp "${REPO_DIR}/LICENSE" "${RESOURCES_DIR}/LICENSE"
 cp \
@@ -129,18 +175,36 @@ cat > "${CONTENTS_DIR}/Info.plist" <<PLIST
 PLIST
 
 plutil -lint "${CONTENTS_DIR}/Info.plist"
-codesign \
-  --force \
-  --sign "${SIGN_IDENTITY}" \
-  --identifier "com.jychp.elchango.hook-reporter" \
-  "${MACOS_CONTENTS_DIR}/elChangoHookReporter"
-codesign \
-  --force \
-  --sign "${SIGN_IDENTITY}" \
-  --identifier "com.jychp.elchango" \
-  "${APP_DIR}"
+sign_path() {
+  local identifier="$1"
+  local path="$2"
+  if [[ "${SIGN_MODE}" == "developer-id" ]]; then
+    codesign \
+      --force \
+      --sign "${SIGN_IDENTITY}" \
+      --options runtime \
+      --timestamp \
+      --identifier "${identifier}" \
+      "${path}"
+  else
+    codesign \
+      --force \
+      --sign "${SIGN_IDENTITY}" \
+      --identifier "${identifier}" \
+      "${path}"
+  fi
+}
 
-"${SCRIPT_DIR}/verify-package.sh" "${APP_DIR}"
+sign_path \
+  "com.jychp.elchango.hook-reporter" \
+  "${MACOS_CONTENTS_DIR}/elChangoHookReporter"
+sign_path "com.jychp.elchango" "${APP_DIR}"
+
+ELCHANGO_EXPECTED_ARCHITECTURES="${ARCHITECTURES}" \
+ELCHANGO_VERIFY_DISTRIBUTION="$(
+  [[ "${SIGN_MODE}" == "developer-id" ]] && printf '1' || printf '0'
+)" \
+  "${SCRIPT_DIR}/verify-package.sh" "${APP_DIR}"
 
 echo "Packaged ${APP_DIR}"
 if [[ "${SIGN_MODE}" == "adhoc" ]]; then

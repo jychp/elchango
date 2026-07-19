@@ -153,6 +153,23 @@ are never retried after an ambiguous dispatch.
 `accepted` means that dispatch was verified. It does not prove that the coding
 agent completed the requested semantic operation.
 
+## Release integrity
+
+Official macOS release archives are Universal 2 applications signed with a
+`Developer ID Application` certificate, Hardened Runtime, and an Apple trusted
+timestamp. The release workflow submits each app to Apple's notary service,
+requires an `Accepted` result, staples the ticket, and verifies Gatekeeper
+acceptance before publication.
+
+GitHub stores the certificate and App Store Connect API key only as protected
+`release` environment secrets. The workflow imports them into an ephemeral
+keychain and removes reconstructed key material in an unconditional cleanup
+step. Release artifacts include SHA-256 checksum files.
+
+Development builds remain ad hoc signed by default and are not official
+distribution artifacts. See [docs/releasing.md](docs/releasing.md) for the
+release process, secret rotation, and independent verification commands.
+
 ## Known limitations
 
 - Text input currently uses the global HID event tap after verification because
@@ -165,7 +182,7 @@ agent completed the requested semantic operation.
   are not cryptographically authenticated.
 - The fixed Cursor hook path trusts the application installed at
   `/Applications/elChango.app`. Install the app only from a source you trust.
-- Development builds are ad-hoc signed by default. They are not notarized
+- Development builds are ad hoc signed by default. They are not notarized
   public distribution artifacts.
 - Provider-qualified session IDs and diagnostic source paths are local
   identifiers, not secrets or opaque authorization capabilities.

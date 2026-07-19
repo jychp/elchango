@@ -72,11 +72,23 @@ Python is not required to run the packaged app.
 
 ## Install the macOS app
 
-Build from a clone:
+Install the latest release with Homebrew:
+
+```bash
+brew install --cask jychp/tap/elchango
+```
+
+Official GitHub releases include
+`elChango-X.Y.Z-macos-universal.zip` for Apple Silicon and Intel Macs. The app
+is signed with Developer ID, notarized by Apple, and accompanied by a SHA-256
+checksum. After verifying the checksum, extract the archive and move
+`elChango.app` to `/Applications`.
+
+To build from a clone instead:
 
 ```bash
 make setup
-ELCHANGO_SIGN_MODE=adhoc make build-app-macos
+make build-app-macos
 open macos-app/dist/elChango.app
 ```
 
@@ -84,9 +96,9 @@ Move `macos-app/dist/elChango.app` to `/Applications/elChango.app` before
 installing the Cursor plugin. The plugin intentionally uses that fixed path for
 its fail-open hook reporter.
 
-Ad-hoc signing is suitable for builds and unprivileged HTTP smoke tests. For
-Accessibility testing and regular use, build with a stable Apple Development or
-local signing identity and keep the app at a stable path:
+Ad hoc signing is suitable for builds and unprivileged HTTP smoke tests. For
+Accessibility testing during development, build with a stable Apple Development
+or local signing identity and keep the app at a stable path:
 
 ```bash
 ELCHANGO_SIGN_MODE=identity \
@@ -204,6 +216,7 @@ make test-plugins             # Cursor, Claude, and Stream Deck plugins
 make test-pocs                # compile every POC and exercise --help
 make build                    # package the app and all plugins
 make build-web                # build browser assets only
+make build-app-macos-universal # build an ad hoc Universal 2 app
 make build-plugin-cursor      # validate and package the Cursor plugin
 make build-plugin-claude      # validate and package the Claude plugin
 make build-plugin-streamdeck  # validate and package the Stream Deck plugin
@@ -234,10 +247,18 @@ The target requires a clean tracked worktree on `main`, fetches
 `origin/main`, verifies that local and remote `main` match, creates annotated
 tag `vX.Y.Z`, and pushes that tag.
 
-The tag workflow validates and packages the Stream Deck plugin on Linux, creates
-a SHA-256 checksum, and creates or updates the GitHub Release with generated
-notes. The current release workflow does not publish the macOS app or provider
-plugin archives.
+The tag workflow requires the tagged commit to exactly match `origin/main`. It
+publishes one GitHub Release containing the Stream Deck plugin and a signed,
+notarized Universal 2 macOS ZIP, each with a SHA-256 checksum. A manual workflow
+run from `main` exercises the complete signing and notarization path without
+publishing a release. After a tagged release is published, the workflow
+dispatches an update to `jychp/homebrew-tap`. The tap independently verifies the
+archive and checksum, opens a Cask pull request, and auto-merges it only after
+Intel and Apple Silicon installation checks pass.
+
+Certificate provisioning, GitHub environment secrets, local release checks, and
+the Homebrew-compatible artifact contract are documented in
+[docs/releasing.md](docs/releasing.md).
 
 ## License and trademarks
 
