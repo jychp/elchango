@@ -42,7 +42,7 @@ jobs:
           - language: swift
             build-mode: manual
             os: macos-26
-            timeout: 45
+            timeout: 55
     steps:
       - name: Check out repository
         timeout-minutes: 3
