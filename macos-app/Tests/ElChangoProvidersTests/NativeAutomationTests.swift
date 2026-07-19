@@ -9,13 +9,15 @@ struct NativeAutomationTests {
         #expect(
             NativeAutomation.inputIsEmpty(
                 characterCount: 0,
-                value: "Localized contextual placeholder"
+                value: "Localized contextual placeholder",
+                placeholderValue: nil
             )
         )
         #expect(
             !NativeAutomation.inputIsEmpty(
                 characterCount: 4,
-                value: ""
+                value: "",
+                placeholderValue: ""
             )
         )
     }
@@ -25,25 +27,36 @@ struct NativeAutomationTests {
         #expect(
             NativeAutomation.inputIsEmpty(
                 characterCount: nil,
-                value: ""
+                value: "",
+                placeholderValue: nil
             )
         )
         #expect(
             NativeAutomation.inputIsEmpty(
                 characterCount: nil,
-                value: "\n"
+                value: "\n",
+                placeholderValue: nil
+            )
+        )
+        #expect(
+            NativeAutomation.inputIsEmpty(
+                characterCount: nil,
+                value: "Localized contextual placeholder",
+                placeholderValue: "Localized contextual placeholder"
             )
         )
         #expect(
             !NativeAutomation.inputIsEmpty(
                 characterCount: nil,
-                value: "Draft"
+                value: "Draft",
+                placeholderValue: "Localized contextual placeholder"
             )
         )
         #expect(
             !NativeAutomation.inputIsEmpty(
                 characterCount: nil,
-                value: nil
+                value: nil,
+                placeholderValue: nil
             )
         )
     }

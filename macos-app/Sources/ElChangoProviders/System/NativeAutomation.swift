@@ -39,12 +39,17 @@ public actor NativeAutomation: NativeAutomating {
 
     nonisolated static func inputIsEmpty(
         characterCount: Int?,
-        value: String?
+        value: String?,
+        placeholderValue: String?
     ) -> Bool {
         if let characterCount {
             return characterCount == 0
         }
-        return value?.isEmpty == true || value == "\n"
+        if value?.isEmpty == true || value == "\n" {
+            return true
+        }
+        return placeholderValue?.isEmpty == false
+            && value == placeholderValue
     }
 
     public func activate(bundleID: String) async throws {
@@ -393,10 +398,15 @@ public actor NativeAutomation: NativeAutomating {
                 element,
                 name: kAXValueAttribute as CFString
             )
+            let placeholderValue = optionalTextAttribute(
+                element,
+                name: kAXPlaceholderValueAttribute as CFString
+            )
             guard
                 Self.inputIsEmpty(
                     characterCount: characterCount,
-                    value: value
+                    value: value,
+                    placeholderValue: placeholderValue
                 )
             else {
                 let count = characterCount ?? value?.count ?? -1
