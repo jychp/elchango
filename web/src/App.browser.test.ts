@@ -28,13 +28,18 @@ describe('App demo mode', () => {
     await vi.waitFor(() =>
       expect(document.body.querySelectorAll('button')).toHaveLength(15),
     )
+    expect(
+      Array.from(document.body.querySelectorAll('button'))
+        .slice(0, 5)
+        .map((button) => button.textContent?.trim()),
+    ).toEqual(['Done', 'Waiting', 'Idle', 'Claude', 'Cursor'])
 
     const expectedSessions = [
       ['Done', 'Cursor', 'bug', 'done'],
       ['Waiting', 'Cursor', 'eye', 'waiting'],
+      ['Idle', 'Local agent', 'robot', 'idle'],
       ['Claude', 'Claude Code', 'claude', 'working'],
       ['Cursor', 'Cursor', 'cursor', 'working'],
-      ['Idle', 'Local agent', 'robot', 'idle'],
     ] as const
 
     for (const [label, detail, icon, color] of expectedSessions) {

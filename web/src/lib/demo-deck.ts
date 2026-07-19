@@ -35,6 +35,15 @@ export const demoSessions = [
     selected: false,
   },
   {
+    id: 'demo:lazy-coding',
+    providerId: 'demo',
+    label: 'Idle',
+    detail: 'Local agent',
+    icon: 'robot',
+    color: 'idle',
+    selected: false,
+  },
+  {
     id: 'claude-code:vibecoding',
     providerId: 'claude-code',
     label: 'Claude',
@@ -51,15 +60,6 @@ export const demoSessions = [
     icon: 'cursor',
     color: 'working',
     selected: true,
-  },
-  {
-    id: 'demo:lazy-coding',
-    providerId: 'demo',
-    label: 'Idle',
-    detail: 'Local agent',
-    icon: 'robot',
-    color: 'idle',
-    selected: false,
   },
 ] as const satisfies readonly DemoSession[]
 
