@@ -19,7 +19,7 @@ export const demoSessions = [
   {
     id: 'cursor:debug',
     providerId: 'cursor',
-    label: 'Debug',
+    label: 'Done',
     detail: 'Cursor',
     icon: 'bug',
     color: 'done',
@@ -28,7 +28,7 @@ export const demoSessions = [
   {
     id: 'cursor:log-analysis',
     providerId: 'cursor',
-    label: 'Log analysis',
+    label: 'Waiting',
     detail: 'Cursor',
     icon: 'eye',
     color: 'waiting',
@@ -37,7 +37,7 @@ export const demoSessions = [
   {
     id: 'claude-code:vibecoding',
     providerId: 'claude-code',
-    label: 'Vibecoding',
+    label: 'Claude',
     detail: 'Claude Code',
     icon: 'claude',
     color: 'working',
@@ -46,7 +46,7 @@ export const demoSessions = [
   {
     id: 'cursor:monkeycoding',
     providerId: 'cursor',
-    label: 'Monkeycoding',
+    label: 'Cursor',
     detail: 'Cursor',
     icon: 'cursor',
     color: 'working',
@@ -55,7 +55,7 @@ export const demoSessions = [
   {
     id: 'demo:lazy-coding',
     providerId: 'demo',
-    label: 'Lazy Coding',
+    label: 'Idle',
     detail: 'Local agent',
     icon: 'robot',
     color: 'idle',

@@ -30,11 +30,11 @@ describe('App demo mode', () => {
     )
 
     const expectedSessions = [
-      ['Debug', 'Cursor', 'bug', 'done'],
-      ['Log analysis', 'Cursor', 'eye', 'waiting'],
-      ['Vibecoding', 'Claude Code', 'claude', 'working'],
-      ['Monkeycoding', 'Cursor', 'cursor', 'working'],
-      ['Lazy Coding', 'Local agent', 'robot', 'idle'],
+      ['Done', 'Cursor', 'bug', 'done'],
+      ['Waiting', 'Cursor', 'eye', 'waiting'],
+      ['Claude', 'Claude Code', 'claude', 'working'],
+      ['Cursor', 'Cursor', 'cursor', 'working'],
+      ['Idle', 'Local agent', 'robot', 'idle'],
     ] as const
 
     for (const [label, detail, icon, color] of expectedSessions) {
