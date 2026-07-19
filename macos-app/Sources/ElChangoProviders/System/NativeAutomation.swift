@@ -239,6 +239,16 @@ public actor NativeAutomation: NativeAutomating {
             )
             try await sleep(milliseconds: 200)
         }
+        if focused == nil, focusKeyCode == nil {
+            return try await dispatchBestEffortText(
+                text,
+                submitCount: submitCount,
+                started: started,
+                bundleID: bundleID,
+                processIdentifier: identity.processIdentifier,
+                targetVerifier: targetVerifier
+            )
+        }
         if focused == nil {
             focused = try verifiedFocusedInput(
                 processIdentifier: identity.processIdentifier,
@@ -678,6 +688,113 @@ public actor NativeAutomation: NativeAutomating {
         throw ProviderOperationError.targetUnverified(
             "provider input did not clear after command submission"
         )
+    }
+
+    private func dispatchBestEffortText(
+        _ text: String,
+        submitCount: Int,
+        started: ContinuousClock.Instant,
+        bundleID: String,
+        processIdentifier: pid_t,
+        targetVerifier: @escaping @Sendable () async throws -> Bool
+    ) async throws -> ProviderActionResult {
+        DebugTrace.emit(
+            "native-automation",
+            "dispatch_text.best_effort.start"
+        )
+        guard try await targetVerifier() else {
+            throw ProviderOperationError.targetUnverified(
+                "selected provider session changed before best-effort dispatch"
+            )
+        }
+        try await postBestEffortKeyboardText(
+            text,
+            bundleID: bundleID,
+            processIdentifier: processIdentifier
+        )
+        for _ in 0..<submitCount {
+            try await sleep(milliseconds: 500)
+            _ = try await requireFrontmost(
+                bundleID: bundleID,
+                processIdentifier: processIdentifier
+            )
+            guard try await targetVerifier() else {
+                throw ProviderOperationError.targetUnverified(
+                    "selected provider session changed before submission"
+                )
+            }
+            try await postFocusedKey(
+                keyCode: 36,
+                flags: [],
+                bundleID: bundleID,
+                processIdentifier: processIdentifier,
+                focusedElement: nil,
+                marker: nil
+            )
+        }
+        _ = try await requireFrontmost(
+            bundleID: bundleID,
+            processIdentifier: processIdentifier
+        )
+        guard try await targetVerifier() else {
+            throw ProviderOperationError.targetUnverified(
+                "selected provider session changed during best-effort dispatch"
+            )
+        }
+        DebugTrace.emit(
+            "native-automation",
+            "dispatch_text.best_effort.complete"
+        )
+        return dispatchResult(
+            started: started,
+            message: "Command text was sent through provider best-effort routing."
+        )
+    }
+
+    private func postBestEffortKeyboardText(
+        _ text: String,
+        bundleID: String,
+        processIdentifier: pid_t
+    ) async throws {
+        let units = Array(text.utf16)
+        for start in stride(from: 0, to: units.count, by: 20) {
+            _ = try await requireFrontmost(
+                bundleID: bundleID,
+                processIdentifier: processIdentifier
+            )
+            let chunk = Array(units[start..<min(start + 20, units.count)])
+            guard
+                let down = CGEvent(
+                    keyboardEventSource: nil,
+                    virtualKey: 0,
+                    keyDown: true
+                ),
+                let up = CGEvent(
+                    keyboardEventSource: nil,
+                    virtualKey: 0,
+                    keyDown: false
+                )
+            else {
+                throw ProviderOperationError.system(
+                    "macOS failed to create a text keyboard event"
+                )
+            }
+            chunk.withUnsafeBufferPointer { buffer in
+                down.keyboardSetUnicodeString(
+                    stringLength: buffer.count,
+                    unicodeString: buffer.baseAddress
+                )
+                up.keyboardSetUnicodeString(
+                    stringLength: buffer.count,
+                    unicodeString: buffer.baseAddress
+                )
+            }
+            down.flags = []
+            up.flags = []
+            down.post(tap: .cghidEventTap)
+            up.post(tap: .cghidEventTap)
+            try await sleep(milliseconds: 20)
+        }
     }
 
     private func postKeyboardText(

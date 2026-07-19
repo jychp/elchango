@@ -14,9 +14,15 @@ automation starts. Command dispatch then performs these steps in order:
 3. Verify that the same provider-native session is still selected.
 4. Verify the focused, enabled Accessibility text input and its exact
    provider-specific marker. If the expected input is not already focused, the
-   provider-approved focus shortcut may run once before verification is
-   repeated.
+   provider-approved focus shortcut may run once.
 No input mutation is allowed before all four preconditions pass.
+
+Claude has one explicit best-effort exception when its input is not focused.
+The application, process, and exact selected session remain mandatory, but
+elChango skips input verification, draft capture, deletion, and restoration.
+It sends the command and provider-owned submission keys through Claude's
+observed application-level input routing. This path never reports verified
+input mutation or draft preservation.
 
 ## Transaction
 

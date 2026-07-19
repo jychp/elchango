@@ -241,7 +241,11 @@ Claude understood or completed the semantic operation.
 - Every privileged action rechecks the exact selected session and frontmost
   bundle immediately before dispatch.
 - Text dispatch additionally requires the enabled provider-specific
-  Accessibility target and bounded draft capture.
+  Accessibility target and bounded draft capture when the input is focused.
+  If Claude has moved focus to a non-input group, elChango uses the documented
+  best-effort exception: exact application and session verification remain,
+  but input verification, draft capture, deletion, and restoration are skipped.
+  Claude then routes application-level typing to its prompt.
 - Shortcuts target the verified process. Text and submission events use the
   global HID tap only after an atomic foreground, selected-session, and
   exact-input preflight because the observed Electron editor ignored
