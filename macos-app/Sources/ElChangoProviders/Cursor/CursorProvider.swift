@@ -435,17 +435,16 @@ public actor CursorProvider: AgentProvider {
 
         let rawStatus = Self.string(data["status"])
         if let rawStatus, Set(["error", "failed"]).contains(rawStatus) {
-            if activeSignalIsFresh {
-                return .init(
-                    state: .waiting,
-                    confidence: .candidate,
-                    detail: "composer \(rawStatus)"
-                )
-            }
+            // A composer-level error is a turn/session failure (for example a
+            // model error), so surface it on the deck as an error instead of a
+            // generic waiting or idle tile. Keep candidate confidence while the
+            // signal is fresh and downgrade to persisted once it is stale.
             return .init(
-                state: .idle,
-                confidence: .persisted,
-                detail: "stale composer \(rawStatus)"
+                state: .error,
+                confidence: activeSignalIsFresh ? .candidate : .persisted,
+                detail: activeSignalIsFresh
+                    ? "composer \(rawStatus)"
+                    : "composer \(rawStatus) (stale)"
             )
         }
         if rawStatus == "completed" {

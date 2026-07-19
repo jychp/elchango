@@ -109,7 +109,20 @@ official payloads share `session_id`, `transcript_path`, `cwd`, and
 Native HTTP handlers are preferred because they avoid Claude's shell hook
 executor.
 
-The implemented mapping is:
+State is the shared `SessionState` enum (`idle`, `working`, `waiting`, `done`,
+`error`, `unknown`). Unlike Cursor there is no database inference; all live
+state is hook-driven. The handled states are:
+
+| State | Deck color | Produced by |
+| --- | --- | --- |
+| `working` | blue | `UserPromptSubmit`, tool/permission progress, subagent activity, compaction, `SessionStart(source: "compact")`, and `Stop` while background tasks remain |
+| `waiting` | orange | `PermissionRequest`, `Elicitation`, `PreToolUse` for `AskUserQuestion`/`ExitPlanMode`, and `permission_prompt`/`elicitation_dialog`/`agent_needs_input` notifications |
+| `done` | green | `Stop` with an empty background-task registry, and the `idle_prompt` notification |
+| `error` | red | `StopFailure` |
+| `idle` | gray | `SessionStart` and `SessionEnd` |
+| `unknown` | gray | a `working`/`waiting` signal older than the ten-minute terminal deadline, when no terminal event arrived |
+
+The implemented event mapping is:
 
 - `UserPromptSubmit`: blue, working, keyed by `(session_id, prompt_id)` when the
   current Claude Code version supplies `prompt_id`;
@@ -130,7 +143,7 @@ The implemented mapping is:
   working;
 - `SessionStart(source: "compact")`: blue resumed progress rather than idle;
 - `Stop`: green only when its authoritative `background_tasks` array is empty;
-- `StopFailure`: error, rendered orange by the four-color deck;
+- `StopFailure`: error, rendered red by the deck;
 - `SessionStart` and `SessionEnd`: gray, idle.
 
 When `Stop.background_tasks` is non-empty, the session remains blue. Background

@@ -30,15 +30,24 @@ describe('App demo mode', () => {
     )
     expect(
       Array.from(document.body.querySelectorAll('button'))
-        .slice(0, 6)
+        .slice(0, 7)
         .map((button) => button.textContent?.trim()),
-    ).toEqual(['Done', 'Waiting', 'Working', 'Idle', 'Claude', 'Cursor'])
+    ).toEqual([
+      'Done',
+      'Waiting',
+      'Working',
+      'Idle',
+      'Error',
+      'Claude',
+      'Cursor',
+    ])
 
     const expectedSessions = [
       ['Done', 'Cursor', 'bug', 'done'],
       ['Waiting', 'Cursor', 'eye', 'waiting'],
       ['Working', 'Local agent', 'code', 'working'],
       ['Idle', 'Local agent', 'robot', 'idle'],
+      ['Error', 'Local agent', 'fire', 'error'],
       ['Claude', 'Claude Code', 'claude', 'idle'],
       ['Cursor', 'Cursor', 'cursor', 'idle'],
     ] as const

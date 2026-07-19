@@ -230,6 +230,78 @@ struct ActivityStoreTests {
         )
     }
 
+    @Test("Cursor expires a stale non-terminal signal so inference resumes")
+    func cursorTerminalDeadline() throws {
+        let store = CursorActivityStore(
+            terminalDeadlineMilliseconds: 100,
+            ttlMilliseconds: 10_000
+        )
+        _ = try store.record(
+            ProviderHookPayload(
+                hookEventName: "beforeSubmitPrompt",
+                conversationID: "cursor-1",
+                generationID: "generation-1"
+            ),
+            observedAtMilliseconds: 100
+        )
+        #expect(
+            store.state(
+                for: "cursor-1",
+                observedAtMilliseconds: 150
+            )?.0 == .working
+        )
+        #expect(
+            store.state(
+                for: "cursor-1",
+                observedAtMilliseconds: 250
+            ) == nil
+        )
+    }
+
+    @Test("Cursor keeps a terminal signal past the terminal deadline")
+    func cursorTerminalDeadlineKeepsDone() throws {
+        let store = CursorActivityStore(
+            terminalDeadlineMilliseconds: 100,
+            ttlMilliseconds: 10_000
+        )
+        _ = try store.record(
+            ProviderHookPayload(
+                hookEventName: "stop",
+                conversationID: "cursor-1",
+                generationID: "generation-1",
+                status: "completed"
+            ),
+            observedAtMilliseconds: 100
+        )
+        #expect(
+            store.state(
+                for: "cursor-1",
+                observedAtMilliseconds: 500
+            )?.0 == .done
+        )
+    }
+
+    @Test("Cursor records a terminal state for an unknown stop status")
+    func cursorTolerantStopStatus() throws {
+        let store = CursorActivityStore(ttlMilliseconds: 10_000)
+        let observation = try store.record(
+            ProviderHookPayload(
+                hookEventName: "stop",
+                conversationID: "cursor-1",
+                generationID: "generation-1",
+                status: "surprising"
+            ),
+            observedAtMilliseconds: 100
+        )
+        #expect(observation.state == .done)
+        #expect(observation.confidence == .candidate)
+        let state = try #require(
+            store.state(for: "cursor-1", observedAtMilliseconds: 150)
+        )
+        #expect(state.0 == .done)
+        #expect(state.1 == .candidate)
+    }
+
     @Test("activity stores evict the oldest bounded signal")
     func boundedEviction() throws {
         let store = CursorActivityStore(
