@@ -6,7 +6,10 @@
   "scripts": {
     "build": "npm run profile && rollup -c",
     "watch": "rollup -c -w --watch.onEnd=\"streamdeck restart com.jychp.elchango\"",
-    "check": "tsc --noEmit && npm test",
+    "check": "npm run lint && npm run format:check && tsc --noEmit && npm test",
+    "lint": "eslint src tests scripts",
+    "format": "prettier --write \"{src,tests,scripts}/**/*.ts\" \"*.{js,json,md}\"",
+    "format:check": "prettier --check \"{src,tests,scripts}/**/*.ts\" \"*.{js,json,md}\"",
     "test": "node --test --import tsx tests/*.test.ts",
     "validate": "npm run build && streamdeck validate com.jychp.elchango.sdPlugin",
     "link": "streamdeck link com.jychp.elchango.sdPlugin",
@@ -20,6 +23,7 @@
   "devDependencies": {
     "@elgato/cli": "^1.7.4",
     "@elgato/prettier-config": "^0.3.3",
+    "@eslint/js": "^10.0.1",
     "@phosphor-icons/core": "^2.1.1",
     "@rollup/plugin-commonjs": "^29.0.3",
     "@rollup/plugin-node-resolve": "^16.0.3",
@@ -27,11 +31,14 @@
     "@rollup/plugin-typescript": "^12.3.0",
     "@tsconfig/node20": "^20.1.9",
     "@types/node": "^26.1.1",
+    "eslint": "^10.7.0",
     "fflate": "^0.8.3",
+    "prettier": "^3.9.5",
     "rollup": "^4.62.2",
     "tslib": "^2.8.1",
     "tsx": "^4.23.1",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.64.0",
     "uuid": "^14.0.1"
   },
   "license": "MIT"

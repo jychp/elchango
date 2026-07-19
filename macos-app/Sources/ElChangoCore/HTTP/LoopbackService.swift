@@ -73,7 +73,7 @@ public actor LoopbackService {
         components.port = Int(port)
         components.path = "/"
         components.queryItems = [
-            URLQueryItem(name: "bootstrap", value: bootstrap),
+            URLQueryItem(name: "bootstrap", value: bootstrap)
         ]
         return components.url
     }

@@ -165,9 +165,9 @@ public enum ProviderOperationError: LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .unsupported(let message),
-             .invalidHook(let message),
-             .targetUnverified(let message),
-             .system(let message):
+            .invalidHook(let message),
+            .targetUnverified(let message),
+            .system(let message):
             message
         }
     }

@@ -1,8 +1,9 @@
 @preconcurrency import ApplicationServices
 import ElChangoCore
-@testable import ElChangoProviders
 import Foundation
 import Testing
+
+@testable import ElChangoProviders
 
 @Suite("Native Claude Desktop inventory")
 struct ClaudeCodeProviderTests {
@@ -23,9 +24,10 @@ struct ClaudeCodeProviderTests {
         )
 
         #expect(ClaudeExpectedInventory(snapshot: snapshot) == expected)
-        #expect(snapshot.capabilities == [
-            .focusSession, .newSession, .executeCommand,
-        ])
+        #expect(
+            snapshot.capabilities == [
+                .focusSession, .newSession, .executeCommand,
+            ])
         #expect(
             snapshot.sessions.allSatisfy {
                 $0.capabilities.contains(.executeCommand)
@@ -282,17 +284,18 @@ struct ClaudeCodeProviderTests {
     func boundedMetadataPrefix() async throws {
         let fixture = try ClaudeTemporaryFixture()
         let metadata = """
-        {"sessionId":"local_large","cliSessionId":"cli-large",\
-        "cwd":"/tmp/large","originCwd":"/tmp/repository",\
-        "createdAt":1,"lastActivityAt":2,"isArchived":false,\
-        "title":"Large","lastFocusedAt":3,\
-        "messages":[{"content":"
-        """
+            {"sessionId":"local_large","cliSessionId":"cli-large",\
+            "cwd":"/tmp/large","originCwd":"/tmp/repository",\
+            "createdAt":1,"lastActivityAt":2,"isArchived":false,\
+            "title":"Large","lastFocusedAt":3,\
+            "messages":[{"content":"
+            """
         let paddingCount =
             ClaudeCodeProvider.maximumMetadataPrefixBytes
             - metadata.utf8.count
             - 1
-        let record = metadata
+        let record =
+            metadata
             + String(repeating: "x", count: paddingCount)
             + "é\"}]}"
         try fixture.writeRawRecord(
@@ -371,13 +374,15 @@ struct ClaudeCodeProviderTests {
         )
 
         #expect(result.accepted)
-        #expect(await automation.dispatchedTexts() == [
-            "Open a pull request for the current branch.",
-        ])
+        #expect(
+            await automation.dispatchedTexts() == [
+                "Open a pull request for the current branch."
+            ])
         #expect(await automation.dispatchedSubmitCounts() == [2])
-        #expect(await automation.dispatchedEmptyPlaceholders() == [
-            "Type / for commands\n",
-        ])
+        #expect(
+            await automation.dispatchedEmptyPlaceholders() == [
+                "Type / for commands\n"
+            ])
     }
 
     @Test("Claude hooks overlay only known persistent sessions")
@@ -489,7 +494,8 @@ private struct ClaudeTemporaryFixture {
             "projects",
             isDirectory: true
         )
-        recordsRoot = desktopRoot
+        recordsRoot =
+            desktopRoot
             .appendingPathComponent("account", isDirectory: true)
             .appendingPathComponent("workspace", isDirectory: true)
         try FileManager.default.createDirectory(
@@ -523,7 +529,8 @@ private struct ClaudeTemporaryFixture {
             lastFocusedAt.map { #""lastFocusedAt":\#($0)"# },
             extraMetadata,
         ].compactMap { $0 }.joined(separator: ",")
-        let optionalSuffix = optionalFields.isEmpty
+        let optionalSuffix =
+            optionalFields.isEmpty
             ? ""
             : ",\(optionalFields)"
         try writeRawRecord(
@@ -579,8 +586,8 @@ private struct ClaudeTemporaryFixture {
                             "customGroupAssignments": [:],
                             "customGroupOrder": [:],
                         ],
-                    ],
-                ],
+                    ]
+                ]
             ],
             options: [.sortedKeys]
         )

@@ -178,7 +178,8 @@ struct FoundationHTTPHandlerTests {
 
         let exchange = try await handler.handleRequest(bootstrapRequest)
         let setCookie = try #require(exchange.headers[.setCookie])
-        let cookie = setCookie
+        let cookie =
+            setCookie
             .split(separator: ";", maxSplits: 1)[0]
         let snapshot = try await handler.handleRequest(
             HTTPRequest(
@@ -228,7 +229,7 @@ struct FoundationHTTPHandlerTests {
             HTTPRequest(
                 method: .POST,
                 version: .http11,
-                path: "/api/focus",
+                path: "/api/activate",
                 query: [],
                 headers: baseHeaders,
                 body: body
@@ -240,7 +241,7 @@ struct FoundationHTTPHandlerTests {
             HTTPRequest(
                 method: .POST,
                 version: .http11,
-                path: "/api/focus",
+                path: "/api/activate",
                 query: [],
                 headers: validHeaders,
                 body: body
@@ -260,7 +261,7 @@ struct FoundationHTTPHandlerTests {
         let response = try await handler.handleRequest(
             request(
                 method: .POST,
-                path: "/api/focus",
+                path: "/api/activate",
                 headers: [
                     .contentType: "application/json",
                     .contentLength: "2",
@@ -324,9 +325,27 @@ struct FoundationHTTPHandlerTests {
                 body: Data("{}".utf8)
             )
         )
+        let legacyFocus = try await handler.handleRequest(
+            request(
+                method: .POST,
+                path: "/api/focus",
+                headers: headers,
+                body: Data("{}".utf8)
+            )
+        )
+        let legacyIntent = try await handler.handleRequest(
+            request(
+                method: .POST,
+                path: "/api/intent",
+                headers: headers,
+                body: Data("{}".utf8)
+            )
+        )
 
         #expect(hook.statusCode == .notFound)
         #expect(unknown.statusCode == .methodNotAllowed)
+        #expect(legacyFocus.statusCode == .methodNotAllowed)
+        #expect(legacyIntent.statusCode == .methodNotAllowed)
     }
 
     @Test("hook inventory failures return a structured unavailable response")
@@ -458,6 +477,7 @@ struct FoundationHTTPHandlerTests {
             DeckActivationResponse.self,
             from: await responseBody(longPress)
         )
+        let pickerSnapshot = try #require(picker.snapshot)
         let hardware = try await deckSnapshot(
             from: handler,
             clientID: "streamdeck"
@@ -466,7 +486,7 @@ struct FoundationHTTPHandlerTests {
         #expect(longPress.statusCode == .ok)
         #expect(picker.action == .chooseSlotCommand)
         #expect(
-            picker.snapshot.buttons.contains {
+            pickerSnapshot.buttons.contains {
                 $0.commandID == .compact
             }
         )
@@ -477,20 +497,21 @@ struct FoundationHTTPHandlerTests {
                 path: "/api/activate",
                 clientID: "web",
                 buttonID: "command-option:compact",
-                revision: picker.snapshot.revision
+                revision: pickerSnapshot.revision
             )
         )
         let updated = try JSONDecoder().decode(
             DeckActivationResponse.self,
             from: await responseBody(select)
         )
+        let updatedSnapshot = try #require(updated.snapshot)
         let shared = try await deckSnapshot(
             from: handler,
             clientID: "streamdeck"
         )
 
         #expect(select.statusCode == .ok)
-        #expect(updated.snapshot.buttons[11].label == "Compact")
+        #expect(updatedSnapshot.buttons[11].label == "Compact")
         #expect(shared.buttons[11].label == "Compact")
     }
 
@@ -544,8 +565,9 @@ struct FoundationHTTPHandlerTests {
             DeckActivationResponse.self,
             from: await responseBody(chooseProvider)
         )
+        let pickerSnapshot = try #require(picker.snapshot)
         let providerButton = try #require(
-            picker.snapshot.buttons.first {
+            pickerSnapshot.buttons.first {
                 $0.action == .newSession
             }
         )
@@ -554,7 +576,7 @@ struct FoundationHTTPHandlerTests {
                 path: "/api/activate",
                 clientID: "web",
                 buttonID: providerButton.id,
-                revision: picker.snapshot.revision
+                revision: pickerSnapshot.revision
             )
         )
         let hookBody = try JSONEncoder().encode(
@@ -749,9 +771,10 @@ struct FoundationHTTPHandlerTests {
             assetRoot: assetRoot,
             accessibility: accessibility,
             deckService: deckService,
-            authorization: authorization ?? LoopbackAuthorization(
-                controlToken: controlToken
-            ),
+            authorization: authorization
+                ?? LoopbackAuthorization(
+                    controlToken: controlToken
+                ),
             hookRateLimiter: hookRateLimiter,
             expectedAuthority: authority,
             allowedHookProviderIDs: Set(

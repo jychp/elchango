@@ -32,7 +32,8 @@ final class SQLiteReadConnection {
 
     init(url: URL) throws {
         var database: OpaquePointer?
-        let flags = SQLITE_OPEN_READONLY
+        let flags =
+            SQLITE_OPEN_READONLY
             | SQLITE_OPEN_URI
             | SQLITE_OPEN_PRIVATECACHE
             | SQLITE_OPEN_EXRESCODE
@@ -43,9 +44,10 @@ final class SQLiteReadConnection {
             nil
         )
         guard result == SQLITE_OK, let database else {
-            let message = database.map {
-                String(cString: sqlite3_errmsg($0))
-            } ?? "unknown error"
+            let message =
+                database.map {
+                    String(cString: sqlite3_errmsg($0))
+                } ?? "unknown error"
             if let database {
                 sqlite3_close(database)
             }
@@ -86,7 +88,8 @@ final class SQLiteReadConnection {
             &errorMessage
         )
         guard result == SQLITE_OK else {
-            let message = errorMessage.map { String(cString: $0) }
+            let message =
+                errorMessage.map { String(cString: $0) }
                 ?? String(cString: sqlite3_errmsg(database))
             sqlite3_free(errorMessage)
             throw SQLiteReadError.queryFailed(message)
@@ -102,13 +105,15 @@ final class SQLiteReadConnection {
             throw SQLiteReadError.queryFailed("database is closed")
         }
         var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(
-            database,
-            sql,
-            -1,
-            &statement,
-            nil
-        ) == SQLITE_OK, let statement else {
+        guard
+            sqlite3_prepare_v2(
+                database,
+                sql,
+                -1,
+                &statement,
+                nil
+            ) == SQLITE_OK, let statement
+        else {
             throw SQLiteReadError.queryFailed(
                 String(cString: sqlite3_errmsg(database))
             )

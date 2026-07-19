@@ -24,6 +24,13 @@ if [[ ! -d "${APP_DIR}" ]]; then
   echo "ERROR: application bundle not found at ${APP_DIR}." >&2
   exit 2
 fi
+if [[ "$(
+  plutil -extract CFBundleIdentifier raw -o - \
+    "${APP_DIR}/Contents/Info.plist"
+)" != "com.jychp.elchango" ]]; then
+  echo "ERROR: only the stable elChango profile can be notarized." >&2
+  exit 2
+fi
 if [[ -z "${API_KEY_PATH}" || ! -f "${API_KEY_PATH}" ]]; then
   echo "ERROR: APPLE_API_KEY_PATH must reference an App Store Connect API key." >&2
   exit 2
@@ -92,6 +99,7 @@ xcrun stapler validate "${APP_DIR}"
 
 ELCHANGO_VERIFY_DISTRIBUTION=1 \
 ELCHANGO_VERIFY_NOTARIZATION=1 \
+ELCHANGO_EXPECTED_PROFILE=stable \
 ELCHANGO_EXPECTED_ARCHITECTURES="arm64 x86_64" \
   "${SCRIPT_DIR}/verify-package.sh" "${APP_DIR}"
 
@@ -115,6 +123,7 @@ if [[ ! -d "${EXTRACTED_APP}" ]]; then
 fi
 ELCHANGO_VERIFY_DISTRIBUTION=1 \
 ELCHANGO_VERIFY_NOTARIZATION=1 \
+ELCHANGO_EXPECTED_PROFILE=stable \
 ELCHANGO_EXPECTED_ARCHITECTURES="arm64 x86_64" \
   "${SCRIPT_DIR}/verify-package.sh" "${EXTRACTED_APP}"
 

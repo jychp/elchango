@@ -104,8 +104,8 @@ public final class CursorActivityStore: @unchecked Sendable {
             remove(sessionID)
             return nil
         }
-        if (signal.observation.state == .done
-            || signal.observation.state == .waiting),
+        if signal.observation.state == .done
+            || signal.observation.state == .waiting,
             let signalGenerationID = signal.generationID,
             let currentGenerationID,
             signalGenerationID != currentGenerationID
@@ -311,7 +311,7 @@ public final class ClaudeActivityStore: @unchecked Sendable {
             acknowledgedAt.removeValue(forKey: sessionID)
             return nil
         }
-        if (signal.state == .working || signal.state == .waiting),
+        if signal.state == .working || signal.state == .waiting,
             age > terminalDeadlineMilliseconds
         {
             return (

@@ -1,5 +1,5 @@
-@preconcurrency import ApplicationServices
 import AppKit
+@preconcurrency import ApplicationServices
 import ElChangoCore
 import Foundation
 
@@ -51,8 +51,9 @@ public actor NativeAutomation: NativeAutomating {
                     ? 1
                     : 0
             }
-            guard let applicationURL = NSWorkspace.shared
-                .urlForApplication(withBundleIdentifier: bundleID)
+            guard
+                let applicationURL = NSWorkspace.shared
+                    .urlForApplication(withBundleIdentifier: bundleID)
             else {
                 return 0
             }
@@ -354,17 +355,20 @@ public actor NativeAutomation: NativeAutomating {
             element,
             name: kAXRoleAttribute as CFString
         )
-        guard Set(["AXTextArea", "AXTextField", "AXComboBox"])
-            .contains(role)
+        guard
+            Set(["AXTextArea", "AXTextField", "AXComboBox"])
+                .contains(role)
         else {
             throw ProviderOperationError.targetUnverified(
                 "focused element is not a text input: \(role)"
             )
         }
-        guard try booleanAttribute(
-            element,
-            name: kAXEnabledAttribute as CFString
-        ) else {
+        guard
+            try booleanAttribute(
+                element,
+                name: kAXEnabledAttribute as CFString
+            )
+        else {
             throw ProviderOperationError.targetUnverified(
                 "focused input is disabled"
             )
@@ -387,12 +391,11 @@ public actor NativeAutomation: NativeAutomating {
             let count: Int
             if let value {
                 count = value.count
-                isEmpty = value.isEmpty
+                isEmpty =
+                    value.isEmpty
                     || value == "\n"
-                    || (
-                        emptyPlaceholderValue != nil
-                            && value == emptyPlaceholderValue
-                    )
+                    || (emptyPlaceholderValue != nil
+                        && value == emptyPlaceholderValue)
             } else {
                 count = try integerAttribute(
                     element,
@@ -429,15 +432,18 @@ public actor NativeAutomation: NativeAutomating {
                 emptyPlaceholderValue: emptyPlaceholderValue
             )
             let chunk = Array(units[start..<min(start + 20, units.count)])
-            guard let down = CGEvent(
-                keyboardEventSource: nil,
-                virtualKey: 0,
-                keyDown: true
-            ), let up = CGEvent(
-                keyboardEventSource: nil,
-                virtualKey: 0,
-                keyDown: false
-            ) else {
+            guard
+                let down = CGEvent(
+                    keyboardEventSource: nil,
+                    virtualKey: 0,
+                    keyDown: true
+                ),
+                let up = CGEvent(
+                    keyboardEventSource: nil,
+                    virtualKey: 0,
+                    keyDown: false
+                )
+            else {
                 throw ProviderOperationError.system(
                     "macOS failed to create a text keyboard event"
                 )
@@ -477,15 +483,18 @@ public actor NativeAutomation: NativeAutomating {
                 requireEmpty: false
             )
         }
-        guard let down = CGEvent(
-            keyboardEventSource: nil,
-            virtualKey: keyCode,
-            keyDown: true
-        ), let up = CGEvent(
-            keyboardEventSource: nil,
-            virtualKey: keyCode,
-            keyDown: false
-        ) else {
+        guard
+            let down = CGEvent(
+                keyboardEventSource: nil,
+                virtualKey: keyCode,
+                keyDown: true
+            ),
+            let up = CGEvent(
+                keyboardEventSource: nil,
+                virtualKey: keyCode,
+                keyDown: false
+            )
+        else {
             throw ProviderOperationError.system(
                 "macOS failed to create a focused keyboard event"
             )
@@ -531,11 +540,13 @@ public actor NativeAutomation: NativeAutomating {
         flags: CGEventFlags,
         processIdentifier: pid_t
     ) throws {
-        guard let event = CGEvent(
-            keyboardEventSource: nil,
-            virtualKey: keyCode,
-            keyDown: down
-        ) else {
+        guard
+            let event = CGEvent(
+                keyboardEventSource: nil,
+                virtualKey: keyCode,
+                keyDown: down
+            )
+        else {
             throw ProviderOperationError.system(
                 "macOS failed to create a keyboard event"
             )
@@ -634,7 +645,8 @@ public actor NativeAutomation: NativeAutomating {
         message: String
     ) -> ProviderActionResult {
         let duration = started.duration(to: .now)
-        let milliseconds = duration.components.seconds * 1_000
+        let milliseconds =
+            duration.components.seconds * 1_000
             + Int64(duration.components.attoseconds / 1_000_000_000_000_000)
         return ProviderActionResult(
             accepted: true,

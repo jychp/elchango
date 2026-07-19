@@ -79,15 +79,9 @@ export class DeckApiClient {
     );
   }
 
-  private async request(
-    url: URL,
-    init: RequestInit,
-  ): Promise<unknown> {
+  private async request(url: URL, init: RequestInit): Promise<unknown> {
     const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      this.requestTimeoutMs,
-    );
+    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
     try {
       const token = await this.tokenReader();
       const response = await this.fetcher(url, {

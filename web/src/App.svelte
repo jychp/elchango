@@ -4,15 +4,18 @@
   import DeckKey from './lib/DeckKey.svelte'
   import type {
     DeckActivateRequest,
-    DeckActivateResponse,
     DeckButton,
     DeckSnapshot,
   } from './lib/contracts'
+  import { parseDeckActivateResponse, parseDeckSnapshot } from './lib/contracts'
+  import { fetchWithTimeout, isAbortError } from './lib/http'
 
   type ConnectionState = 'connecting' | 'connected' | 'stale' | 'error'
 
   const WEB_CLIENT_ID = 'web'
   const POLL_INTERVAL_MS = 1_000
+  const POLL_TIMEOUT_MS = 3_000
+  const ACTION_TIMEOUT_MS = 10_000
   const STALE_AFTER_MS = 3_000
   const SLOT_COUNT = 15
 
@@ -21,14 +24,13 @@
   let errorMessage = $state('')
   let pendingButtonId = $state<string | null>(null)
   let deckActionError = $state('')
+  let activeActionRequest: AbortController | null = null
 
   const slots = $derived.by((): Array<DeckButton | null> => {
-    const positionOffset = snapshot?.buttons.some((button) => button.position === 0) ? 0 : 1
-
     return Array.from(
       { length: SLOT_COUNT },
       (_, index) =>
-        snapshot?.buttons.find((button) => button.position === index + positionOffset) ?? null,
+        snapshot?.buttons.find((button) => button.position === index) ?? null,
     )
   })
 
@@ -44,27 +46,19 @@
 
   function installSnapshot(nextSnapshot: DeckSnapshot): void {
     if (
-      !Array.isArray(nextSnapshot.buttons) ||
-      typeof nextSnapshot.observed_at_ms !== 'number' ||
-      typeof nextSnapshot.page !== 'number' ||
-      typeof nextSnapshot.page_count !== 'number' ||
-      typeof nextSnapshot.has_previous !== 'boolean' ||
-      typeof nextSnapshot.has_next !== 'boolean'
-    ) {
-      throw new Error('Snapshot response is invalid')
-    }
-
-    if (
       snapshot &&
-      nextSnapshot.revision < snapshot.revision &&
-      nextSnapshot.observed_at_ms <= snapshot.observed_at_ms
+      (nextSnapshot.revision < snapshot.revision ||
+        (nextSnapshot.revision === snapshot.revision &&
+          nextSnapshot.observed_at_ms <= snapshot.observed_at_ms))
     ) {
       return
     }
 
     snapshot = nextSnapshot
     connectionState =
-      Date.now() - nextSnapshot.observed_at_ms > STALE_AFTER_MS ? 'stale' : 'connected'
+      Date.now() - nextSnapshot.observed_at_ms > STALE_AFTER_MS
+        ? 'stale'
+        : 'connected'
     errorMessage = ''
   }
 
@@ -80,7 +74,8 @@
         if (details && typeof details === 'object') {
           const { message: detailsMessage } = details as Record<string, unknown>
 
-          if (typeof detailsMessage === 'string' && detailsMessage.trim()) return detailsMessage
+          if (typeof detailsMessage === 'string' && detailsMessage.trim())
+            return detailsMessage
         }
       }
     } catch {
@@ -107,6 +102,8 @@
 
     pendingButtonId = button.id
     deckActionError = ''
+    const actionRequest = new AbortController()
+    activeActionRequest = actionRequest
 
     try {
       const request: DeckActivateRequest = {
@@ -114,29 +111,41 @@
         button_id: button.id,
         revision: currentSnapshot.revision,
       }
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(request),
-      })
+      const response = await fetchWithTimeout(
+        endpoint,
+        {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(request),
+          signal: actionRequest.signal,
+        },
+        ACTION_TIMEOUT_MS,
+        'Deck action timed out',
+      )
 
       if (!response.ok) {
         throw new Error(await responseErrorMessage(response))
       }
 
-      const result = (await response.json()) as DeckActivateResponse
+      const result = parseDeckActivateResponse(await response.json())
       if (result.snapshot !== undefined) installSnapshot(result.snapshot)
 
       deckActionError = ''
     } catch (error) {
-      deckActionError = error instanceof Error ? error.message : 'Deck action failed'
+      if (!isAbortError(error)) {
+        deckActionError =
+          error instanceof Error ? error.message : 'Deck action failed'
+      }
     } finally {
+      if (activeActionRequest === actionRequest) activeActionRequest = null
       pendingButtonId = null
     }
   }
 
-  function longPressHandler(button: DeckButton | null): (() => void) | undefined {
+  function longPressHandler(
+    button: DeckButton | null,
+  ): (() => void) | undefined {
     const supportsLongPress =
       button !== null &&
       ((button.kind === 'session' && button.session_id != null) ||
@@ -158,28 +167,31 @@
       activeRequest = new AbortController()
 
       try {
-        const response = await fetch(
+        const response = await fetchWithTimeout(
           `/api/snapshot?client_id=${encodeURIComponent(WEB_CLIENT_ID)}`,
           {
             credentials: 'same-origin',
             headers: { Accept: 'application/json' },
             signal: activeRequest.signal,
           },
+          POLL_TIMEOUT_MS,
+          'Snapshot request timed out',
         )
 
         if (!response.ok) {
           throw new Error(`Snapshot request failed (${response.status})`)
         }
 
-        const nextSnapshot = (await response.json()) as DeckSnapshot
+        const nextSnapshot = parseDeckSnapshot(await response.json())
 
         if (!stopped) {
           installSnapshot(nextSnapshot)
         }
       } catch (error) {
-        if (!stopped && !(error instanceof DOMException && error.name === 'AbortError')) {
+        if (!stopped && !isAbortError(error)) {
           connectionState = 'error'
-          errorMessage = error instanceof Error ? error.message : 'Snapshot unavailable'
+          errorMessage =
+            error instanceof Error ? error.message : 'Snapshot unavailable'
         }
       } finally {
         if (!stopped) {
@@ -194,6 +206,7 @@
       stopped = true
       if (timer) clearTimeout(timer)
       activeRequest?.abort()
+      activeActionRequest?.abort()
     }
   })
 </script>
@@ -214,7 +227,9 @@
       <h1 id="deck-title"><span aria-hidden="true">🐒</span> elChango</h1>
 
       <div class="connection" aria-live="polite">
-        <span class={['connection__light', `connection__light--${connectionState}`]}></span>
+        <span
+          class={['connection__light', `connection__light--${connectionState}`]}
+        ></span>
         <span>{statusLabel}</span>
       </div>
     </header>

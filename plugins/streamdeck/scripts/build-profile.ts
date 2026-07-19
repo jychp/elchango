@@ -12,14 +12,8 @@ const output = resolve(
   "elchango-mk2.streamDeckProfile",
 );
 const profileID = uuidv5("com.jychp.elchango.profile", uuidv5.DNS);
-const defaultPageID = uuidv5(
-  "com.jychp.elchango.profile.default",
-  uuidv5.DNS,
-);
-const deckPageID = uuidv5(
-  "com.jychp.elchango.profile.deck",
-  uuidv5.DNS,
-);
+const defaultPageID = uuidv5("com.jychp.elchango.profile.default", uuidv5.DNS);
+const deckPageID = uuidv5("com.jychp.elchango.profile.deck", uuidv5.DNS);
 const actionUUID = "com.jychp.elchango.key";
 const archiveRoot = `${profileID}.sdProfile`;
 const archiveTimestamp = new Date("2026-01-01T00:00:00Z");
@@ -100,11 +94,7 @@ function pageManifest(
   };
 }
 
-function addJSON(
-  files: Zippable,
-  path: string,
-  value: unknown,
-): void {
+function addJSON(files: Zippable, path: string, value: unknown): void {
   files[path] = [
     strToU8(stableJSON(value)),
     { level: 0, mtime: archiveTimestamp },

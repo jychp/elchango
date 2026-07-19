@@ -7,17 +7,34 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json"
+    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/svelte": "^5.4.2",
     "@tsconfig/svelte": "^5.0.8",
     "@types/node": "^24.13.2",
+    "@vitest/browser-playwright": "^4.1.10",
+    "eslint": "^10.7.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-svelte": "^3.21.0",
+    "globals": "^17.7.0",
     "phosphor-svelte": "^3.1.0",
+    "playwright": "^1.61.1",
+    "prettier": "^3.9.5",
+    "prettier-plugin-svelte": "^4.1.1",
     "svelte": "^5.56.4",
     "svelte-check": "^4.7.1",
     "typescript": "~6.0.2",
-    "vite": "^8.1.1"
+    "typescript-eslint": "^8.64.0",
+    "vite": "^8.1.1",
+    "vitest": "^4.1.10"
   },
   "license": "MIT"
 }

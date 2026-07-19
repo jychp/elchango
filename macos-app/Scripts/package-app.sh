@@ -6,12 +6,35 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MACOS_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_DIR="$(cd "${MACOS_DIR}/.." && pwd)"
 
-SIGN_MODE="${ELCHANGO_SIGN_MODE:-adhoc}"
+SIGN_MODE="${ELCHANGO_SIGN_MODE:-auto}"
 CONFIGURATION="${ELCHANGO_CONFIGURATION:-release}"
 ARCHITECTURES="${ELCHANGO_ARCHITECTURES:-$(uname -m)}"
+PROFILE="${ELCHANGO_PROFILE:-debug}"
 APP_VERSION="$(tr -d '[:space:]' < "${REPO_DIR}/VERSION")"
 APP_BUILD="${ELCHANGO_BUILD:-1}"
-APP_DIR="${MACOS_DIR}/dist/elChango.app"
+
+case "${PROFILE}" in
+  stable)
+    APP_NAME="elChango"
+    BUNDLE_IDENTIFIER="com.jychp.elchango"
+    HOOK_IDENTIFIER="com.jychp.elchango.hook-reporter"
+    EXECUTABLE_NAME="elChango"
+    HOOK_EXECUTABLE_NAME="elChangoHookReporter"
+    ;;
+  debug)
+    APP_NAME="elChango-debug"
+    BUNDLE_IDENTIFIER="com.jychp.elchango.debug"
+    HOOK_IDENTIFIER="com.jychp.elchango.debug.hook-reporter"
+    EXECUTABLE_NAME="elChango-debug"
+    HOOK_EXECUTABLE_NAME="elChangoHookReporter-debug"
+    ;;
+  *)
+    echo "ERROR: ELCHANGO_PROFILE must be 'stable' or 'debug'." >&2
+    exit 2
+    ;;
+esac
+
+APP_DIR="${MACOS_DIR}/dist/${APP_NAME}.app"
 CONTENTS_DIR="${APP_DIR}/Contents"
 MACOS_CONTENTS_DIR="${CONTENTS_DIR}/MacOS"
 RESOURCES_DIR="${CONTENTS_DIR}/Resources"
@@ -27,6 +50,19 @@ if [[ ! "${APP_BUILD}" =~ ^[1-9][0-9]*$ ]]; then
 fi
 
 case "${SIGN_MODE}" in
+  auto)
+    detected_identity="$(
+      security find-identity -v -p codesigning 2>/dev/null |
+        awk '/Developer ID Application|Apple Development/ {print $2; exit}'
+    )"
+    if [[ -n "${detected_identity}" ]]; then
+      SIGN_MODE="identity"
+      SIGN_IDENTITY="${detected_identity}"
+    else
+      SIGN_MODE="adhoc"
+      SIGN_IDENTITY="-"
+    fi
+    ;;
   adhoc)
     SIGN_IDENTITY="-"
     ;;
@@ -38,6 +74,10 @@ case "${SIGN_MODE}" in
     SIGN_IDENTITY="${ELCHANGO_CODESIGN_IDENTITY}"
     ;;
   developer-id)
+    if [[ "${PROFILE}" != "stable" ]]; then
+      echo "ERROR: the debug profile cannot use Developer ID signing." >&2
+      exit 2
+    fi
     if [[ -z "${ELCHANGO_CODESIGN_IDENTITY:-}" ]]; then
       echo "ERROR: ELCHANGO_CODESIGN_IDENTITY is required for Developer ID signing." >&2
       exit 2
@@ -45,7 +85,7 @@ case "${SIGN_MODE}" in
     SIGN_IDENTITY="${ELCHANGO_CODESIGN_IDENTITY}"
     ;;
   *)
-    echo "ERROR: ELCHANGO_SIGN_MODE must be 'adhoc', 'identity', or 'developer-id'." >&2
+    echo "ERROR: ELCHANGO_SIGN_MODE must be 'auto', 'adhoc', 'identity', or 'developer-id'." >&2
     exit 2
     ;;
 esac
@@ -125,15 +165,15 @@ iconutil \
 rm -rf "${APP_DIR}"
 mkdir -p "${MACOS_CONTENTS_DIR}" "${RESOURCES_DIR}/Web"
 if [[ "${#ARCHITECTURE_LIST[@]}" -eq 1 ]]; then
-  cp "${APP_BINARIES[0]}" "${MACOS_CONTENTS_DIR}/elChango"
-  cp "${HOOK_BINARIES[0]}" "${MACOS_CONTENTS_DIR}/elChangoHookReporter"
+  cp "${APP_BINARIES[0]}" "${MACOS_CONTENTS_DIR}/${EXECUTABLE_NAME}"
+  cp "${HOOK_BINARIES[0]}" "${MACOS_CONTENTS_DIR}/${HOOK_EXECUTABLE_NAME}"
 else
   lipo -create \
     "${APP_BINARIES[@]}" \
-    -output "${MACOS_CONTENTS_DIR}/elChango"
+    -output "${MACOS_CONTENTS_DIR}/${EXECUTABLE_NAME}"
   lipo -create \
     "${HOOK_BINARIES[@]}" \
-    -output "${MACOS_CONTENTS_DIR}/elChangoHookReporter"
+    -output "${MACOS_CONTENTS_DIR}/${HOOK_EXECUTABLE_NAME}"
 fi
 cp "${ICON_WORK_DIR}/elChango.icns" "${RESOURCES_DIR}/elChango.icns"
 cp "${REPO_DIR}/LICENSE" "${RESOURCES_DIR}/LICENSE"
@@ -149,17 +189,17 @@ cat > "${CONTENTS_DIR}/Info.plist" <<PLIST
 <plist version="1.0">
 <dict>
   <key>CFBundleDisplayName</key>
-  <string>elChango</string>
+  <string>${APP_NAME}</string>
   <key>CFBundleExecutable</key>
-  <string>elChango</string>
+  <string>${EXECUTABLE_NAME}</string>
   <key>CFBundleIdentifier</key>
-  <string>com.jychp.elchango</string>
+  <string>${BUNDLE_IDENTIFIER}</string>
   <key>CFBundleIconFile</key>
   <string>elChango</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
-  <string>elChango</string>
+  <string>${APP_NAME}</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
@@ -196,10 +236,11 @@ sign_path() {
 }
 
 sign_path \
-  "com.jychp.elchango.hook-reporter" \
-  "${MACOS_CONTENTS_DIR}/elChangoHookReporter"
-sign_path "com.jychp.elchango" "${APP_DIR}"
+  "${HOOK_IDENTIFIER}" \
+  "${MACOS_CONTENTS_DIR}/${HOOK_EXECUTABLE_NAME}"
+sign_path "${BUNDLE_IDENTIFIER}" "${APP_DIR}"
 
+ELCHANGO_EXPECTED_PROFILE="${PROFILE}" \
 ELCHANGO_EXPECTED_ARCHITECTURES="${ARCHITECTURES}" \
 ELCHANGO_VERIFY_DISTRIBUTION="$(
   [[ "${SIGN_MODE}" == "developer-id" ]] && printf '1' || printf '0'

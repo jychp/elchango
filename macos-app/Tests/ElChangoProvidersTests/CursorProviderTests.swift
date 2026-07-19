@@ -1,9 +1,10 @@
 @preconcurrency import ApplicationServices
 import ElChangoCore
-@testable import ElChangoProviders
 import Foundation
 import SQLite3
 import Testing
+
+@testable import ElChangoProviders
 
 @Suite("Native Cursor inventory")
 struct CursorProviderTests {
@@ -33,9 +34,10 @@ struct CursorProviderTests {
         let actual = ExpectedInventory(snapshot: snapshot)
 
         #expect(actual == expected)
-        #expect(snapshot.capabilities == [
-            .focusSession, .newSession, .executeCommand,
-        ])
+        #expect(
+            snapshot.capabilities == [
+                .focusSession, .newSession, .executeCommand,
+            ])
         #expect(
             snapshot.sessions.allSatisfy {
                 $0.capabilities == snapshot.capabilities
@@ -69,17 +71,17 @@ struct CursorProviderTests {
         let fixture = try Fixture()
         let databaseURL = try fixture.makeDatabase(
             sql: """
-            CREATE TABLE ItemTable (key TEXT);
-            CREATE TABLE composerHeaders (
-                composerId TEXT,
-                workspaceId TEXT,
-                lastUpdatedAt INTEGER,
-                isArchived INTEGER,
-                isSubagent INTEGER,
-                value BLOB
-            );
-            CREATE TABLE cursorDiskKV (key TEXT, value BLOB);
-            """
+                CREATE TABLE ItemTable (key TEXT);
+                CREATE TABLE composerHeaders (
+                    composerId TEXT,
+                    workspaceId TEXT,
+                    lastUpdatedAt INTEGER,
+                    isArchived INTEGER,
+                    isSubagent INTEGER,
+                    value BLOB
+                );
+                CREATE TABLE cursorDiskKV (key TEXT, value BLOB);
+                """
         )
         let provider = CursorProvider(
             databaseURL: databaseURL,
@@ -213,9 +215,10 @@ struct CursorProviderTests {
 
         #expect(result.accepted)
         #expect(result.verdict == "DISPATCH_VERIFIED")
-        #expect(await automation.dispatchedTexts() == [
-            "Open a pull request for the current branch.",
-        ])
+        #expect(
+            await automation.dispatchedTexts() == [
+                "Open a pull request for the current branch."
+            ])
     }
 
     @Test("already-selected focus verifies without a shortcut")
@@ -285,10 +288,12 @@ private struct Fixture {
 
     func makeDatabase(sql: String? = nil) throws -> URL {
         let databaseURL = temporaryRoot.appendingPathComponent("state.vscdb")
-        let script = try sql ?? String(
-            contentsOf: root.appendingPathComponent("cursor-state.sql"),
-            encoding: .utf8
-        )
+        let script =
+            try sql
+            ?? String(
+                contentsOf: root.appendingPathComponent("cursor-state.sql"),
+                encoding: .utf8
+            )
         var database: OpaquePointer?
         guard sqlite3_open(databaseURL.path, &database) == SQLITE_OK,
             let database
@@ -297,14 +302,17 @@ private struct Fixture {
         }
         defer { sqlite3_close(database) }
         var errorMessage: UnsafeMutablePointer<CChar>?
-        guard sqlite3_exec(
-            database,
-            script,
-            nil,
-            nil,
-            &errorMessage
-        ) == SQLITE_OK else {
-            let message = errorMessage.map { String(cString: $0) }
+        guard
+            sqlite3_exec(
+                database,
+                script,
+                nil,
+                nil,
+                &errorMessage
+            ) == SQLITE_OK
+        else {
+            let message =
+                errorMessage.map { String(cString: $0) }
                 ?? "unknown fixture error"
             sqlite3_free(errorMessage)
             throw FixtureError.sqlite(message)
@@ -321,14 +329,17 @@ private struct Fixture {
         }
         defer { sqlite3_close(database) }
         var errorMessage: UnsafeMutablePointer<CChar>?
-        guard sqlite3_exec(
-            database,
-            sql,
-            nil,
-            nil,
-            &errorMessage
-        ) == SQLITE_OK else {
-            let message = errorMessage.map { String(cString: $0) }
+        guard
+            sqlite3_exec(
+                database,
+                sql,
+                nil,
+                nil,
+                &errorMessage
+            ) == SQLITE_OK
+        else {
+            let message =
+                errorMessage.map { String(cString: $0) }
                 ?? "unknown fixture update error"
             sqlite3_free(errorMessage)
             throw FixtureError.sqlite(message)

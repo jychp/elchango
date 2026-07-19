@@ -160,16 +160,19 @@ public struct ControlTokenStore {
     }
 
     private static func isValid(_ value: String) -> Bool {
-        guard value.count == 43, value.utf8.allSatisfy({
-            (65...90).contains($0)
-                || (97...122).contains($0)
-                || (48...57).contains($0)
-                || $0 == 45
-                || $0 == 95
-        }) else {
+        guard value.count == 43,
+            value.utf8.allSatisfy({
+                (65...90).contains($0)
+                    || (97...122).contains($0)
+                    || (48...57).contains($0)
+                    || $0 == 45
+                    || $0 == 95
+            })
+        else {
             return false
         }
-        let base64 = value
+        let base64 =
+            value
             .replacingOccurrences(of: "-", with: "+")
             .replacingOccurrences(of: "_", with: "/")
             + "="
@@ -216,7 +219,7 @@ public actor LoopbackAuthorization {
     ) -> String? {
         purgeExpired(now: now)
         guard let expiration = bootstraps.removeValue(forKey: token),
-              expiration > now
+            expiration > now
         else {
             return nil
         }
@@ -227,7 +230,7 @@ public actor LoopbackAuthorization {
 
     public func acceptsBearer(_ authorization: String?) -> Bool {
         guard let authorization,
-              authorization.hasPrefix("Bearer ")
+            authorization.hasPrefix("Bearer ")
         else {
             return false
         }
@@ -243,8 +246,8 @@ public actor LoopbackAuthorization {
     ) -> Bool {
         purgeExpired(now: now)
         guard let token = cookieValue(in: cookieHeader),
-              let expiration = sessions[token],
-              expiration > now
+            let expiration = sessions[token],
+            expiration > now
         else {
             return false
         }
@@ -304,8 +307,9 @@ public actor HookRateLimiter {
         let cutoff = now.addingTimeInterval(-window)
         requests = requests.mapValues { $0.filter { $0 > cutoff } }
             .filter { !$0.value.isEmpty }
-        let bucket = requests[providerID] != nil
-            || requests.count < maximumProviderCount
+        let bucket =
+            requests[providerID] != nil
+                || requests.count < maximumProviderCount
             ? providerID
             : "_other"
         var recent = requests[bucket, default: []]

@@ -6,6 +6,7 @@ DIST_DIR ?= dist
 
 .PHONY: \
 	setup \
+	generate-contracts test-contracts \
 	test test-versions test-app-macos test-web test-plugins test-plugin-cursor \
 	test-plugin-claude test-plugin-streamdeck test-pocs \
 	build build-app-macos build-app-macos-universal notarize-app-macos \
@@ -18,17 +19,29 @@ setup:
 	npm --prefix plugins/streamdeck ci
 	swift package --package-path macos-app resolve
 
-test: test-versions test-app-macos test-web test-plugins test-pocs
+test: test-versions test-contracts test-app-macos test-web test-plugins test-pocs
 	git diff --check
+
+generate-contracts:
+	$(PYTHON) scripts/generate_http_contracts.py
+
+test-contracts:
+	$(PYTHON) scripts/generate_http_contracts.py --check
 
 test-versions:
 	$(PYTHON) scripts/validate_versions.py
 
 test-app-macos: test-versions
+	swift format lint --recursive --strict \
+		--configuration .swift-format \
+		macos-app/Sources macos-app/Tests
 	swift test --package-path macos-app
 
 test-web: test-versions
+	npm --prefix web run lint
+	npm --prefix web run format:check
 	npm --prefix web run check
+	npm --prefix web test
 
 test-plugins: test-plugin-cursor test-plugin-claude test-plugin-streamdeck
 
@@ -61,9 +74,10 @@ test-pocs:
 build: build-app-macos build-plugins
 
 build-app-macos: test-versions
-	./macos-app/Scripts/package-app.sh
+	ELCHANGO_PROFILE=debug ./macos-app/Scripts/package-app.sh
 
 build-app-macos-universal: test-versions
+	ELCHANGO_PROFILE=stable \
 	ELCHANGO_ARCHITECTURES="arm64 x86_64" \
 		./macos-app/Scripts/package-app.sh
 
@@ -71,6 +85,7 @@ notarize-app-macos: build-app-macos-universal
 	./macos-app/Scripts/notarize-app.sh
 
 verify-release-app-macos:
+	ELCHANGO_EXPECTED_PROFILE=stable \
 	ELCHANGO_VERIFY_DISTRIBUTION=1 \
 	ELCHANGO_VERIFY_NOTARIZATION=1 \
 	ELCHANGO_EXPECTED_ARCHITECTURES="arm64 x86_64" \

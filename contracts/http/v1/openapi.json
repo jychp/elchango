@@ -1,0 +1,507 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "elChango loopback API",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8765"
+    }
+  ],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Service and provider health",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/snapshot": {
+      "get": {
+        "parameters": [
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[A-Za-z0-9._-]+$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current fixed deck",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeckSnapshot"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/activate": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeckActionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Accepted deck action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeckActionResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "$ref": "#/components/responses/APIError"
+          }
+        }
+      }
+    },
+    "/api/long-press": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeckActionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Opened or updated a picker",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeckActionResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "$ref": "#/components/responses/APIError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "APIError": {
+        "description": "Structured API error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/APIErrorResponse"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "DeckButtonKind": {
+        "type": "string",
+        "enum": [
+          "session",
+          "control",
+          "empty"
+        ]
+      },
+      "DeckIconName": {
+        "type": "string",
+        "enum": [
+          "cursor",
+          "claude",
+          "plus",
+          "arrow-left",
+          "arrow-right",
+          "arrows-clockwise",
+          "robot",
+          "terminal",
+          "code",
+          "bug",
+          "wrench",
+          "rocket",
+          "shield",
+          "database",
+          "globe",
+          "package",
+          "git-branch",
+          "flask",
+          "check",
+          "git-pull-request",
+          "git-commit",
+          "article",
+          "fire",
+          "fire-extinguisher",
+          "fire-truck",
+          "magnifying-glass",
+          "bell",
+          "test-tube",
+          "checks",
+          "eye",
+          "shield-check"
+        ]
+      },
+      "DeckButtonColor": {
+        "type": "string",
+        "enum": [
+          "idle",
+          "working",
+          "waiting",
+          "done",
+          "error",
+          "unknown",
+          "control"
+        ]
+      },
+      "DeckButtonConfidence": {
+        "type": "string",
+        "enum": [
+          "observed",
+          "candidate",
+          "persisted",
+          "unknown"
+        ]
+      },
+      "DeckAction": {
+        "type": "string",
+        "enum": [
+          "choose_new_provider",
+          "cancel_new_session",
+          "new_session",
+          "refresh_sessions",
+          "previous_page",
+          "next_page",
+          "choose_session_icon",
+          "set_session_icon",
+          "choose_slot_command",
+          "set_slot_command",
+          "cancel_picker",
+          "previous_picker_page",
+          "next_picker_page",
+          "execute_command"
+        ]
+      },
+      "CommandID": {
+        "type": "string",
+        "enum": [
+          "accept",
+          "commit_push",
+          "create_pr",
+          "compact"
+        ]
+      },
+      "DeckButton": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "position",
+          "kind",
+          "label",
+          "detail",
+          "icon",
+          "color",
+          "selected",
+          "enabled",
+          "confidence",
+          "provider_id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 14
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DeckButtonKind"
+          },
+          "label": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "icon": {
+            "$ref": "#/components/schemas/DeckIconName"
+          },
+          "color": {
+            "$ref": "#/components/schemas/DeckButtonColor"
+          },
+          "selected": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/DeckButtonConfidence"
+          },
+          "provider_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "action": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DeckAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "command_id": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CommandID"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "option_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "DeckSnapshot": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "revision",
+          "observed_at_ms",
+          "source",
+          "read_only",
+          "selected_session_id",
+          "page",
+          "page_count",
+          "has_previous",
+          "has_next",
+          "buttons"
+        ],
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "observed_at_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "source": {
+            "type": "string"
+          },
+          "read_only": {
+            "type": "boolean"
+          },
+          "selected_session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "page_count": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "has_previous": {
+            "type": "boolean"
+          },
+          "has_next": {
+            "type": "boolean"
+          },
+          "buttons": {
+            "type": "array",
+            "minItems": 15,
+            "maxItems": 15,
+            "x-uniqueProperty": "position",
+            "items": {
+              "$ref": "#/components/schemas/DeckButton"
+            }
+          }
+        }
+      },
+      "DeckActionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "client_id",
+          "button_id",
+          "revision"
+        ],
+        "properties": {
+          "client_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[A-Za-z0-9._-]+$"
+          },
+          "button_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "DeckActionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "accepted",
+          "action"
+        ],
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "action": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DeckAction"
+              },
+              {
+                "const": "focus_session"
+              }
+            ]
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/DeckSnapshot"
+          },
+          "focus": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "launch": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "command": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "focus_enabled",
+          "launch_enabled",
+          "actions_enabled",
+          "providers",
+          "unavailable_providers",
+          "accessibility_trusted"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok"
+          },
+          "focus_enabled": {
+            "type": "boolean"
+          },
+          "launch_enabled": {
+            "type": "boolean"
+          },
+          "actions_enabled": {
+            "type": "boolean"
+          },
+          "providers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "unavailable_providers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "accessibility_trusted": {
+            "type": "boolean"
+          }
+        }
+      },
+      "APIErrorResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "minLength": 1
+          },
+          "retryable": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

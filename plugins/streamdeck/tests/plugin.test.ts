@@ -3,6 +3,8 @@ import test from "node:test";
 
 import { DeckApiClient } from "../src/client.js";
 import {
+  parseActivationResponse,
+  parseDeckActionRequest,
   parseDeckSnapshot,
   type DeckActivationResponse,
   type DeckButton,
@@ -14,10 +16,7 @@ import {
   LONG_PRESS_DURATION_MS,
 } from "../src/key-press.js";
 import { positionFromCoordinates, renderButton } from "../src/render.js";
-import {
-  StreamDeckSurface,
-  type KeyPort,
-} from "../src/surface.js";
+import { StreamDeckSurface, type KeyPort } from "../src/surface.js";
 
 test("coordinates map the MK.2 grid to deck positions", () => {
   assert.equal(positionFromCoordinates(0, 0), 0);
@@ -27,12 +26,14 @@ test("coordinates map the MK.2 grid to deck positions", () => {
 });
 
 test("button rendering centers only the icon and title with state color", () => {
-  const image = decodeSvg(renderButton({
-    ...buttonAt(0),
-    label: "<agent>",
-    detail: "must not render",
-    color: "working",
-  }));
+  const image = decodeSvg(
+    renderButton({
+      ...buttonAt(0),
+      label: "<agent>",
+      detail: "must not render",
+      color: "working",
+    }),
+  );
 
   assert.match(image, /&lt;agent&gt;/);
   assert.match(image, /#4ba3e3/);
@@ -44,12 +45,14 @@ test("button rendering centers only the icon and title with state color", () => 
 });
 
 test("button rendering supports Claude Code session icons", () => {
-  const image = decodeSvg(renderButton({
-    ...buttonAt(0),
-    icon: "claude",
-    label: "Claude",
-    color: "idle",
-  }));
+  const image = decodeSvg(
+    renderButton({
+      ...buttonAt(0),
+      icon: "claude",
+      label: "Claude",
+      color: "idle",
+    }),
+  );
 
   assert.match(image, /Claude/);
   assert.match(image, /fill="#77818b"/);
@@ -94,12 +97,14 @@ test("button rendering supports every Phosphor icon", () => {
 });
 
 test("button rendering leaves disabled empty keys visually blank", () => {
-  const image = decodeSvg(renderButton({
-    ...buttonAt(10),
-    label: "",
-    detail: "",
-    enabled: false,
-  }));
+  const image = decodeSvg(
+    renderButton({
+      ...buttonAt(10),
+      label: "",
+      detail: "",
+      enabled: false,
+    }),
+  );
 
   assert.match(image, /fill="#111315"/);
   assert.doesNotMatch(image, /<path/);
@@ -145,6 +150,52 @@ test("snapshot parser accepts picker contracts", () => {
   assert.equal(parsed.buttons[10]!.action, "execute_command");
 });
 
+test("generated validators enforce requests and responses", () => {
+  assert.throws(
+    () =>
+      parseDeckActionRequest({
+        client_id: "stream deck",
+        button_id: "control:refresh",
+        revision: 1,
+      }),
+    /invalid format/,
+  );
+  assert.throws(
+    () =>
+      parseDeckActionRequest({
+        client_id: "streamdeck",
+        button_id: "control:refresh",
+        revision: -1,
+      }),
+    /at least 0/,
+  );
+  assert.throws(
+    () => parseActivationResponse({ accepted: true }),
+    /action is required/,
+  );
+  assert.throws(
+    () =>
+      parseActivationResponse({
+        accepted: true,
+        action: "focus_session",
+        unexpected: true,
+      }),
+    /unexpected is not allowed/,
+  );
+  assert.deepEqual(
+    parseActivationResponse({
+      accepted: true,
+      action: "execute_command",
+      command: { verdict: "dispatched" },
+    }),
+    {
+      accepted: true,
+      action: "execute_command",
+      command: { verdict: "dispatched" },
+    },
+  );
+});
+
 test("API client sends client identity and button actions", async () => {
   const requests: Array<{
     url: string;
@@ -184,10 +235,7 @@ test("API client sends client identity and button actions", async () => {
     button_id: "session:one",
     revision: 4,
   });
-  assert.equal(
-    requests[2]!.url,
-    "http://127.0.0.1:8765/api/long-press",
-  );
+  assert.equal(requests[2]!.url, "http://127.0.0.1:8765/api/long-press");
   assert.deepEqual(
     JSON.parse(requests[2]!.init!.body as string),
     JSON.parse(requests[1]!.init!.body as string),
@@ -488,10 +536,7 @@ test("surface renders offline and recovers after service failure", async () => {
 
   surface.register(key);
   await new Promise((resolve) => setTimeout(resolve, 10));
-  assert.equal(
-    images.at(-1),
-    "static/imgs/actions/key/offline.png",
-  );
+  assert.equal(images.at(-1), "static/imgs/actions/key/offline.png");
   assert.deepEqual(errors, ["connection refused"]);
 
   available = true;

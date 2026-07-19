@@ -7,14 +7,14 @@ committing and pushing.
 
 ## Supported versions
 
-elChango has not published a stable release yet. Security fixes currently land
-on `main`. This section will identify supported release lines before the first
-public tag.
+Security fixes are provided for the current stable release line and `main`.
+Users should update to the latest patch release before reporting a problem.
 
 | Version | Supported |
 | --- | --- |
-| `main` (pre-release) | Yes |
-| Tagged releases | None yet |
+| `1.x` | Yes |
+| `main` | Yes |
+| `< 1.0` | No |
 
 ## Reporting a vulnerability
 
@@ -85,8 +85,8 @@ The service also:
 
 - requires the expected `Host` header;
 - rejects foreign browser `Origin` values;
-- requires authentication for health, snapshots, focus, activation,
-  long-press, and intent routes;
+- requires authentication for health, snapshot, activation, and long-press
+  routes;
 - rejects stale command revisions and rebuilds the target snapshot before
   acting;
 - limits request body sizes.
@@ -166,7 +166,8 @@ GitHub stores the certificate and App Store Connect API key only as protected
 keychain and removes reconstructed key material in an unconditional cleanup
 step. Release artifacts include SHA-256 checksum files.
 
-Development builds remain ad hoc signed by default and are not official
+Development builds use an available Apple Development or Developer ID identity
+when possible, then fall back to ad hoc signing. They are not official
 distribution artifacts. See [docs/releasing.md](docs/releasing.md) for the
 release process, secret rotation, and independent verification commands.
 
@@ -182,8 +183,7 @@ release process, secret rotation, and independent verification commands.
   are not cryptographically authenticated.
 - The fixed Cursor hook path trusts the application installed at
   `/Applications/elChango.app`. Install the app only from a source you trust.
-- Development builds are ad hoc signed by default. They are not notarized
-  public distribution artifacts.
+- Development builds are not notarized public distribution artifacts.
 - Provider-qualified session IDs and diagnostic source paths are local
   identifiers, not secrets or opaque authorization capabilities.
 

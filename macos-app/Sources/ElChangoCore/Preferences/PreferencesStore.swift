@@ -77,7 +77,7 @@ public actor PreferencesStore {
         icon: DeckIcon
     ) throws {
         guard !sessionID.isEmpty,
-              DeckIcon.personalizationOptions.contains(icon)
+            DeckIcon.personalizationOptions.contains(icon)
         else {
             throw PreferencesStoreError.invalidSessionIcons(url)
         }
@@ -157,8 +157,8 @@ public actor PreferencesStore {
         var icons: [String: DeckIcon] = [:]
         for (sessionID, rawIcon) in payload.sessionIcons {
             guard !sessionID.isEmpty,
-                  let icon = DeckIcon(rawValue: rawIcon),
-                  DeckIcon.personalizationOptions.contains(icon)
+                let icon = DeckIcon(rawValue: rawIcon),
+                DeckIcon.personalizationOptions.contains(icon)
             else {
                 throw PreferencesStoreError.invalidSessionIcons(url)
             }

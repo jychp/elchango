@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 EXPECTED_VERSION="$(tr -d '[:space:]' < "${REPO_DIR}/VERSION")"
 EXPECTED_ARCHITECTURES="${ELCHANGO_EXPECTED_ARCHITECTURES:-}"
+EXPECTED_PROFILE="${ELCHANGO_EXPECTED_PROFILE:-stable}"
 VERIFY_DISTRIBUTION="${ELCHANGO_VERIFY_DISTRIBUTION:-0}"
 VERIFY_NOTARIZATION="${ELCHANGO_VERIFY_NOTARIZATION:-0}"
 APP_DIR="${1:-}"
@@ -14,9 +15,31 @@ if [[ -z "${APP_DIR}" ]]; then
   exit 2
 fi
 
+case "${EXPECTED_PROFILE}" in
+  stable)
+    EXPECTED_BUNDLE_IDENTIFIER="com.jychp.elchango"
+    EXPECTED_EXECUTABLE_NAME="elChango"
+    EXPECTED_HOOK_EXECUTABLE_NAME="elChangoHookReporter"
+    ;;
+  debug)
+    EXPECTED_BUNDLE_IDENTIFIER="com.jychp.elchango.debug"
+    EXPECTED_EXECUTABLE_NAME="elChango-debug"
+    EXPECTED_HOOK_EXECUTABLE_NAME="elChangoHookReporter-debug"
+    ;;
+  *)
+    echo "ERROR: ELCHANGO_EXPECTED_PROFILE must be 'stable' or 'debug'." >&2
+    exit 2
+    ;;
+esac
+if [[ "${EXPECTED_PROFILE}" == "debug" ]] &&
+   [[ "${VERIFY_DISTRIBUTION}" == "1" || "${VERIFY_NOTARIZATION}" == "1" ]]; then
+  echo "ERROR: the debug profile cannot be verified as a distribution." >&2
+  exit 2
+fi
+
 PLIST="${APP_DIR}/Contents/Info.plist"
-EXECUTABLE="${APP_DIR}/Contents/MacOS/elChango"
-HOOK_REPORTER="${APP_DIR}/Contents/MacOS/elChangoHookReporter"
+EXECUTABLE="${APP_DIR}/Contents/MacOS/${EXPECTED_EXECUTABLE_NAME}"
+HOOK_REPORTER="${APP_DIR}/Contents/MacOS/${EXPECTED_HOOK_EXECUTABLE_NAME}"
 APP_ICON="${APP_DIR}/Contents/Resources/elChango.icns"
 WEB_INDEX="${APP_DIR}/Contents/Resources/Web/index.html"
 LICENSE="${APP_DIR}/Contents/Resources/LICENSE"
@@ -59,12 +82,12 @@ TRADEMARKS="${APP_DIR}/Contents/Resources/TRADEMARKS.md"
 plutil -lint "${PLIST}" >/dev/null
 
 [[ "$(plutil -extract CFBundleIdentifier raw -o - "${PLIST}")" == \
-  "com.jychp.elchango" ]] || {
+  "${EXPECTED_BUNDLE_IDENTIFIER}" ]] || {
   echo "ERROR: unexpected bundle identifier." >&2
   exit 1
 }
 [[ "$(plutil -extract CFBundleExecutable raw -o - "${PLIST}")" == \
-  "elChango" ]] || {
+  "${EXPECTED_EXECUTABLE_NAME}" ]] || {
   echo "ERROR: unexpected executable name." >&2
   exit 1
 }

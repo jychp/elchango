@@ -55,6 +55,20 @@ updates:
         patterns:
           - "*"
 
+  - package-ecosystem: npm
+    directory: /.github/tools/claude-validator
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 4
+      default-days: 7
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: "chore(deps)"
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
