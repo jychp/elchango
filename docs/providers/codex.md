@@ -11,9 +11,10 @@ scope: only rollouts whose `originator` is `Codex Desktop` and whose
 
 The native Swift provider implements a bounded, read-only inventory with stable
 native identity, workspace and repository mapping, hook-driven live state (idle
-by default), and exact session focus via an id-addressed deep link
-(`codex://threads/<thread-id>`). New-session and command dispatch are
-implemented but fail closed. Malformed Codex records degrade only this provider.
+by default), exact session focus via an id-addressed deep link
+(`codex://threads/<thread-id>`), and a neutral new session via the new-thread
+deep link (`codex://threads/new`). Command dispatch is implemented but fails
+closed. Malformed Codex records degrade only this provider.
 
 Current conservative verdicts:
 
@@ -30,17 +31,18 @@ Current conservative verdicts:
   id, so focus targets the exact session and verifies that the app came to the
   foreground. Selection cannot be read back statically, so the exactness comes
   from the id in the link, not from a post-action selected-thread check.
-- New session: `NEW_SESSION_UNVERIFIED_REQUIRES_LIVE`. The `codex://` scheme is
-  registered but no neutral new-session route is confirmed; the action fails
-  closed.
+- New session: `NEW_SESSION_REQUESTED`. Codex Desktop's deep-link router maps
+  `codex://threads/new` to a neutral new-thread surface; with no `prompt` query
+  parameter it opens the composer and submits nothing. The action opens that
+  link and verifies the app came to the foreground.
 - Commands: `UNPROVEN_REQUIRES_LIVE_TARGET_EVIDENCE`. No selected-session
   signal and no verified prompt-input target exist; commands fail closed.
 
-The provider descriptor declares `focus_session`; every Desktop thread is
-addressable by id through the deep link, so focus is offered for all sessions.
-New-session and command buttons stay hidden until the corresponding live
-experiment proves a route and target. Enabling either is a one-line change to
-the descriptor and `sessionCapabilities`.
+The provider descriptor declares `focus_session` (per session) and `new_session`
+(provider level); every Desktop thread is addressable by id through the deep
+link, so focus is offered for all sessions. Command buttons stay hidden until a
+live experiment proves an exact prompt-input target. Enabling commands is a
+one-line change to the descriptor and `sessionCapabilities`.
 
 ## Tested versions and environment
 
@@ -229,9 +231,14 @@ shortcut. The sidebar order is still persisted and reconstructable from
 now that each thread is directly addressable by id, and no sidebar-position
 keyboard shortcut is known for Codex Desktop.
 
-The `codex://` scheme is registered, but no neutral new-session route was
-confirmed and no no-submit guarantee was established, so `openNew` fails closed
-with `NEW_SESSION_UNVERIFIED_REQUIRES_LIVE`.
+New session uses the same deep-link router. `codex://threads/new` resolves to a
+neutral new-thread surface (`kind: newThread`); the router only attaches input
+when a `prompt`, `originUrl`, or `path` query parameter is present, so the bare
+link opens the composer and submits nothing. `openNew` opens it and verifies the
+app foregrounds, returning `NEW_SESSION_REQUESTED` (or
+`NEW_SESSION_DISPATCH_UNVERIFIED` if the app never comes forward; the link is
+still opened). Both routes were read from the app bundle's deep-link parser
+(`case 'threads': if segment[0] === 'new' -> newThread, else -> localConversation`).
 
 ## Semantic commands
 
@@ -252,9 +259,10 @@ is claimed.
 - Provider actions share the serialized native automation boundary and the
   process-wide privileged action gate with Cursor and Claude.
 - Focus acts only on a target present in the current inventory and only through
-  the exact id-addressed deep link; it never submits prompt text. New-session
-  and command actions fail closed: they never act on an unverified target and
-  never submit prompt text.
+  the exact id-addressed deep link; it never submits prompt text. New session
+  opens only the neutral `codex://threads/new` link with no query parameters, so
+  it submits nothing. Command dispatch fails closed: it never acts on an
+  unverified target and never submits prompt text.
 - Hook payloads are sanitized to a minimal metadata allow-list
   (`hook_event_name`, `session_id`, `cwd`, `transcript_path`, `tool_name`,
   `permission_mode`, `turn_id`) before reaching the provider.
@@ -284,7 +292,9 @@ unknown with explicit degraded detail.
 - Focus uses the id-addressed deep link (`codex://threads/<id>`), so the
   reconstructable sidebar order (POC 07) and the unknown sidebar-position
   keyboard shortcut are no longer needed for focus.
-- No confirmed neutral new-session route was found.
+- New session opens the composer but the app persists no selected-thread signal,
+  so the resulting thread cannot be read back; success is confirmed only by the
+  app coming to the foreground.
 - No agent prompt-input accessibility target has been identified for the
   Electron/Chromium desktop app; command dispatch remains unproven.
 - Native id stability across Codex Desktop resume is unproven.
@@ -304,8 +314,8 @@ unknown with explicit degraded detail.
   `UNPROVEN_REQUIRES_LIVE_HOOK_OBSERVATION`.
 - `scripts/poc/codex/04_codex_desktop_focus.py`: exact per-thread deep link
   (`codex://threads/<id>`). Verdict: `FOCUS_DEEP_LINK_AVAILABLE`.
-- `scripts/poc/codex/05_codex_new_session.py`: neutral new-session candidates.
-  Verdict: `NEW_SESSION_CANDIDATE_UNVERIFIED`.
+- `scripts/poc/codex/05_codex_new_session.py`: neutral new-thread deep link
+  (`codex://threads/new`). Verdict: `NEW_SESSION_DEEP_LINK_AVAILABLE`.
 - `scripts/poc/codex/06_codex_command_dispatch.py`: command preflight and
   refusal. Verdict: `UNPROVEN_REQUIRES_LIVE_TARGET_EVIDENCE`.
 - `scripts/poc/codex/07_codex_sidebar_order.py`: sidebar-order reconstruction

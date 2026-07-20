@@ -25,9 +25,9 @@ struct CodexProviderTests {
         #expect(CodexExpectedInventory(snapshot: snapshot) == expected)
         // Excludes CLI (codex-tui), subagents, and empty rollout artifacts.
         #expect(snapshot.sessions.count == 2)
-        // Focus is proven via the id-addressed deep link; commands and
-        // new-session stay unproven.
-        #expect(snapshot.capabilities == [.focusSession])
+        // Focus (per session) and new-session (provider level) are proven via
+        // id-addressed deep links; commands stay unproven.
+        #expect(snapshot.capabilities == [.focusSession, .newSession])
         #expect(snapshot.sessions.allSatisfy { $0.capabilities == [.focusSession] })
         #expect(snapshot.sessions.allSatisfy { $0.commands.isEmpty })
         #expect(snapshot.selectedNativeSessionID == nil)
@@ -239,17 +239,31 @@ struct CodexProviderTests {
         #expect(try await provider.snapshot().sessions.first?.state == .idle)
     }
 
-    @Test("new-session and commands fail closed pending live verification")
-    func actionsFailClosed() async throws {
+    @Test("new session opens the neutral new-thread deep link")
+    func openNewUsesNeutralDeepLink() async throws {
+        let fixture = CodexSharedFixture()
+        let automation = CodexAutomation(frontmostBundleID: CodexProvider.bundleID)
+        let provider = CodexProvider(
+            sessionsRootURL: fixture.sessionsRoot,
+            sessionIndexURL: fixture.sessionIndex,
+            automation: automation
+        )
+
+        let opened = try await provider.openNew()
+        #expect(opened.accepted)
+        #expect(opened.verdict == "NEW_SESSION_REQUESTED")
+        // The neutral route carries no prompt, so nothing is submitted.
+        #expect(await automation.openedURLs() == ["codex://threads/new"])
+    }
+
+    @Test("commands fail closed pending live verification")
+    func commandsFailClosed() async throws {
         let fixture = CodexSharedFixture()
         let provider = CodexProvider(
             sessionsRootURL: fixture.sessionsRoot,
             sessionIndexURL: fixture.sessionIndex
         )
         let native = "11111111-1111-7111-8111-111111111111"
-
-        let opened = try await provider.openNew()
-        #expect(!opened.accepted)
 
         let command = try await provider.executeCommand(
             nativeSessionID: native,

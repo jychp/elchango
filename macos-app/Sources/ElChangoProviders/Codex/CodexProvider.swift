@@ -37,7 +37,7 @@ public actor CodexProvider: AgentProvider {
         id: "codex",
         displayName: "Codex",
         icon: .codex,
-        capabilities: [.focusSession]
+        capabilities: [.focusSession, .newSession]
     )
 
     public static let bundleID = "com.openai.codex"
@@ -238,16 +238,31 @@ public actor CodexProvider: AgentProvider {
     }
 
     private func performOpenNew() async throws -> ProviderActionResult {
-        // The `codex://` scheme is registered, but no documented neutral
-        // new-session route is confirmed. Fail closed until a live experiment
-        // proves an exact route that submits nothing.
+        // Codex Desktop's deep-link router maps `codex://threads/new` to a
+        // neutral new-thread surface (`kind: newThread`). Only the optional
+        // `prompt`/`originUrl`/`path` query parameters carry input; with none,
+        // the link opens the composer and submits nothing, satisfying the
+        // no-submit guarantee required for a launch action.
+        guard let url = URL(string: "codex://threads/new") else {
+            throw ProviderOperationError.system(
+                "invalid Codex new-session deep link"
+            )
+        }
+        try await automation.open(url: url)
+        let frontmost = await waitForFrontmost()
         return ProviderActionResult(
-            accepted: false,
-            verdict: "NEW_SESSION_UNVERIFIED_REQUIRES_LIVE",
+            accepted: frontmost,
+            verdict: frontmost
+                ? "NEW_SESSION_REQUESTED"
+                : "NEW_SESSION_DISPATCH_UNVERIFIED",
             details: [
+                "strategy": .string("deep_link"),
+                "deep_link": .string(url.absoluteString),
                 "message": .string(
-                    "Codex Desktop exposes no confirmed neutral new-session route yet."
-                )
+                    frontmost
+                        ? "Opened the neutral Codex Desktop new-thread deep link and verified foreground."
+                        : "Opened the Codex Desktop new-thread deep link but could not verify foreground."
+                ),
             ]
         )
     }
