@@ -175,6 +175,38 @@ struct CursorProviderTests {
         #expect(session.stateDetail == "user action or plan pending")
     }
 
+    @Test("a composer error surfaces as a terminal error state")
+    func composerError() async throws {
+        let fixture = try Fixture()
+        let databaseURL = try fixture.makeDatabase()
+        try fixture.execute(
+            """
+            UPDATE cursorDiskKV
+            SET value = '{"status": "error"}'
+            WHERE key = 'composerData:composer-1'
+            """,
+            at: databaseURL
+        )
+        let provider = CursorProvider(
+            databaseURL: databaseURL,
+            workspaceStorageURL: fixture.root.appendingPathComponent(
+                "workspaceStorage"
+            ),
+            activeSignalTTLMilliseconds: 1_000,
+            clock: { 1_000 }
+        )
+
+        let session = try #require(
+            try await provider.snapshot().sessions.first {
+                $0.nativeID == "composer-1"
+            }
+        )
+
+        #expect(session.state == .error)
+        #expect(session.confidence == .candidate)
+        #expect(session.stateDetail == "composer error")
+    }
+
     @Test("reconciles a hook received before inventory persistence")
     func hookBeforeInventory() async throws {
         let fixture = try Fixture()

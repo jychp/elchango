@@ -108,7 +108,8 @@ through the existing provider registry.
 Map signals conservatively to:
 
 - blue: `working`;
-- orange: `waiting` or rendered terminal error;
+- orange: `waiting`;
+- red: rendered terminal `error`;
 - green: `done`;
 - gray: `idle` or unknown.
 
@@ -221,39 +222,11 @@ npm --prefix plugins/streamdeck run validate
 git diff --check
 ```
 
-Update `docs/providers/<provider>.md` using this required structure:
-
-1. **Scope and status**: define the exact product and session type, exclusions,
-   implementation status, and conservative capability verdicts.
-2. **Tested versions and environment**: record product version, date, operating
-   system, and any relevant hardware or installation assumptions. Use
-   `unknown` when a value was not captured.
-3. **Evidence**: summarize the controlled observations, fixture parity, and
-   official references that support the conclusions. Keep observations,
-   conclusions, and hypotheses distinct.
-4. **Inventory and identity**: document persistent and live sources, stable
-   native IDs, filtering rules, ordering signals, and process-liveness
-   annotations.
-5. **Workspace mapping**: explain which fields map a session to its current
-   workspace, repository, or worktree, including ambiguity and failure rules.
-6. **State model and hooks**: list authoritative lifecycle signals, the mapping
-   to provider-neutral states, stale-signal behavior, and retained metadata.
-7. **Focus and launch**: describe measured existing-session focus and new-session
-   launch mechanisms, preflight checks, post-action verification, and verdicts.
-8. **Semantic commands**: list each stable semantic ID, its evidence-backed
-   provider recipe, composer requirements, dispatch semantics, and unproven
-   completion claims.
-9. **Safety and target verification**: state the exact identity, foreground,
-   command-target, bounded-dispatch, and read-only barriers. Include
-   input-focus evidence for every text recipe.
-10. **Degradation behavior**: explain schema drift, malformed records, missing
-    harnesses, stale hooks, and provider isolation.
-11. **Limitations and open questions**: preserve every unproven assumption and
-    required live experiment.
-12. **POCs**: list every executable evidence file under the provider's POC
-    directory with its purpose and current verdict.
-13. **References**: link official provider documentation and any other primary
-    sources used.
+Update `docs/providers/<provider>.md` using the required structure in
+[`templates/provider-doc.md`](templates/provider-doc.md). It defines all thirteen
+sections and the mandatory handled-states table and state-model prose (which
+state means green, terminal signal handling, stale-signal expiry, error
+surfacing, and retained metadata).
 
 Do not omit a section. Write `None established` where evidence does not yet
 support content. Do not fill gaps by inference or copy a finding from another

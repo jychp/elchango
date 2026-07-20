@@ -110,6 +110,24 @@ Neither is substituted for workspace identity or selected-session evidence.
 
 ## State model and hooks
 
+State is the shared `SessionState` enum (`idle`, `working`, `waiting`, `done`,
+`error`, `unknown`) and is derived from two merged sources: database inference
+and lifecycle hooks. The handled states are:
+
+| State | Deck color | Produced by |
+| --- | --- | --- |
+| `working` | blue | hook progress (`beforeSubmitPrompt`, `preCompact`, thought/response, subagent activity); fresh database generation, running tool, or `generating`/`running`/`pending` status |
+| `waiting` | orange | fresh `hasPendingPlan` or `hasBlockingPendingActions` |
+| `done` | green | hook `stop` (see status handling below) |
+| `error` | red | hook `stop` with `error`/`aborted` status; fresh or stale composer-level `error`/`failed` status |
+| `idle` | gray | `sessionStart`/`sessionEnd`; stale non-terminal database signals; empty composer data |
+| `unknown` | gray | never emitted directly; a stale hook signal is removed so database inference governs again |
+
+Only the hook `stop` path can produce `done` (green); database inference alone
+never emits `done`. Merge rule: a hook `done` or `error` always overrides the
+database state; otherwise the hook state is applied unless the database inferred
+`waiting`.
+
 Database-only state is insufficient for the one-second live-state goal.
 Aggregate `composerData` fields can remain stale throughout a turn. Individual
 tool bubbles expose `loading` and `completed`, but intermediate values may be
@@ -118,8 +136,12 @@ tool is therefore not terminal-turn evidence.
 
 Fresh `hasPendingPlan` or `hasBlockingPendingActions` maps to waiting; stale
 copies are ignored. Recent tool errors and completions remain working until a
-terminal lifecycle event. Genuine cancellation, waiting, and error
-differentiation from database data alone remain unvalidated.
+terminal lifecycle event, because a single failed tool may be retried within
+the same turn. A composer-level `error` or `failed` status is different: it
+maps to a rendered terminal `error` (red) so a model or turn failure surfaces
+on the deck as its own color instead of appearing as a generic waiting or idle
+tile. Genuine cancellation and waiting differentiation from database data alone
+remain unvalidated.
 
 Documented Cursor hooks provide low-latency event name, `conversation_id`,
 `generation_id`, and terminal status. The native reporter accepts only bounded
@@ -131,6 +153,13 @@ lifecycle metadata:
 - `subagentStart` and `subagentStop`: bounded parallel-child progress;
 - parent `stop`: done or terminal error according to status;
 - `sessionEnd`: idle.
+
+Terminal status handling is tolerant: `completed` maps to done and `error` or
+`aborted` map to a terminal error, all at observed confidence. A `stop` whose
+status is missing or unrecognized is still treated as a terminal completion, at
+reduced (candidate) confidence and with the raw status preserved in the detail,
+rather than being rejected and dropped. This prevents a completed session from
+remaining stuck in working when Cursor omits or changes the stop status.
 
 Turns are keyed by conversation and generation. Events from an older
 generation cannot terminate the current turn. A parent stop received while
@@ -152,8 +181,15 @@ persisted `hasPendingPlan` or `hasBlockingPendingActions` remains the
 conservative waiting signal; plan-mode text and intermediate reasoning are not
 inferred as idle or waiting.
 
-The deck maps working to blue, waiting and rendered terminal error to orange,
-done to green, and idle or unknown to gray.
+A non-terminal hook signal (`working` or `waiting`) is expired after a bounded
+terminal deadline (ten minutes) when the expected terminal event never arrives.
+The stale observation is removed rather than retained, so database inference
+governs the tile again instead of leaving it stuck in working or waiting until
+the one-hour TTL. Terminal `done` and `error` observations are not subject to
+this shorter deadline.
+
+The deck maps working to blue, waiting to orange, rendered terminal error to
+red, done to green, and idle or unknown to gray.
 
 ## Focus and launch
 

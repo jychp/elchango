@@ -42,7 +42,7 @@ jobs:
           - language: swift
             build-mode: manual
             os: macos-26
-            timeout: 25
+            timeout: 55
     steps:
       - name: Check out repository
         timeout-minutes: 3
@@ -59,7 +59,7 @@ jobs:
 
       - name: Build production Swift target
         if: matrix.language == 'swift'
-        timeout-minutes: 15
+        timeout-minutes: 30
         run: >-
           swift build
           --package-path macos-app

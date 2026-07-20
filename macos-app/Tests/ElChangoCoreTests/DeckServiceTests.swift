@@ -44,6 +44,27 @@ struct DeckServiceTests {
         #expect(snapshot.source == "test=test")
     }
 
+    @Test("an error session renders as its own red color, not waiting")
+    func errorRendersAsError() async throws {
+        let context = try TestContext()
+        defer { context.remove() }
+        let provider = MutableProvider(
+            snapshot: makeSnapshot(count: 1, state: .error)
+        )
+        let service = try DeckService(
+            providers: [provider],
+            preferences: context.preferences
+        )
+
+        let snapshot = try await service.snapshot()
+
+        let session = try #require(
+            snapshot.buttons.first { $0.sessionID != nil }
+        )
+        #expect(session.color == .error)
+        #expect(session.color != .waiting)
+    }
+
     @Test("revisions change only when rendered content changes")
     func stableRevision() async throws {
         let context = try TestContext()
@@ -378,7 +399,8 @@ private final class TestClock: @unchecked Sendable {
 private func makeSnapshot(
     count: Int,
     observedAt: Int64 = 1_000,
-    selected: Bool = false
+    selected: Bool = false,
+    state: SessionState = .idle
 ) -> ProviderSnapshot {
     let sessions = (0..<count).map { index in
         AgentSession(
@@ -389,7 +411,7 @@ private func makeSnapshot(
             title: "Session \(index)",
             workspaceID: "workspace-\(index)",
             workspacePath: "/tmp/workspace-\(index)",
-            state: .idle,
+            state: state,
             confidence: .observed,
             stateDetail: "",
             selected: selected && index == 0,

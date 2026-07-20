@@ -299,7 +299,7 @@ enum DeckLayout {
     ) -> DeckColor {
         switch state {
         case .error:
-            .waiting
+            .error
         case .unknown:
             .idle
         case .idle:
