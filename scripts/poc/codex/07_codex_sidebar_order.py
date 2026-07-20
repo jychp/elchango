@@ -160,13 +160,18 @@ def reconstruct(codex_root: Path) -> tuple[list[Entry], dict[str, Any]]:
     def add(thread_id: str, group: str) -> None:
         if thread_id in placed:
             return
+        # Provider scope is Desktop-user sessions only. CLI and subagent ids can
+        # appear in global sidebar state; skip any id without a Desktop-user
+        # rollout so the reconstructed order never includes out-of-scope sessions.
+        if thread_id not in activity:
+            return
         placed.add(thread_id)
         order.append(
             Entry(
                 thread_id=thread_id,
                 group=group,
-                is_desktop=thread_id in activity,
-                last_activity_at_ms=activity.get(thread_id, 0),
+                is_desktop=True,
+                last_activity_at_ms=activity[thread_id],
             )
         )
 
@@ -261,6 +266,7 @@ def main() -> int:
                 f"[{entry.group}] desktop={entry.is_desktop}"
             )
         print("Limitations:")
+        print("- Scoped to Desktop-user sessions; CLI/subagent ids are excluded.")
         print("- Project ordering uses rollout last activity as the signal.")
         print("- No sidebar-position focus shortcut is known for Codex Desktop.")
         print("- No selected-thread signal exists to verify a focus after acting.")

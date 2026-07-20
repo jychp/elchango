@@ -396,6 +396,30 @@ struct CodexProviderTests {
         #expect(record("SessionEnd", at: 6) == .unknown)
     }
 
+    @Test("a delayed Stop from a previous turn does not mark the new turn done")
+    func staleTurnStopIgnored() throws {
+        let store = CodexActivityStore()
+        func record(_ event: String, turn: String?, at: Int64) -> SessionState {
+            let observation = try? store.record(
+                ProviderHookPayload(
+                    hookEventName: event,
+                    sessionID: "t",
+                    cwd: "/tmp",
+                    turnID: turn
+                ),
+                observedAtMilliseconds: at
+            )
+            return observation?.state ?? .unknown
+        }
+        // Turn A runs; turn B starts before turn A's delayed Stop arrives.
+        #expect(record("UserPromptSubmit", turn: "A", at: 1) == .working)
+        #expect(record("UserPromptSubmit", turn: "B", at: 2) == .working)
+        // A delayed Stop from turn A must not mark turn B done.
+        #expect(record("Stop", turn: "A", at: 3) == .working)
+        // Turn B's own Stop still completes it.
+        #expect(record("Stop", turn: "B", at: 4) == .done)
+    }
+
     @Test("stale working hook degrades to unknown")
     func staleHookDegrades() throws {
         let store = CodexActivityStore(terminalDeadlineMilliseconds: 1_000)

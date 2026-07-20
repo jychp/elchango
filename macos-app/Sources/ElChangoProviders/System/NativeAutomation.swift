@@ -192,8 +192,10 @@ public actor NativeAutomation: NativeAutomating {
         submitCount: Int,
         bundleID: String
     ) async throws {
-        guard !text.isEmpty else {
-            throw ProviderOperationError.system("command text must not be empty")
+        guard !text.isEmpty, submitCount > 0 else {
+            throw ProviderOperationError.system(
+                "command text and submit count must be valid"
+            )
         }
         try requireAccessibilityPermission()
         let identity = try await requireFrontmost(bundleID: bundleID)
@@ -202,7 +204,7 @@ public actor NativeAutomation: NativeAutomating {
             bundleID: bundleID,
             processIdentifier: identity.processIdentifier
         )
-        for _ in 0..<max(1, submitCount) {
+        for _ in 0..<submitCount {
             try await sleep(milliseconds: 300)
             _ = try await requireFrontmost(
                 bundleID: bundleID,

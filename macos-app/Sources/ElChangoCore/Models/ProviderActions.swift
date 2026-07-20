@@ -84,6 +84,7 @@ public struct ProviderHookPayload: Codable, Equatable, Sendable {
     public let notificationType: String?
     public let toolName: String?
     public let promptID: String?
+    public let turnID: String?
     public let permissionMode: String?
     public let compactTrigger: String?
     public let source: String?
@@ -103,6 +104,7 @@ public struct ProviderHookPayload: Codable, Equatable, Sendable {
         notificationType: String? = nil,
         toolName: String? = nil,
         promptID: String? = nil,
+        turnID: String? = nil,
         permissionMode: String? = nil,
         compactTrigger: String? = nil,
         source: String? = nil,
@@ -121,6 +123,7 @@ public struct ProviderHookPayload: Codable, Equatable, Sendable {
         self.notificationType = notificationType
         self.toolName = toolName
         self.promptID = promptID
+        self.turnID = turnID
         self.permissionMode = permissionMode
         self.compactTrigger = compactTrigger
         self.source = source
@@ -141,6 +144,7 @@ public struct ProviderHookPayload: Codable, Equatable, Sendable {
         case notificationType = "notification_type"
         case toolName = "tool_name"
         case promptID = "prompt_id"
+        case turnID = "turn_id"
         case permissionMode = "permission_mode"
         case compactTrigger = "trigger"
         case source

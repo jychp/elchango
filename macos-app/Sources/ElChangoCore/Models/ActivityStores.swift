@@ -822,6 +822,7 @@ public final class CodexActivityStore: @unchecked Sendable {
     private struct Turn {
         var observation: ActivityObservation
         var activeAgentCount: Int = 0
+        var turnID: String?
     }
 
     private let terminalDeadlineMilliseconds: Int64
@@ -888,6 +889,20 @@ public final class CodexActivityStore: @unchecked Sendable {
                     detail: "Codex session started"
                 )
             )
+
+        // Codex `turn_id` identifies the turn. UserPromptSubmit opens a new turn;
+        // a later event carrying a different turn_id (for example a delayed `Stop`
+        // from a previous turn arriving after the next prompt) is stale and must
+        // not overwrite the current turn's state. A missing turn_id disables the
+        // guard, preserving behavior when the harness omits it.
+        if event == "UserPromptSubmit" {
+            turn.turnID = payload.turnID
+        } else if let eventTurn = payload.turnID,
+            let currentTurn = turn.turnID,
+            eventTurn != currentTurn
+        {
+            return turn.observation
+        }
 
         if event == "SubagentStart" {
             guard turn.activeAgentCount < maximumActiveSubagents else {

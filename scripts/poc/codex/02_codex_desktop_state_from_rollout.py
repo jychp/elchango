@@ -243,13 +243,25 @@ def newest_desktop_rollouts(codex_root: Path) -> list[Path]:
     if not sessions_root.is_dir():
         raise FileNotFoundError(f"Codex sessions root not found: {sessions_root}")
     rollouts = sorted(sessions_root.glob("*/*/*/rollout-*.jsonl"))
-    desktop: list[Path] = []
+    desktop: list[tuple[Path, dict[str, Any]]] = []
     for path in rollouts:
         meta = read_first_meta(path)
         if meta and is_desktop_user(meta):
-            desktop.append(path)
-    desktop.sort(key=lambda item: item.stat().st_mtime, reverse=True)
-    return desktop
+            desktop.append((path, meta))
+    desktop.sort(key=lambda item: item[0].stat().st_mtime, reverse=True)
+    # Deduplicate resumed threads by native id, keeping the newest rollout, so a
+    # `--limit` slice cannot hide a distinct session behind an older rollout of an
+    # already-seen thread (mirrors the provider's dedup).
+    seen: set[str] = set()
+    deduped: list[Path] = []
+    for path, meta in desktop:
+        identity = native_id(meta)
+        if identity is not None:
+            if identity in seen:
+                continue
+            seen.add(identity)
+        deduped.append(path)
+    return deduped
 
 
 def main() -> int:

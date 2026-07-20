@@ -56,6 +56,11 @@ native identities and workspace paths. It does not prove state detection,
 selected-session detection, focus targeting, or stability across Codex Desktop
 upgrades.
 
+Scope: this inventory covers active (non-archived) Desktop user threads only.
+Codex exposes no archived-thread signal in the rollout files, so archived threads
+are deliberately out of scope and not represented here; a complete archive
+inventory would require a separate, unproven signal.
+
 Official references
 ===================
 https://developers.openai.com/codex/
