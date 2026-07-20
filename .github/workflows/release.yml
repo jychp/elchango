@@ -419,10 +419,26 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --generate-notes
           fi
-          gh release upload "$tag" \
-            --repo "$GITHUB_REPOSITORY" \
-            --clobber \
-            "${assets[@]}"
+          # Upload with --clobber to replace any existing (possibly partial)
+          # assets. --clobber deletes an asset before re-uploading it, so a
+          # transient failure could momentarily leave the release missing an
+          # asset; retry so such a blip is re-uploaded rather than left
+          # degraded. Assets are deterministic build outputs, so re-running
+          # the whole command is safe and self-healing.
+          for attempt in 1 2 3; do
+            if gh release upload "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber \
+              "${assets[@]}"; then
+              break
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              echo "::error::Failed to upload release assets after ${attempt} attempts"
+              exit 1
+            fi
+            echo "Asset upload attempt ${attempt} failed; retrying..."
+            sleep $((attempt * 5))
+          done
 
       - name: Dispatch Homebrew Cask update
         timeout-minutes: 5
