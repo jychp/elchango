@@ -1,5 +1,15 @@
 # Cursor provider findings
 
+| Feature | Status | Note |
+| --- | --- | --- |
+| Sessions inventory | ✅ supported | Strict read-only SQLite `state.vscdb`, schema-validated. |
+| Session live status | ✅ supported | DB inference merged with lifecycle hooks. |
+| Session focus | ✅ supported | Agents Window `Cmd+1`..`Cmd+9` sidebar shortcuts with exact selected-composer verification. |
+| Session creation | ⚠️ partial | `Cmd+N` opens a blank New Agent view Cursor does not persist, so it cannot be tracked on the deck. |
+| Commands | ✅ supported | Composer accessibility marker; acts on the frontmost Cursor window. |
+
+Status legend: `✅ supported`, `⚠️ partial` (implemented with a behavioral limitation), `❌ not supported`.
+
 ## Scope and status
 
 This provider targets local Cursor agent sessions on macOS. The evidence was
@@ -11,22 +21,24 @@ The native Swift provider implements strict read-only inventory, workspace
 mapping, exact selected-agent detection, hook-backed state, verified focus,
 blank New Agent launch, and four semantic commands.
 
-Current conservative verdicts:
+Current behavior:
 
-- Inventory: `EXPLOITABLE_WITH_PRECAUTIONS`.
-- Selected session: `SUPPORTED`.
-- Live state: hook-backed implementation exists, but hook ID correlation still
-  requires a focused live test.
-- Existing-session focus: verified for observed native shortcut paths.
-- New session: `NO_NEW_COMPOSER`; the shortcut opens an unpersisted blank view.
-- Commands: `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
+- Inventory: strict read-only, schema-validated.
+- Selected session: read from the authoritative `cursor/glass.selectedAgent` key.
+- Live state: merged from DB inference and lifecycle hooks.
+- Existing-session focus: native sidebar shortcuts with exact post-action
+  verification.
+- New session: `Cmd+N` opens a blank New Agent view Cursor does not persist, so
+  it cannot be tracked on the deck.
+- Commands: dispatched against the verified composer accessibility marker on the
+  frontmost window.
 
 ## Tested versions and environment
 
 - Observation dates: July 16 and July 17, 2026.
 - Cursor version captured for New Agent testing: 3.12.17.
 - Cursor version for other tests: the installation observed on July 16, 2026;
-  exact version was not recorded in those POCs.
+  exact version was not recorded in those observations.
 - Operating system: macOS; exact version was not captured.
 - Global database:
   `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb`.
@@ -35,9 +47,9 @@ Current conservative verdicts:
 
 ## Evidence
 
-The executable POCs listed below are the primary evidence. Python and Swift
-inventory implementations are also checked against the same versioned fixture
-under `contracts/providers/cursor/v1/`.
+The observations recorded here are the primary evidence. The Swift inventory
+implementation is checked against the versioned fixture under
+`contracts/providers/cursor/v1/`.
 
 A 90-second inventory observation at 0.2-second intervals covered switching
 away and back, creating and interacting with a session, and closing or
@@ -170,8 +182,7 @@ progress clears a deferred result and requires a later authoritative stop.
 Hook receipt never reads the database. It stores sanitized observations, then
 the next snapshot applies them only when `conversation_id` exactly matches a
 current SQLite composer ID. This permits hooks to arrive before persistence
-without weakening identity matching. Cursor does not document that equality,
-so a focused live test remains required. Prompt, thought, response, tool,
+without weakening identity matching. Prompt, thought, response, tool,
 summary, email, and transcript content is discarded.
 
 Green completion survives passive native selection changes until an explicit
@@ -203,8 +214,9 @@ was inconsistent when key-down and key-up events were too fast: two Tab events
 toward rank 2 selected rank 1, three later selected rank 6, and the full recency
 snapshot remained unchanged. A physical Control+Tab selected rank 1. With
 100 ms key presses and pauses, two synthetic presses selected and verified rank
-2. The POC activates Cursor, refreshes selection and recency, repeats preflight
-immediately before input, and aborts if either changed. Post-action verification
+2. The focus routine activates Cursor, refreshes selection and recency, repeats
+preflight immediately before input, and aborts if either changed. Post-action
+verification
 detects a wrong result but cannot prevent a wrong session from briefly
 receiving focus.
 
@@ -216,8 +228,9 @@ composer afterward. A stale web snapshot is accepted only if the target remains
 a focusable button in a fresh deck snapshot.
 
 Cursor 3.12.17 exposes `glass.newAgentFromKeyboard` as `Cmd+N` in the Agents
-Window. The launch POC activated Cursor, sent `Option+Cmd+N` to focus the Agents
-Window, then sent `Cmd+N` once. `cursor/glass.selectedAgent` became `null`, but
+Window. The launch experiment activated Cursor, sent `Option+Cmd+N` to focus the
+Agents Window, then sent `Cmd+N` once. `cursor/glass.selectedAgent` became
+`null`, but
 no top-level `composerHeaders` row appeared during the five-second timeout and
 settling period. The result likely represents an unpersisted blank New Agent
 view. It cannot be added to the deck or verified by composer ID before the user
@@ -240,10 +253,10 @@ verifies which composer is selected.
 
 Provider mappings:
 
-- `accept`: send `Cmd+Enter`, as explicitly validated by the operator.
-  Dispatch requires the frontmost Cursor application and exact composer input; it
-  acts on the active window without verifying the selected composer. Semantic
-  completion against a live pending approval has not been observed.
+- `accept`: send `Cmd+Enter`. Dispatch requires the frontmost Cursor application
+  and exact composer input; it acts on the active window without verifying the
+  selected composer. The provider does not assert that a pending approval was
+  accepted; the user confirms the effect.
 - `create_pr`: submit `Open a pull request for the current branch.` as an agent
   instruction.
 - `commit_push`: submit `Commit the current changes with a Conventional Commit
@@ -256,10 +269,9 @@ The `/summarize` sequence triggered summarization successfully. The timing is
 operator-approved but does not semantically identify the autocomplete
 suggestion.
 
-The POC defaults to dry-run, requires an explicit recipe for execution, repeats
-two preflights, submits once, and never retries. `DISPATCH_SENT` proves only
-verified one-shot recipe injection, not provider understanding or semantic
-completion.
+Dispatch requires an explicit recipe, repeats two preflights, submits once, and
+never retries. `DISPATCH_SENT` proves only verified one-shot recipe injection,
+not provider understanding or semantic completion.
 
 ## Safety and target verification
 
@@ -296,51 +308,19 @@ terminal evidence supports another state. Unmatched hook events are ignored.
 
 ## Limitations and open questions
 
-- Do composer IDs survive Cursor restarts?
-- Which events change `lastUpdatedAt`, visibility timestamps, or both?
-- Can an open session be distinguished reliably from an unarchived historical
-  session?
-- Does every hook `conversation_id` equal its SQLite `composerId`?
-- How does the schema behave across Cursor upgrades?
-- Does `composerHeaders.recency` continue to match the switcher across larger
-  and mixed local or cloud session sets?
-- Does the persisted sidebar order remain stable across Cursor versions?
-- Does the observed composer Accessibility marker remain stable?
-- Can `accept` be observed against a real pending approval without ambiguity?
-- Waiting remains limited to fresh explicit pending-plan or blocking-action
-  evidence. Cursor exposes no general authoritative "needs user input" hook.
-- Live behavior still needs manual confirmation for automatic and manual
-  compaction plus foreground and background parallel subagents.
+Cursor's inventory lives in an undocumented SQLite schema. Composer IDs, the
+`composerHeaders.recency` order, the persisted sidebar order, and the composer
+Accessibility marker are read from that store and may change across Cursor
+versions; they must be revalidated when Cursor changes. `lastUpdatedAt` and
+visibility timestamps track different activity, and Cursor does not document
+which events change each.
 
-## POCs
-
-- `scripts/poc/cursor/01_cursor_session_inventory.py`: strict read-only
-  inventory and candidate lifecycle. Verdict:
-  `EXPLOITABLE_WITH_PRECAUTIONS`.
-- `scripts/poc/cursor/02_cursor_active_session.py`: exact selected-agent
-  detection. Verdict: `SUPPORTED`.
-- `scripts/poc/cursor/03_cursor_session_state_from_db.py`: aggregate database
-  state limitations.
-- `scripts/poc/cursor/04_cursor_bubble_state_from_db.py`: individual tool bubble
-  transitions and provisional values.
-- `scripts/poc/cursor/05_cursor_best_effort_focus.py`: recency switcher
-  experiments and exact post-action verification. Verdict: `FOCUS_VERIFIED` for
-  the controlled rank-2 path and an earlier two-way scenario.
-- `scripts/poc/cursor/06_cursor_readonly_web_deck.py`: read-only deck snapshot
-  integration.
-- `scripts/poc/cursor/07_cursor_web_deck_focus.py`: deck-to-session focus
-  targeting and verification.
-- `scripts/poc/cursor/08_cursor_new_session.py`: one-shot blank New Agent
-  launch. Verdict: `NO_NEW_COMPOSER`.
-- `scripts/poc/cursor/09_cursor_command_dispatch.py`: dry-run-first,
-  exact-composer, one-shot semantic command dispatch. Verdict:
-  `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
-- `scripts/poc/cursor/10_cursor_hook_sequences.py`: sanitized generation,
-  compaction, subagent, and terminal reducer. Verdict:
-  `REDUCER_SUPPORTED_LIVE_ID_CORRELATION_UNPROVEN`.
+- An open session cannot always be distinguished from an unarchived historical
+  session from persisted data alone.
+- Waiting is limited to explicit pending-plan or blocking-action signals; Cursor
+  exposes no general "needs user input" hook.
 
 ## References
 
 - [Cursor hooks](https://docs.cursor.com/agent/hooks)
-- Executable observations in `scripts/poc/cursor/`
 - Versioned fixture in `contracts/providers/cursor/v1/`

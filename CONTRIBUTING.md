@@ -27,9 +27,10 @@ review.
    title, such as `fix(cursor): reject an ambiguous target`.
 
 Every pull request must describe the user-visible outcome, evidence, and test
-plan. Include sanitized reproduction steps or focused POC output for provider
-behavior. Never include prompts, credentials, tokens, private source code,
-provider databases, or personal session content.
+plan. For provider behavior, include sanitized reproduction steps and cite the
+evidence recorded in `docs/providers/<provider>.md`. Never include prompts,
+credentials, tokens, private source code, provider databases, or personal
+session content.
 
 ## Quality and anti-slop rules
 
@@ -53,8 +54,9 @@ acceptable.
   behavior, and version requirements against source, official documentation,
   or executable evidence.
 - **Undocumented integrations are evidence-driven.** For provider internals,
-  add or update a focused POC and record observations, limitations, and
-  uncertainty in `docs/providers/`. Ambiguity must degrade conservatively.
+  record observations, evidence, limitations, and uncertainty in
+  `docs/providers/<provider>.md`, and back them with versioned fixtures under
+  `contracts/providers/`. Ambiguity must degrade conservatively.
 - **Do not add generated-looking filler.** Reject redundant headings, empty
   wrappers, placeholder tests, obvious comments, generic error handling,
   speculative compatibility layers, and prose that claims more than the
@@ -81,7 +83,7 @@ provider-specific target.
 - Fail closed on stale revisions, schema drift, ambiguous identity, and failed
   Accessibility checks.
 
-For new or changed provider behavior, follow the POC standard in
+For new or changed provider behavior, follow the evidence standard in
 [docs/dev.md](docs/dev.md) and the durable project rules in
 [AGENTS.md](AGENTS.md).
 

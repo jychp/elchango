@@ -190,14 +190,16 @@ secret rotation.
   identifiers, not secrets or opaque authorization capabilities.
 
 Detailed provider evidence and tested limitations are maintained in
-[docs/providers/cursor.md](docs/providers/cursor.md) and
-[docs/providers/claude-code.md](docs/providers/claude-code.md).
+[docs/providers/cursor.md](docs/providers/cursor.md),
+[docs/providers/claude-code.md](docs/providers/claude-code.md), and
+[docs/providers/codex.md](docs/providers/codex.md).
 
 ## Safe development and disclosure
 
-- Use synthetic or sanitized fixtures for tests and POCs.
+- Use synthetic or sanitized fixtures for tests and documented evidence.
 - Never commit provider databases, transcripts, prompts, tokens, credentials,
   or private workspace paths.
-- Live POCs must remain opt-in and document their side effects.
+- A live provider experiment must remain opt-in, run only with the user's
+  explicit approval, and have its side effects documented in the provider doc.
 - Treat new commands, hooks, focus mechanisms, and session identifiers as
   security-sensitive changes requiring negative tests.

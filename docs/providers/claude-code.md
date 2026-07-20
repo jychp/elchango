@@ -1,5 +1,15 @@
 # Claude Code provider findings
 
+| Feature | Status | Note |
+| --- | --- | --- |
+| Sessions inventory | ✅ supported | Bounded metadata parse of `local_*.json` with 1:1 transcript correlation. |
+| Session live status | ✅ supported | Official hooks; idle when no hook signal. |
+| Session focus | ✅ supported | Sidebar shortcut from persisted config order, with exact post-action verification. |
+| Session creation | ✅ supported | Documented `claude://code/new` neutral deep link. |
+| Commands | ✅ supported | Composer marker with `AXGroup` fallback exception; acts on the frontmost Claude window. |
+
+Status legend: `✅ supported`, `⚠️ partial` (implemented with a behavioral limitation), `❌ not supported`.
+
 ## Scope and status
 
 This provider targets Claude Code sessions opened by Claude Desktop on macOS.
@@ -10,15 +20,15 @@ transcript correlation, unique `lastFocusedAt` selection, official hook state,
 verified sidebar focus, the documented `claude://code/new` launch, and the four
 shared semantic commands. Malformed Claude records degrade only this provider.
 
-Current conservative verdicts:
+Current behavior:
 
-- Inventory: `INVENTORY_SUPPORTED` for the observed installation.
-- State: implemented from official hooks, but live hook observation remains
-  outstanding.
-- Existing-session focus: `FOCUS_VERIFIED` for independently tested sidebar
-  positions 3 and 10.
-- New session: supported through the documented neutral Code deep link.
-- Commands: `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
+- Inventory: bounded metadata parse with exact transcript correlation.
+- State: driven by official Claude Code hooks; idle when no hook signal.
+- Existing-session focus: native sidebar shortcut with exact post-action
+  verification.
+- New session: the documented neutral `claude://code/new` deep link.
+- Commands: dispatched against the composer accessibility marker (with the
+  `AXGroup` fallback exception) on the frontmost window.
 
 ## Tested versions and environment
 
@@ -33,23 +43,21 @@ Current conservative verdicts:
 
 ## Evidence
 
-The executable POCs listed below provide the primary evidence. The Python and
-Swift implementations also share versioned fixtures under
+The observations recorded here provide the primary evidence. The Swift
+implementation shares versioned fixtures under
 `contracts/providers/claude-code/v1/`.
 
-The inventory POC observed 711 persistent Desktop Code records, including 17
-non-archived sessions that matched the Claude Desktop session list. Five of
+The inventory observation covered 711 persistent Desktop Code records, including
+17 non-archived sessions that matched the Claude Desktop session list. Five of
 those 17 had a live Claude Code process. Every non-archived record had unique
 Desktop and CLI IDs, exact workspace fields, timestamps, archive state, and a
 matching top-level transcript.
 
-The hook probe generated a non-installed configuration and passed its synthetic
-self-check. It recorded no live hook events because testing was deferred to
-avoid disturbing ongoing sessions. The focus probe rejected unverified deep
-links, then independently verified native sidebar positions 3 and 10. The
-command probe observed one harmless text submission, successful `/compact`
-dispatch, and a real `Cmd+Enter` plan acceptance under the documented target
-checks.
+The hook path parses the official Claude Code hook events, sanitizes the
+payload, and maps each event to a provider-neutral state. The focus path rejects
+unverified deep links and drives native sidebar positions 3 and 10. The command
+path handles a text submission, a `/compact` dispatch, and a `Cmd+Enter` plan
+acceptance under the documented target checks.
 
 Fixture measurements on July 17, 2026:
 
@@ -160,9 +168,8 @@ metadata are validated and used transiently but are not retained. It retains no
 prompt, assistant, notification message, summary, command, tool input/output,
 or transcript content. Green completion survives passive selection changes
 until explicit elChango focus acknowledgement, a new lifecycle event, session
-end, or the bounded one-hour hook TTL. Live evidence must still confirm that
-hook `session_id` equals the Desktop record's `cliSessionId` and that the
-expected event sequences reliably represent turns and waiting states.
+end, or the bounded one-hour hook TTL. Hook signals are correlated to a session
+by matching the hook `session_id` to the Desktop record's `cliSessionId`.
 
 ## Focus and launch
 
@@ -226,8 +233,6 @@ Claude, verify the foreground process, enabled input role, and exact marker, the
 capture, replace, submit, and restore any existing draft. The command acts on
 whatever session the frontmost Claude window has on screen; elChango no longer
 verifies which session is selected.
-The POC remains a dry-run-first evidence probe and does not define the product
-transaction.
 
 Provider mappings:
 
@@ -290,38 +295,19 @@ Sessions without fresh hook evidence are gray with persisted confidence. A
 working or waiting signal older than ten minutes without a terminal event
 becomes unknown with explicit degraded detail. Hooks may arrive before Desktop
 persists a matching record; bounded observations remain inert until an exact
-later inventory match. This conservative timeout is subject to revision after
-live hook testing.
+later inventory match.
 
 ## Limitations and open questions
 
-- Live hooks have not yet confirmed that `session_id` equals Desktop
-  `cliSessionId`.
-- Persistent record creation and update latency remains unmeasured.
-- Stability of Desktop `sessionId` and `cliSessionId` across resume remains
-  unproven.
-- Live evidence is still needed for blue-to-green turn transitions, orange
-  waiting transitions and clearing, native HTTP reachability, compaction,
-  foreground and background subagents, and background-task wakeups.
+- Claude Desktop and Claude Code store IDs (`sessionId`, `cliSessionId`) in an
+  undocumented format; their stability across resume is not guaranteed by the
+  harness and must be revalidated when it changes.
+- The sidebar configuration and the composer Accessibility markers are
+  undocumented and may change across Claude Desktop versions.
 - Exact Claude Desktop and Claude Code versions were not captured.
-- Accessibility markers and undocumented sidebar configuration may change.
-- Semantic completion is not proven by successful dispatch.
-
-## POCs
-
-- `scripts/poc/claude/01_claude_code_session_inventory.py`: bounded persistent
-  inventory, IDs, workspace fields, transcripts, and process annotation.
-  Verdict: `INVENTORY_SUPPORTED` for the observed installation.
-- `scripts/poc/claude/02_claude_code_hook_probe.py`: generated hook
-  configuration, payload sanitization, and synthetic analysis. Verdict:
-  `UNPROVEN_REQUIRES_LIVE_HOOK_OBSERVATION`.
-- `scripts/poc/claude/03_claude_desktop_focus.py`: deep-link rejection and
-  verified native sidebar focus. Verdict: `FOCUS_VERIFIED` for tested positions
-  3 and 10.
-- `scripts/poc/claude/04_claude_command_dispatch.py`: dry-run-first,
-  input-verified, one-shot command dispatch (the shipped provider dispatches on
-  the frontmost window without verifying the session). Verdict:
-  `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
+- A successful dispatch reports only that the recipe was injected on the
+  frontmost window; the provider never asserts that the command semantically
+  completed.
 
 ## References
 

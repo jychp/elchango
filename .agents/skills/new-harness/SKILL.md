@@ -21,11 +21,12 @@ Before editing product code, agree on:
 Treat `PROJECT.md` as brainstorming, not a requirement. Record validated
 provider-specific findings in `docs/providers/<provider>.md`.
 
-## 2. Build executable reconnaissance
+## 2. Establish and document reconnaissance
 
-Create numbered, self-documenting Python POCs under
-`scripts/poc/<provider>/` before building the adapter. Number each provider's
-POCs independently from `01`. Follow the POC standard in `AGENTS.md`.
+Establish the evidence for each capability before building the adapter, and
+record it in `docs/providers/<provider>.md` following the evidence standard in
+`AGENTS.md`. The provider doc is the single source of truth; do not create a
+parallel set of scripts that can drift from it.
 
 Establish evidence for each capability separately:
 
@@ -44,14 +45,13 @@ Keep observations, conclusions, and hypotheses distinct. Do not infer current
 state from transcript text. Do not enable focus from a shortcut or deep link
 unless exact post-action identity can be verified.
 
-For command reconnaissance, use only stable semantic IDs already validated for
-the shared contract. Keep provider recipes outside surfaces. A POC must require
-an explicit recipe when no official mapping is available, default to dry-run,
-require `--execute`, recheck the frontmost application and exact command target
-immediately before one dispatch, and never retry an ambiguous result. (The
-shipped provider targets the frontmost harness window, not a specific session;
-see Personalized commands below.) Use the `new-command` skill for the full
-workflow.
+For commands, use only stable semantic IDs already validated for the shared
+contract. Keep provider recipes outside surfaces. Require an explicit recipe when
+no official mapping is available, recheck the frontmost application and exact
+command target immediately before one dispatch, and never retry an ambiguous
+result. (The shipped provider targets the frontmost harness window, not a
+specific session; see Personalized commands below.) Use the `new-command` skill
+for the full workflow.
 
 ## 3. Define the provider identity
 
@@ -241,8 +241,8 @@ If the provider ships a hook plugin, also wire it so `make test` covers it:
    fail-open hook contract;
 4. add the manifest and marketplace to the version checks in
    `scripts/validate_versions.py`;
-5. add a `test-plugin-<provider>` target to the `Makefile`, add it to
-   `test-plugins`, and add the provider's POC glob to `test-pocs`.
+5. add a `test-plugin-<provider>` target to the `Makefile` and add it to
+   `test-plugins`.
 6. add a read-only `<Provider>PluginInspector` in
    `macos-app/Sources/ElChangoCore/System/` that classifies whether the elChango
    plugin is installed (missing / matching / mismatched / managed / malformed /
@@ -285,8 +285,9 @@ the Svelte autofixer until clean.
 ## 9. Test each boundary
 
 Put versioned fixtures under `contracts/providers/<provider>/v1/` and share them
-between the Python POC and the Swift tests, as Cursor and Claude Code do. Include
-an `expected-inventory.json` whose shape matches the other providers' files;
+between the documented evidence and the Swift tests, as Cursor and Claude Code
+do. Include an `expected-inventory.json` whose shape matches the other providers'
+files;
 the Swift test decodes it and compares it to a snapshot mapped from the provider
 (see `CodexProviderTests` / `ClaudeCodeProviderTests`). Keep timestamps explicit
 in fixtures so ordering and last-activity assertions are deterministic (do not
@@ -335,18 +336,16 @@ npm --prefix web test
 npm --prefix web run build
 npm --prefix plugins/streamdeck run check
 npm --prefix plugins/streamdeck run validate
-for poc in scripts/poc/<provider>/*.py; do \
-  python3 -m py_compile "$poc"; python3 "$poc" --help >/dev/null; done
 git diff --check
 ```
 
 Also grep the diff for em-dashes (project writing rule) before finishing.
 
 Update `docs/providers/<provider>.md` using the required structure in
-[`templates/provider-doc.md`](templates/provider-doc.md). It defines all thirteen
-sections and the mandatory handled-states table and state-model prose (which
-state means green, terminal signal handling, stale-signal expiry, error
-surfacing, and retained metadata).
+[`templates/provider-doc.md`](templates/provider-doc.md). It defines the
+top-of-doc feature-coverage table, all twelve sections, and the mandatory
+handled-states table and state-model prose (which state means green, terminal
+signal handling, stale-signal expiry, error surfacing, and retained metadata).
 
 Do not omit a section. Write `None established` where evidence does not yet
 support content. Do not fill gaps by inference or copy a finding from another

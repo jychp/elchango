@@ -164,22 +164,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         titleItem.view = menuHeaderView(version: version)
         menu.addItem(titleItem)
 
-        let stateItem = NSMenuItem(
-            title: "Service: \(serviceState.label)",
-            action: nil,
-            keyEquivalent: ""
-        )
-        stateItem.isEnabled = false
-        menu.addItem(stateItem)
-
-        let endpointItem = NSMenuItem(
-            title: "http://127.0.0.1:\(LoopbackService.defaultPort)",
-            action: nil,
-            keyEquivalent: ""
-        )
-        endpointItem.isEnabled = false
-        menu.addItem(endpointItem)
-
         menu.addItem(.separator())
         let webDeckItem = menu.addItem(
             withTitle: "Open Web Deck",
