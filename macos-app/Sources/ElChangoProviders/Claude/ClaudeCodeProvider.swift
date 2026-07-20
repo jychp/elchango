@@ -477,6 +477,16 @@ public actor ClaudeCodeProvider: AgentProvider {
                     "Claude visible sessions span multiple sidebar group scopes"
                 )
             }
+            // Read every value from `epitaxy` before the group-scope closure
+            // captures it, so its last use is that closure and Swift's
+            // region-based isolation does not flag a data race.
+            let starred = Set(
+                epitaxy["starred-local-code-sessions"]?.stringArray ?? []
+            )
+            let collapsedGroups = Set(
+                epitaxy["epitaxy-tasks-store"]?["state"]?["collapsedGroups"]?
+                    .objectEntries?.map(\.0) ?? []
+            )
             let groupScope = try scopeKeys.first.flatMap { scopeKey in
                 try currentGroupScope(
                     epitaxy: epitaxy,
@@ -484,32 +494,72 @@ public actor ClaudeCodeProvider: AgentProvider {
                 )
             }
             let assignments = groupScope?.assignments ?? [:]
-            var persisted: [String] = []
-            for qualified in pinnedOrder
+            let lastActivity = Dictionary(
+                records.map {
+                    ($0.desktopSessionID, $0.lastActivityAtMilliseconds)
+                },
+                uniquingKeysWith: { existing, _ in existing }
+            )
+            var pinnedRank: [String: Int] = [:]
+            for (rank, qualified) in pinnedOrder.enumerated()
             where qualified.hasPrefix("code:") {
                 let sessionID = String(qualified.dropFirst("code:".count))
-                if visibleIDs.contains(sessionID),
-                    assignments[qualified] == nil,
-                    !persisted.contains(sessionID)
-                {
-                    persisted.append(sessionID)
+                if pinnedRank[sessionID] == nil {
+                    pinnedRank[sessionID] = rank
                 }
             }
+            func isGrouped(_ sessionID: String) -> Bool {
+                assignments["code:\(sessionID)"] != nil
+            }
+            func isPinned(_ sessionID: String) -> Bool {
+                pinnedRank[sessionID] != nil || starred.contains(sessionID)
+            }
+            func moreRecent(_ lhs: String, _ rhs: String) -> Bool {
+                let left = lastActivity[lhs] ?? 0
+                let right = lastActivity[rhs] ?? 0
+                if left != right { return left > right }
+                return lhs < rhs
+            }
+
+            let ungrouped =
+                records
+                .map(\.desktopSessionID)
+                .filter { visibleIDs.contains($0) && !isGrouped($0) }
+            var persisted: [String] = []
+
+            // 1. Ungrouped pinned sessions sit at the top of the Claude
+            //    sidebar: pinned drag order first, then remaining starred
+            //    sessions by recency.
+            let pinnedTop =
+                ungrouped
+                .filter { isPinned($0) }
+                .sorted { lhs, rhs in
+                    switch (pinnedRank[lhs], pinnedRank[rhs]) {
+                    case (let left?, let right?):
+                        return left < right
+                    case (_?, nil):
+                        return true
+                    case (nil, _?):
+                        return false
+                    case (nil, nil):
+                        return moreRecent(lhs, rhs)
+                    }
+                }
+            for sessionID in pinnedTop where !persisted.contains(sessionID) {
+                persisted.append(sessionID)
+            }
+
+            // 2. Each group in sidebar order, in its own session order. A
+            //    collapsed group hides its rows, so its sessions are not
+            //    reachable by a positional shortcut and are omitted.
             if let groupScope {
-                for groupID in groupScope.groupIDs {
+                for groupID in groupScope.groupIDs
+                where !collapsedGroups.contains(groupID) {
                     for qualified in groupScope.order[groupID, default: []]
                     where qualified.hasPrefix("code:") {
                         let sessionID = String(
                             qualified.dropFirst("code:".count)
                         )
-                        guard
-                            !visibleIDs.contains(sessionID)
-                                || assignments[qualified] == groupID
-                        else {
-                            throw ClaudeCodeProviderError.readFailed(
-                                "Claude group assignment and order disagree"
-                            )
-                        }
                         if visibleIDs.contains(sessionID),
                             !persisted.contains(sessionID)
                         {
@@ -517,23 +567,17 @@ public actor ClaudeCodeProvider: AgentProvider {
                         }
                     }
                 }
-                let orderedIDs = Set(persisted)
-                let missingAssigned = records.contains {
-                    assignments["code:\($0.desktopSessionID)"] != nil
-                        && !orderedIDs.contains($0.desktopSessionID)
-                }
-                guard !missingAssigned else {
-                    throw ClaudeCodeProviderError.readFailed(
-                        "Claude group order omits a visible assigned session"
-                    )
-                }
             }
-            appendRemaining(
-                records.filter {
-                    assignments["code:\($0.desktopSessionID)"] == nil
-                },
-                to: &persisted
-            )
+
+            // 3. Ungrouped, unpinned sessions at the bottom, by recency.
+            let recents =
+                ungrouped
+                .filter { !isPinned($0) }
+                .sorted(by: moreRecent)
+            for sessionID in recents where !persisted.contains(sessionID) {
+                persisted.append(sessionID)
+            }
+
             return persisted
         }
         guard

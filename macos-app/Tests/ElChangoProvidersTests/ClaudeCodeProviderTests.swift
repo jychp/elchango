@@ -447,6 +447,99 @@ struct ClaudeCodeProviderTests {
         }
     }
 
+    @Test("starred ungrouped sessions sit at the top and recents at the bottom")
+    func focusPlacesStarredUngroupedAtTop() async throws {
+        let fixture = try ClaudeTemporaryFixture()
+        let activities: [String: Int64] = [
+            "local_pin1": 100,
+            "local_pin2": 100,
+            "local_star_only": 300,
+            "local_grouped": 100,
+            "local_recent": 500,
+        ]
+        for (id, activity) in activities {
+            try fixture.writeRecord(
+                desktopID: id,
+                cliID: "cli-\(id)",
+                lastActivityAt: activity
+            )
+        }
+        let config = try fixture.writeCurrentShortcutConfig(
+            pinned: ["local_pin1", "local_pin2", "local_grouped"],
+            groups: ["group-a"],
+            assignments: ["local_grouped": "group-a"],
+            order: ["group-a": ["local_grouped"]],
+            starred: ["local_pin1", "local_pin2", "local_star_only"]
+        )
+        // Expected order: pin1, pin2, star_only, grouped, recent.
+        let expectedKeyCodes: [String: CGKeyCode] = [
+            "local_pin1": 18,
+            "local_pin2": 19,
+            "local_star_only": 20,
+            "local_grouped": 21,
+            "local_recent": 23,
+        ]
+
+        for (target, expectedKeyCode) in expectedKeyCodes {
+            let automation = ClaudeAutomation(
+                frontmostBundleID: ClaudeCodeProvider.bundleID
+            )
+            let provider = ClaudeCodeProvider(
+                desktopSessionsRootURL: fixture.desktopRoot,
+                projectsRootURL: fixture.projectsRoot,
+                desktopConfigURL: config,
+                automation: automation,
+                clock: { 1_000 }
+            )
+
+            let result = try await provider.focus(nativeSessionID: target)
+
+            #expect(result.accepted)
+            #expect(await automation.shortcutKeyCodes() == [expectedKeyCode])
+        }
+    }
+
+    @Test("a collapsed group hides its sessions from the shortcut order")
+    func focusSkipsCollapsedGroup() async throws {
+        let fixture = try ClaudeTemporaryFixture()
+        for id in ["local_pin1", "local_grouped"] {
+            try fixture.writeRecord(
+                desktopID: id,
+                cliID: "cli-\(id)",
+                lastActivityAt: 100
+            )
+            try fixture.writeTranscript(cliID: "cli-\(id)")
+        }
+        let config = try fixture.writeCurrentShortcutConfig(
+            pinned: ["local_pin1"],
+            groups: ["group-a"],
+            assignments: ["local_grouped": "group-a"],
+            order: ["group-a": ["local_grouped"]],
+            starred: ["local_pin1"],
+            collapsedGroups: ["group-a"]
+        )
+        let automation = ClaudeAutomation(
+            frontmostBundleID: ClaudeCodeProvider.bundleID
+        )
+        let provider = ClaudeCodeProvider(
+            desktopSessionsRootURL: fixture.desktopRoot,
+            projectsRootURL: fixture.projectsRoot,
+            desktopConfigURL: config,
+            automation: automation,
+            clock: { 1_000 }
+        )
+
+        let snapshot = try await provider.snapshot()
+        let grouped = try #require(
+            snapshot.sessions.first { $0.nativeID == "local_grouped" }
+        )
+        #expect(!grouped.capabilities.contains(.focusSession))
+
+        let result = try await provider.focus(nativeSessionID: "local_grouped")
+        #expect(!result.accepted)
+        #expect(result.verdict == "FOCUS_UNSUPPORTED")
+    }
+
     @Test("focus holds Control while navigating beyond shortcut nine")
     func focusBeyondNine() async throws {
         let fixture = try ClaudeTemporaryFixture()
@@ -780,7 +873,9 @@ private struct ClaudeTemporaryFixture {
         pinned: [String],
         groups: [String],
         assignments: [String: String],
-        order: [String: [String]]
+        order: [String: [String]],
+        starred: [String] = [],
+        collapsedGroups: [String] = []
     ) throws -> URL {
         let url = root.appendingPathComponent("claude_desktop_config.json")
         let qualifiedAssignments = Dictionary(
@@ -791,24 +886,35 @@ private struct ClaudeTemporaryFixture {
         let qualifiedOrder = order.mapValues {
             $0.map { "code:\($0)" }
         }
+        var epitaxyPrefs: [String: Any] = [
+            "dframe-local-slice": [
+                "pinnedOrder": pinned.map { "code:\($0)" }
+            ],
+            "dframe-group-scopes": [
+                "account/workspace": [
+                    "groups": groups.map {
+                        ["id": $0, "name": $0]
+                    },
+                    "assignments": qualifiedAssignments,
+                    "order": qualifiedOrder,
+                ]
+            ],
+            "starred-local-code-sessions": starred,
+        ]
+        if !collapsedGroups.isEmpty {
+            epitaxyPrefs["epitaxy-tasks-store"] = [
+                "state": [
+                    "collapsedGroups": Dictionary(
+                        uniqueKeysWithValues: collapsedGroups.map {
+                            ($0, true)
+                        }
+                    )
+                ]
+            ]
+        }
         let data = try JSONSerialization.data(
             withJSONObject: [
-                "preferences": [
-                    "epitaxyPrefs": [
-                        "dframe-local-slice": [
-                            "pinnedOrder": pinned.map { "code:\($0)" }
-                        ],
-                        "dframe-group-scopes": [
-                            "account/workspace": [
-                                "groups": groups.map {
-                                    ["id": $0, "name": $0]
-                                },
-                                "assignments": qualifiedAssignments,
-                                "order": qualifiedOrder,
-                            ]
-                        ],
-                    ]
-                ]
+                "preferences": ["epitaxyPrefs": epitaxyPrefs]
             ],
             options: [.sortedKeys]
         )

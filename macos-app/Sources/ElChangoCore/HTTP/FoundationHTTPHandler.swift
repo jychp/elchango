@@ -388,6 +388,7 @@ public struct FoundationHTTPHandler: HTTPHandler {
                 ])
             )
         } catch let error as ProviderOperationError {
+            DebugTrace.failure("http-hook", "record.rejected", error: error)
             let status: HTTPStatusCode
             switch error {
             case .unsupported:
@@ -402,6 +403,7 @@ public struct FoundationHTTPHandler: HTTPHandler {
                 APIErrorResponse(error: error.localizedDescription)
             )
         } catch {
+            DebugTrace.failure("http-hook", "record.failed", error: error)
             return try jsonResponse(
                 .serviceUnavailable,
                 APIErrorResponse(
