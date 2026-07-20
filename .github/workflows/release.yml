@@ -401,11 +401,44 @@ jobs:
 
       - name: Create GitHub Release
         timeout-minutes: 5
-        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
-        with:
-          files: release-assets/*
-          fail_on_unmatched_files: true
-          generate_release_notes: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          shopt -s nullglob
+          assets=(release-assets/*)
+          if [[ ${#assets[@]} -eq 0 ]]; then
+            echo "::error::No release assets found in release-assets/"
+            exit 1
+          fi
+          tag="v${VERSION}"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $tag already exists; refreshing assets"
+          else
+            gh release create "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --generate-notes
+          fi
+          # Upload with --clobber to replace any existing (possibly partial)
+          # assets. --clobber deletes an asset before re-uploading it, so a
+          # transient failure could momentarily leave the release missing an
+          # asset; retry so such a blip is re-uploaded rather than left
+          # degraded. Assets are deterministic build outputs, so re-running
+          # the whole command is safe and self-healing.
+          for attempt in 1 2 3; do
+            if gh release upload "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber \
+              "${assets[@]}"; then
+              break
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              echo "::error::Failed to upload release assets after ${attempt} attempts"
+              exit 1
+            fi
+            echo "Asset upload attempt ${attempt} failed; retrying..."
+            sleep $((attempt * 5))
+          done
 
       - name: Dispatch Homebrew Cask update
         timeout-minutes: 5
