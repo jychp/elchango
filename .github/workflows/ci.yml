@@ -49,6 +49,10 @@ jobs:
         timeout-minutes: 8
         run: npm ci
         working-directory: web
+      - name: Install Stream Deck dependencies for bundled plugin
+        timeout-minutes: 7
+        run: npm ci
+        working-directory: plugins/streamdeck
       - name: Test macOS app
         timeout-minutes: 15
         run: make test-app-macos

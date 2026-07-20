@@ -45,6 +45,7 @@ WEB_INDEX="${APP_DIR}/Contents/Resources/Web/index.html"
 LICENSE="${APP_DIR}/Contents/Resources/LICENSE"
 THIRD_PARTY_NOTICES="${APP_DIR}/Contents/Resources/THIRD_PARTY_NOTICES.md"
 TRADEMARKS="${APP_DIR}/Contents/Resources/TRADEMARKS.md"
+STREAMDECK_PLUGIN="${APP_DIR}/Contents/Resources/com.jychp.elchango.streamDeckPlugin"
 
 [[ -f "${PLIST}" ]] || {
   echo "ERROR: missing Info.plist." >&2
@@ -76,6 +77,40 @@ TRADEMARKS="${APP_DIR}/Contents/Resources/TRADEMARKS.md"
 }
 [[ -f "${TRADEMARKS}" ]] || {
   echo "ERROR: missing trademark notice." >&2
+  exit 1
+}
+[[ -f "${STREAMDECK_PLUGIN}" ]] || {
+  echo "ERROR: missing bundled Stream Deck plugin." >&2
+  exit 1
+}
+
+STREAMDECK_MANIFEST="$(
+  unzip -p "${STREAMDECK_PLUGIN}" \
+    "com.jychp.elchango.sdPlugin/manifest.json" 2>/dev/null
+)" || {
+  echo "ERROR: bundled Stream Deck plugin manifest is unreadable." >&2
+  exit 1
+}
+STREAMDECK_UUID="$(
+  printf '%s' "${STREAMDECK_MANIFEST}" |
+    python3 -c 'import json,sys; print(json.load(sys.stdin)["UUID"])'
+)" || {
+  echo "ERROR: bundled Stream Deck plugin manifest is malformed." >&2
+  exit 1
+}
+STREAMDECK_VERSION="$(
+  printf '%s' "${STREAMDECK_MANIFEST}" |
+    python3 -c 'import json,sys; print(json.load(sys.stdin)["Version"])'
+)" || {
+  echo "ERROR: bundled Stream Deck plugin manifest is malformed." >&2
+  exit 1
+}
+[[ "${STREAMDECK_UUID}" == "com.jychp.elchango" ]] || {
+  echo "ERROR: bundled Stream Deck plugin has unexpected UUID '${STREAMDECK_UUID}'." >&2
+  exit 1
+}
+[[ "${STREAMDECK_VERSION}" == "${EXPECTED_VERSION}.0" ]] || {
+  echo "ERROR: bundled Stream Deck plugin version '${STREAMDECK_VERSION}' does not match root VERSION." >&2
   exit 1
 }
 
