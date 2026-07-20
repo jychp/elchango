@@ -1,0 +1,27 @@
+{
+  "name": "elchango",
+  "displayName": "elChango",
+  "version": "1.1.0",
+  "description": "Reports Codex Desktop lifecycle events to the local elChango app.",
+  "author": {
+    "name": "jychp"
+  },
+  "homepage": "https://github.com/jychp/elchango",
+  "repository": "https://github.com/jychp/elchango",
+  "keywords": [
+    "codex",
+    "hooks",
+    "monitoring",
+    "stream-deck"
+  ],
+  "hooks": "./hooks/hooks.json",
+  "interface": {
+    "displayName": "elChango",
+    "shortDescription": "Surface Codex sessions on a Stream Deck",
+    "developerName": "jychp",
+    "category": "Productivity",
+    "brandColor": "#16181b",
+    "logo": "./assets/logo.png",
+    "composerIcon": "./assets/composer-icon.png"
+  }
+}

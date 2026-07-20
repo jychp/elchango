@@ -30,7 +30,7 @@ describe('App demo mode', () => {
     )
     expect(
       Array.from(document.body.querySelectorAll('button'))
-        .slice(0, 7)
+        .slice(0, 8)
         .map((button) => button.textContent?.trim()),
     ).toEqual([
       'Done',
@@ -39,6 +39,7 @@ describe('App demo mode', () => {
       'Idle',
       'Error',
       'Claude',
+      'Codex',
       'Cursor',
     ])
 
@@ -49,6 +50,7 @@ describe('App demo mode', () => {
       ['Idle', 'Local agent', 'robot', 'idle'],
       ['Error', 'Local agent', 'fire', 'error'],
       ['Claude', 'Claude Code', 'claude', 'idle'],
+      ['Codex', 'Codex', 'codex', 'idle'],
       ['Cursor', 'Cursor', 'cursor', 'idle'],
     ] as const
 

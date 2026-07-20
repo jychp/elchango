@@ -176,6 +176,7 @@
         "enum": [
           "cursor",
           "claude",
+          "codex",
           "plus",
           "arrow-left",
           "arrow-right",
@@ -215,7 +216,6 @@
           "waiting",
           "done",
           "error",
-          "unknown",
           "control"
         ]
       },

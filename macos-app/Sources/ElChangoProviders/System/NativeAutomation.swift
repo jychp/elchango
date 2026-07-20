@@ -39,6 +39,18 @@ public protocol NativeAutomating: Sendable {
         focusKeyCode: CGKeyCode?,
         targetVerifier: @escaping @Sendable () async throws -> Bool
     ) async throws -> ProviderActionResult
+    /// Naive text dispatch: type `text` into whatever has keyboard focus in the
+    /// frontmost `bundleID` app, then post the submit key `submitCount` times.
+    /// No accessibility-marker verification is performed, so the caller must have
+    /// already focused the intended input. Best-effort; for harnesses without a
+    /// proven input-target marker.
+    func dispatchFrontmostText(
+        _ text: String,
+        submitKeyCode: CGKeyCode,
+        submitFlags: CGEventFlags,
+        submitCount: Int,
+        bundleID: String
+    ) async throws
 }
 
 public actor NativeAutomation: NativeAutomating {
@@ -171,6 +183,47 @@ public actor NativeAutomation: NativeAutomating {
             flags: flags,
             processIdentifier: identity.processIdentifier
         )
+    }
+
+    public func dispatchFrontmostText(
+        _ text: String,
+        submitKeyCode: CGKeyCode,
+        submitFlags: CGEventFlags,
+        submitCount: Int,
+        bundleID: String
+    ) async throws {
+        guard !text.isEmpty, submitCount > 0 else {
+            throw ProviderOperationError.system(
+                "command text and submit count must be valid"
+            )
+        }
+        try requireAccessibilityPermission()
+        let identity = try await requireFrontmost(bundleID: bundleID)
+        try await postBestEffortKeyboardText(
+            text,
+            bundleID: bundleID,
+            processIdentifier: identity.processIdentifier
+        )
+        for _ in 0..<submitCount {
+            try await sleep(milliseconds: 300)
+            _ = try await requireFrontmost(
+                bundleID: bundleID,
+                processIdentifier: identity.processIdentifier
+            )
+            try postKey(
+                submitKeyCode,
+                down: true,
+                flags: submitFlags,
+                processIdentifier: identity.processIdentifier
+            )
+            try await sleep(milliseconds: 80)
+            try postKey(
+                submitKeyCode,
+                down: false,
+                flags: submitFlags,
+                processIdentifier: identity.processIdentifier
+            )
+        }
     }
 
     public func postHeldModifierShortcut(

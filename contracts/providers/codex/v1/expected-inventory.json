@@ -1,0 +1,29 @@
+{
+  "provider_id": "codex",
+  "read_only": true,
+  "selected_session_id": null,
+  "sessions": [
+    {
+      "confidence": "persisted",
+      "id": "codex:bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb",
+      "last_activity_at_ms": 1783617600000,
+      "selected": false,
+      "state": "idle",
+      "state_detail": "Persistent Codex Desktop session; no live hook signal",
+      "title": "Beta task",
+      "workspace_id": "/tmp/elchango-codex/beta",
+      "workspace_path": "/tmp/elchango-codex/beta"
+    },
+    {
+      "confidence": "persisted",
+      "id": "codex:11111111-1111-7111-8111-111111111111",
+      "last_activity_at_ms": 1783617000000,
+      "selected": false,
+      "state": "idle",
+      "state_detail": "Persistent Codex Desktop session; no live hook signal",
+      "title": "Alpha task",
+      "workspace_id": "git@github.com:example/alpha.git",
+      "workspace_path": "/tmp/elchango-codex/alpha"
+    }
+  ]
+}

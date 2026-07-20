@@ -46,7 +46,7 @@ test-web: test-versions
 	npm --prefix web run check
 	npm --prefix web test
 
-test-plugins: test-plugin-cursor test-plugin-claude test-plugin-streamdeck
+test-plugins: test-plugin-cursor test-plugin-claude test-plugin-codex test-plugin-streamdeck
 
 test-plugin-cursor: test-versions
 	$(PYTHON) scripts/validate_provider_plugins.py cursor
@@ -60,6 +60,9 @@ test-plugin-claude: test-versions
 		echo "Claude CLI not found; custom strict validation completed."; \
 	fi
 
+test-plugin-codex: test-versions
+	$(PYTHON) scripts/validate_provider_plugins.py codex
+
 test-plugin-streamdeck: test-versions
 	cmp LICENSE plugins/streamdeck/com.jychp.elchango.sdPlugin/LICENSE
 	test -s plugins/streamdeck/com.jychp.elchango.sdPlugin/THIRD_PARTY_NOTICES.md
@@ -69,7 +72,7 @@ test-plugin-streamdeck: test-versions
 
 test-pocs:
 	@set -eu; \
-	for poc in scripts/poc/cursor/*.py scripts/poc/claude/*.py; do \
+	for poc in scripts/poc/cursor/*.py scripts/poc/claude/*.py scripts/poc/codex/*.py; do \
 		$(PYTHON) -m py_compile "$$poc"; \
 		$(PYTHON) "$$poc" --help >/dev/null; \
 	done

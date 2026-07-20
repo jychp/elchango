@@ -59,6 +59,23 @@ test("button rendering supports Claude Code session icons", () => {
   assert.match(image, /transform="translate\(36 18\) scale\(0\.72\)"/);
 });
 
+test("button rendering supports Codex Desktop session icons", () => {
+  const image = decodeSvg(
+    renderButton({
+      ...buttonAt(0),
+      icon: "codex",
+      label: "Codex",
+      color: "idle",
+    }),
+  );
+
+  assert.match(image, /Codex/);
+  assert.match(image, /fill="#77818b"/);
+  assert.match(image, /M22\.2819 9\.8211/);
+  assert.match(image, /transform="translate\(36 18\) scale\(3\)"/);
+  assert.doesNotMatch(image, /stroke=/);
+});
+
 test("button rendering supports every Phosphor icon", () => {
   const icons: DeckIconName[] = [
     "robot",

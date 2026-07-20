@@ -277,7 +277,7 @@ enum DeckLayout {
                 label: "",
                 detail: "",
                 icon: .arrowsClockwise,
-                color: .unknown,
+                color: .idle,
                 enabled: false,
                 confidence: .unknown
             )

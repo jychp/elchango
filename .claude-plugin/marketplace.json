@@ -5,13 +5,13 @@
     "name": "jychp"
   },
   "description": "Official elChango provider plugins",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "plugins": [
     {
       "name": "elchango",
       "source": "./plugins/claude",
       "description": "Reports Claude Code lifecycle events to the local elChango app.",
-      "version": "1.0.1"
+      "version": "1.1.0"
     }
   ]
 }

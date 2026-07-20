@@ -5,7 +5,7 @@ struct ElChangoHookReporter {
     static func main() async {
         if CommandLine.arguments.contains("--help") {
             print(
-                "Usage: elChangoHookReporter --provider cursor|claude-code"
+                "Usage: elChangoHookReporter --provider cursor|claude-code|codex"
             )
             return
         }
@@ -50,6 +50,7 @@ struct ElChangoHookReporter {
 private enum Provider: String {
     case cursor
     case claudeCode = "claude-code"
+    case codex
 
     func sanitize(_ payload: [String: Any]) -> [String: Any]? {
         let keys: Set<String>
@@ -76,6 +77,19 @@ private enum Provider: String {
                 "trigger",
                 "source",
                 "agent_id",
+            ]
+        case .codex:
+            // Codex hooks share Claude Code's payload field names, but only a
+            // minimal metadata subset is retained; no prompt, tool input, or
+            // transcript content is forwarded.
+            keys = [
+                "hook_event_name",
+                "session_id",
+                "cwd",
+                "transcript_path",
+                "tool_name",
+                "permission_mode",
+                "turn_id",
             ]
         }
         var sanitized: [String: Any] = payload.reduce(into: [:]) {

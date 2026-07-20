@@ -1,0 +1,2 @@
+{"timestamp":"2026-07-09T17:06:00.000Z","type":"session_meta","payload":{"id":"cccccccc-cccc-7ccc-8ccc-cccccccccccc","session_id":"cccccccc-cccc-7ccc-8ccc-cccccccccccc","cwd":"/tmp/elchango-codex/gamma","originator":"Codex Desktop","thread_source":"subagent","source":{"subagent":{"other":"review"}},"cli_version":"0.145.0","timestamp":"2026-07-09T17:06:00.000Z"}}
+{"timestamp":"2026-07-09T17:06:05.000Z","type":"event_msg","payload":{"type":"task_started"}}

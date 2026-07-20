@@ -471,9 +471,12 @@ public actor DeckService {
         sessionID: String,
         commandID: CommandID
     ) async throws -> ProviderActionResult {
+        // The command acts on whatever the frontmost harness has on screen, so
+        // route to the live foreground target rather than the (possibly stale)
+        // session id the button was rendered with.
+        _ = sessionID
         let combined = await combinedSnapshot()
         guard let target = combined.commandTarget,
-            target.id == sessionID,
             target.commands.contains(commandID),
             let provider = providers[target.providerID]
         else {
@@ -593,20 +596,27 @@ public actor DeckService {
             )
         }
 
+        // Commands apply to whatever a supported harness has on screen: the only
+        // requirement is that a command-capable provider is the frontmost app.
+        // We do not verify which session is selected (the harnesses expose no
+        // reliable live signal for it); the command acts on the active window and
+        // the user is responsible for having the right session in front. Only one
+        // app can be frontmost, so at most one provider qualifies. A representative
+        // session (most recently active) carries the provider id and command set
+        // to the deck button; its identity is not used to target the dispatch.
         var commandTargets: [AgentSession] = []
         for snapshot in snapshots
         where snapshot.capabilities.contains(.executeCommand) {
             guard let provider = providers[snapshot.providerID],
-                let selectedID = snapshot.selectedNativeSessionID,
-                (try? await provider.isFrontmost()) == true
+                (try? await provider.isFrontmost()) == true,
+                let representative = snapshot.sessions.max(by: {
+                    $0.lastActivityAtMilliseconds
+                        < $1.lastActivityAtMilliseconds
+                })
             else {
                 continue
             }
-            commandTargets.append(
-                contentsOf: snapshot.sessions.filter {
-                    $0.nativeID == selectedID
-                }
-            )
+            commandTargets.append(representative)
         }
 
         return CombinedSnapshot(
