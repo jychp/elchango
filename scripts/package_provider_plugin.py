@@ -14,13 +14,11 @@ FIXED_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 PLUGIN_FILES = {
     "cursor": {
         ".cursor-plugin/plugin.json",
-        "CHANGELOG.md",
         "README.md",
         "hooks/hooks.json",
     },
     "claude": {
         ".claude-plugin/plugin.json",
-        "CHANGELOG.md",
         "README.md",
         "hooks/hooks.json",
     },
