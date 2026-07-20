@@ -179,13 +179,18 @@ select the target or change its `lastFocusedAt`; the verdict was
 Native shortcuts provided the verifiable focus mechanism:
 
 - `Cmd+1` through `Cmd+9` select corresponding persisted sidebar sessions.
-- Current order comes from `claude_desktop_config.json`: unassigned sessions
-  from qualified `pinnedOrder`, then custom groups from the matching
-  `dframe-group-scopes.groups` array and each group's `order`, then the virtual
-  Ungrouped section by descending `lastActivityAt`.
-- A `pinnedOrder` entry assigned to a custom group is placed only in that
-  group. Stale persisted IDs are ignored, but visible assigned sessions missing
-  from their group order fail closed.
+- Current order comes from `claude_desktop_config.json` and mirrors the rendered
+  sidebar top to bottom:
+  1. **Ungrouped pinned sessions** first: those in `pinnedOrder` in that order,
+     then any remaining `starred-local-code-sessions` (also pinned but without a
+     drag position) by descending `lastActivityAt`.
+  2. **Each custom group** in `dframe-group-scopes.groups` order, showing that
+     group's `order`. A pinned session that is also assigned to a group stays in
+     its group at its group position; pinning does not pull it to the top.
+  3. **Ungrouped, unpinned sessions** last, by descending `lastActivityAt`.
+- **Collapsed groups** (keys in `epitaxy-tasks-store.state.collapsedGroups`) hide
+  their rows, so their sessions are omitted from the shortcut order and are not
+  focus-capable while collapsed.
 - Legacy installations use ungrouped `starred-local-code-sessions` in reverse
   persisted order, then sessions in `customGroupOrder`, then remaining sessions
   by descending `lastActivityAt`.
