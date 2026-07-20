@@ -80,9 +80,9 @@ The root Makefile is the supported entry point.
 | `make build-plugin-streamdeck` | Validate and package the Stream Deck plugin. |
 | `make clean` | Remove generated app, web, and plugin distributions. |
 
-`make release VERSION=X.Y.Z` is a maintainer operation. The complete process,
-credentials, and artifact contract are documented in
-[releasing.md](releasing.md).
+`make release VERSION=X.Y.Z` is a maintainer operation. The complete process
+and artifact contract are documented in [releasing.md](releasing.md); the
+pipeline credentials it needs are in [release-setup.md](release-setup.md).
 
 ## macOS app development
 
@@ -262,4 +262,4 @@ make verify-release-app-macos
 ```
 
 Release signing and notarization require maintainer credentials. See
-[releasing.md](releasing.md).
+[release-setup.md](release-setup.md).
