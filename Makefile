@@ -82,10 +82,10 @@ test-release-scripts:
 
 build: build-app-macos build-plugins
 
-build-app-macos: test-versions
+build-app-macos: test-versions build-plugin-streamdeck
 	ELCHANGO_PROFILE=debug ./macos-app/Scripts/package-app.sh
 
-build-app-macos-universal: test-versions
+build-app-macos-universal: test-versions build-plugin-streamdeck
 	ELCHANGO_PROFILE=stable \
 	ELCHANGO_ARCHITECTURES="arm64 x86_64" \
 		./macos-app/Scripts/package-app.sh

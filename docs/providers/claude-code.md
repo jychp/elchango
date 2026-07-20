@@ -109,7 +109,20 @@ official payloads share `session_id`, `transcript_path`, `cwd`, and
 Native HTTP handlers are preferred because they avoid Claude's shell hook
 executor.
 
-The implemented mapping is:
+State is the shared `SessionState` enum (`idle`, `working`, `waiting`, `done`,
+`error`, `unknown`). Unlike Cursor there is no database inference; all live
+state is hook-driven. The handled states are:
+
+| State | Deck color | Produced by |
+| --- | --- | --- |
+| `working` | blue | `UserPromptSubmit`, tool/permission progress, subagent activity, compaction, `SessionStart(source: "compact")`, and `Stop` while background tasks remain |
+| `waiting` | orange | `PermissionRequest`, `Elicitation`, `PreToolUse` for `AskUserQuestion`/`ExitPlanMode`, and `permission_prompt`/`elicitation_dialog`/`agent_needs_input` notifications |
+| `done` | green | `Stop` with an empty background-task registry, and the `idle_prompt` notification |
+| `error` | red | `StopFailure` |
+| `idle` | gray | `SessionStart` and `SessionEnd` |
+| `unknown` | gray | a `working`/`waiting` signal older than the ten-minute terminal deadline, when no terminal event arrived |
+
+The implemented event mapping is:
 
 - `UserPromptSubmit`: blue, working, keyed by `(session_id, prompt_id)` when the
   current Claude Code version supplies `prompt_id`;
@@ -130,7 +143,7 @@ The implemented mapping is:
   working;
 - `SessionStart(source: "compact")`: blue resumed progress rather than idle;
 - `Stop`: green only when its authoritative `background_tasks` array is empty;
-- `StopFailure`: error, rendered orange by the four-color deck;
+- `StopFailure`: error, rendered red by the deck;
 - `SessionStart` and `SessionEnd`: gray, idle.
 
 When `Stop.background_tasks` is non-empty, the session remains blue. Background
@@ -166,13 +179,18 @@ select the target or change its `lastFocusedAt`; the verdict was
 Native shortcuts provided the verifiable focus mechanism:
 
 - `Cmd+1` through `Cmd+9` select corresponding persisted sidebar sessions.
-- Current order comes from `claude_desktop_config.json`: unassigned sessions
-  from qualified `pinnedOrder`, then custom groups from the matching
-  `dframe-group-scopes.groups` array and each group's `order`, then the virtual
-  Ungrouped section by descending `lastActivityAt`.
-- A `pinnedOrder` entry assigned to a custom group is placed only in that
-  group. Stale persisted IDs are ignored, but visible assigned sessions missing
-  from their group order fail closed.
+- Current order comes from `claude_desktop_config.json` and mirrors the rendered
+  sidebar top to bottom:
+  1. **Ungrouped pinned sessions** first: those in `pinnedOrder` in that order,
+     then any remaining `starred-local-code-sessions` (also pinned but without a
+     drag position) by descending `lastActivityAt`.
+  2. **Each custom group** in `dframe-group-scopes.groups` order, showing that
+     group's `order`. A pinned session that is also assigned to a group stays in
+     its group at its group position; pinning does not pull it to the top.
+  3. **Ungrouped, unpinned sessions** last, by descending `lastActivityAt`.
+- **Collapsed groups** (keys in `epitaxy-tasks-store.state.collapsedGroups`) hide
+  their rows, so their sessions are omitted from the shortcut order and are not
+  focus-capable while collapsed.
 - Legacy installations use ungrouped `starred-local-code-sessions` in reverse
   persisted order, then sessions in `customGroupOrder`, then remaining sessions
   by descending `lastActivityAt`.

@@ -4,6 +4,7 @@ public final class CursorActivityStore: @unchecked Sendable {
     private struct TerminalState {
         let state: SessionState
         let detail: String
+        let confidence: DeckConfidence
     }
 
     private struct Turn {
@@ -19,6 +20,7 @@ public final class CursorActivityStore: @unchecked Sendable {
         }
     }
 
+    private let terminalDeadlineMilliseconds: Int64
     private let ttlMilliseconds: Int64
     private let maximumSignals: Int
     private let maximumActiveSubagents: Int
@@ -27,10 +29,12 @@ public final class CursorActivityStore: @unchecked Sendable {
     private var acknowledgedAt: [String: Int64] = [:]
 
     public init(
+        terminalDeadlineMilliseconds: Int64 = 10 * 60 * 1_000,
         ttlMilliseconds: Int64 = 60 * 60 * 1_000,
         maximumSignals: Int = 1_000,
         maximumActiveSubagents: Int = 64
     ) {
+        self.terminalDeadlineMilliseconds = terminalDeadlineMilliseconds
         self.ttlMilliseconds = ttlMilliseconds
         self.maximumSignals = maximumSignals
         self.maximumActiveSubagents = maximumActiveSubagents
@@ -201,7 +205,8 @@ public final class CursorActivityStore: @unchecked Sendable {
                     state: turn.childFailed ? .error : deferred.state,
                     detail: turn.childFailed
                         ? "Cursor subagent failed or aborted"
-                        : deferred.detail
+                        : deferred.detail,
+                    confidence: turn.childFailed ? .observed : deferred.confidence
                 )
             } else {
                 turn.observation = Self.observation(
@@ -213,7 +218,7 @@ public final class CursorActivityStore: @unchecked Sendable {
                 )
             }
         case "stop":
-            let terminal = try Self.cursorTerminalState(status: payload.status)
+            let terminal = Self.cursorTerminalState(status: payload.status)
             if turn.activeSubagentCount > 0 {
                 turn.deferredTerminal = terminal
                 turn.observation = Self.observation(
@@ -229,7 +234,8 @@ public final class CursorActivityStore: @unchecked Sendable {
                     event: event,
                     observedAtMilliseconds: observedAtMilliseconds,
                     state: terminal.state,
-                    detail: terminal.detail
+                    detail: terminal.detail,
+                    confidence: terminal.confidence
                 )
             }
         case "sessionEnd":
@@ -267,6 +273,18 @@ public final class CursorActivityStore: @unchecked Sendable {
             - turn.observation.observedAtMilliseconds
             > ttlMilliseconds
         {
+            remove(sessionID)
+            return nil
+        }
+        if turn.observation.state == .working
+            || turn.observation.state == .waiting,
+            observedAtMilliseconds
+                - turn.observation.observedAtMilliseconds
+                > terminalDeadlineMilliseconds
+        {
+            // Expire a non-terminal hook signal when the expected terminal
+            // event never arrived, so database inference governs again
+            // instead of the tile remaining stuck in working or waiting.
             remove(sessionID)
             return nil
         }
@@ -328,14 +346,15 @@ public final class CursorActivityStore: @unchecked Sendable {
         event: String,
         observedAtMilliseconds: Int64,
         state: SessionState,
-        detail: String
+        detail: String,
+        confidence: DeckConfidence = .observed
     ) -> ActivityObservation {
         ActivityObservation(
             sessionID: sessionID,
             event: event,
             observedAtMilliseconds: observedAtMilliseconds,
             state: state,
-            confidence: .observed,
+            confidence: confidence,
             detail: detail
         )
     }
@@ -355,26 +374,36 @@ public final class CursorActivityStore: @unchecked Sendable {
 
     private static func cursorTerminalState(
         status: String?
-    ) throws -> TerminalState {
+    ) -> TerminalState {
         switch status {
         case "completed":
             return TerminalState(
                 state: .done,
-                detail: "Cursor agent completed"
+                detail: "Cursor agent completed",
+                confidence: .observed
             )
         case "error":
             return TerminalState(
                 state: .error,
-                detail: "Cursor agent stopped with error"
+                detail: "Cursor agent stopped with error",
+                confidence: .observed
             )
         case "aborted":
             return TerminalState(
                 state: .error,
-                detail: "Cursor agent aborted"
+                detail: "Cursor agent aborted",
+                confidence: .observed
             )
         default:
-            throw ProviderOperationError.invalidHook(
-                "unsupported Cursor stop status: \(status ?? "nil")"
+            // A stop event always means the turn ended, so record a terminal
+            // state instead of dropping the signal. The exact outcome is
+            // unknown, so report done with reduced confidence and preserve the
+            // raw status for diagnosis rather than leaving the tile stuck in
+            // working.
+            return TerminalState(
+                state: .done,
+                detail: "Cursor agent stopped (status: \(status ?? "unspecified"))",
+                confidence: .candidate
             )
         }
     }

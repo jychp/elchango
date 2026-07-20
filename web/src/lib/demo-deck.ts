@@ -53,6 +53,15 @@ export const demoSessions = [
     selected: false,
   },
   {
+    id: 'demo:crash',
+    providerId: 'demo',
+    label: 'Error',
+    detail: 'Local agent',
+    icon: 'fire',
+    color: 'error',
+    selected: false,
+  },
+  {
     id: 'claude-code:vibecoding',
     providerId: 'claude-code',
     label: 'Claude',
