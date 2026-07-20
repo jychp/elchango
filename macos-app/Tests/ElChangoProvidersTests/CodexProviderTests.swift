@@ -25,11 +25,21 @@ struct CodexProviderTests {
         #expect(CodexExpectedInventory(snapshot: snapshot) == expected)
         // Excludes CLI (codex-tui), subagents, and empty rollout artifacts.
         #expect(snapshot.sessions.count == 2)
-        // Focus (per session) and new-session (provider level) are proven via
-        // id-addressed deep links; commands stay unproven.
-        #expect(snapshot.capabilities == [.focusSession, .newSession])
-        #expect(snapshot.sessions.allSatisfy { $0.capabilities == [.focusSession] })
-        #expect(snapshot.sessions.allSatisfy { $0.commands.isEmpty })
+        // Focus and command dispatch (per session) plus new-session (provider
+        // level) are wired; only `accept` has a proven command recipe.
+        #expect(
+            snapshot.capabilities == [.focusSession, .newSession, .executeCommand]
+        )
+        #expect(
+            snapshot.sessions.allSatisfy {
+                $0.capabilities == [.focusSession, .executeCommand]
+            }
+        )
+        #expect(
+            snapshot.sessions.allSatisfy {
+                $0.commands == [.accept, .createPR, .commitPush, .compact]
+            }
+        )
         #expect(snapshot.selectedNativeSessionID == nil)
         #expect(snapshot.readOnly)
         #expect(snapshot.observedAtMilliseconds == 1_000)
@@ -185,6 +195,28 @@ struct CodexProviderTests {
         )
     }
 
+    @Test("focus marks the session selected so commands can target it")
+    func focusMarksSessionSelected() async throws {
+        let fixture = CodexSharedFixture()
+        let automation = CodexAutomation(frontmostBundleID: CodexProvider.bundleID)
+        let provider = CodexProvider(
+            sessionsRootURL: fixture.sessionsRoot,
+            sessionIndexURL: fixture.sessionIndex,
+            automation: automation
+        )
+        let native = "11111111-1111-7111-8111-111111111111"
+        // Nothing is selected before a focus.
+        #expect(try await provider.snapshot().selectedNativeSessionID == nil)
+
+        _ = try await provider.focus(nativeSessionID: native)
+
+        let snapshot = try await provider.snapshot()
+        #expect(snapshot.selectedNativeSessionID == native)
+        #expect(
+            snapshot.sessions.first { $0.nativeID == native }?.selected == true
+        )
+    }
+
     @Test("focus reports unverified when the app never foregrounds")
     func focusUnverifiedWhenNotFrontmost() async throws {
         let fixture = CodexSharedFixture()
@@ -256,12 +288,14 @@ struct CodexProviderTests {
         #expect(await automation.openedURLs() == ["codex://threads/new"])
     }
 
-    @Test("commands fail closed pending live verification")
-    func commandsFailClosed() async throws {
+    @Test("accept focuses the thread and sends a double Command+Return")
+    func acceptDispatchesDoubleCommandReturn() async throws {
         let fixture = CodexSharedFixture()
+        let automation = CodexAutomation(frontmostBundleID: CodexProvider.bundleID)
         let provider = CodexProvider(
             sessionsRootURL: fixture.sessionsRoot,
-            sessionIndexURL: fixture.sessionIndex
+            sessionIndexURL: fixture.sessionIndex,
+            automation: automation
         )
         let native = "11111111-1111-7111-8111-111111111111"
 
@@ -269,8 +303,37 @@ struct CodexProviderTests {
             nativeSessionID: native,
             commandID: .accept
         )
-        #expect(!command.accepted)
-        #expect(command.verdict == "TARGET_NOT_SELECTED")
+        #expect(command.accepted)
+        #expect(command.verdict == "COMMAND_DISPATCHED")
+        // Focused the exact thread first, then sent Command+Return twice.
+        #expect(await automation.openedURLs() == ["codex://threads/\(native)"])
+        #expect(await automation.shortcuts().count == 2)
+        #expect(
+            await automation.shortcuts().allSatisfy { $0 == 36 }
+        )
+    }
+
+    @Test("a text command focuses the thread and types the prompt")
+    func textCommandTypesPrompt() async throws {
+        let fixture = CodexSharedFixture()
+        let automation = CodexAutomation(frontmostBundleID: CodexProvider.bundleID)
+        let provider = CodexProvider(
+            sessionsRootURL: fixture.sessionsRoot,
+            sessionIndexURL: fixture.sessionIndex,
+            automation: automation
+        )
+        let native = "11111111-1111-7111-8111-111111111111"
+
+        let command = try await provider.executeCommand(
+            nativeSessionID: native,
+            commandID: .compact
+        )
+        #expect(command.accepted)
+        #expect(command.verdict == "COMMAND_DISPATCHED")
+        // Focused the exact thread, then typed the prompt (no raw keystrokes).
+        #expect(await automation.openedURLs() == ["codex://threads/\(native)"])
+        #expect(await automation.typedTexts() == ["/compact"])
+        #expect(await automation.shortcuts().isEmpty)
     }
 
     @Test("focus rejects an unknown target")
@@ -471,6 +534,7 @@ private struct CodexExpectedSession: Codable, Equatable {
 private actor CodexAutomation: NativeAutomating {
     private var bundleID: String?
     private var opened: [String] = []
+    private var shortcutKeyCodes: [CGKeyCode] = []
 
     init(frontmostBundleID: String?) {
         bundleID = frontmostBundleID
@@ -484,11 +548,29 @@ private actor CodexAutomation: NativeAutomating {
 
     func openedURLs() -> [String] { opened }
 
+    func shortcuts() -> [CGKeyCode] { shortcutKeyCodes }
+
+    private var typed: [String] = []
+
+    func typedTexts() -> [String] { typed }
+
     func postShortcut(
         keyCode: CGKeyCode,
         flags: CGEventFlags,
         bundleID: String
-    ) async throws {}
+    ) async throws {
+        shortcutKeyCodes.append(keyCode)
+    }
+
+    func dispatchFrontmostText(
+        _ text: String,
+        submitKeyCode: CGKeyCode,
+        submitFlags: CGEventFlags,
+        submitCount: Int,
+        bundleID: String
+    ) async throws {
+        typed.append(text)
+    }
 
     func postHeldModifierShortcut(
         modifierKeyCode: CGKeyCode,

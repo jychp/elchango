@@ -17,17 +17,21 @@ mapping is proven, exact preflight, one-shot, no retry.
 
 Findings for Codex Desktop:
 
-- No static, authoritative selected-session signal exists (see POC 01/04), so
-  the "target is selected" preflight cannot pass statically. Verdict:
-  ``TARGET_NOT_SELECTED``.
-- Codex Desktop is an Electron/Chromium app; no accessibility evidence has been
-  gathered that uniquely identifies its agent prompt input (that requires a live
-  AX experiment). A generic editable role is insufficient.
-- No official Codex Desktop command/shortcut mapping is proven for any semantic
-  ID. Recipes must be supplied explicitly and are treated as unproven.
+- No static, authoritative selected-session signal exists (see POC 01/04). The
+  shipped provider works around this by focusing the exact thread through its
+  deep link (``codex://threads/<id>``) first, then relying on a frontmost check;
+  there is still no post-action confirmation the keystrokes landed on the
+  intended thread.
+- ``accept`` has a naive keystroke recipe: a double Command+Return (no prompt
+  text, no agent prompt-input target needed).
+- ``create_pr``, ``commit_push``, ``compact`` are naive text recipes: type a
+  fixed instruction into the focused composer, then submit with Command+Return.
+  The Electron/Chromium app exposes no verified input-target marker, so this
+  types into whatever the composer focus is (best-effort).
 
-Because both the selected-session and prompt-input preflights fail, this POC
-never dispatches. It documents the exact evidence still required.
+All four are wired best-effort in the shipped ``CodexProvider`` and the user
+verifies the result. This POC stays a dry-run probe: it prints the plan and
+never injects.
 
 Safety and side effects
 =======================
@@ -42,9 +46,10 @@ Examples
 
 Interpretation
 ==============
-``UNPROVEN_REQUIRES_LIVE_TARGET_EVIDENCE``: command dispatch cannot be enabled
-until a live experiment establishes an exact selected-session signal and an
-exact prompt-input accessibility target. elChango keeps commands rejected.
+``COMMANDS_WIRED_NAIVE``: all four commands are wired best-effort (focus by deep
+link, then a keystroke recipe for ``accept`` or a typed prompt for the text
+commands) and verified by the user. Proving an exact prompt-input target would
+upgrade the text commands from best-effort to verified.
 
 Official references
 ===================

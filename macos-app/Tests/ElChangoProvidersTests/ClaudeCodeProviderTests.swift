@@ -1058,6 +1058,14 @@ private actor ClaudeAutomation: NativeAutomating {
         )
     }
 
+    func dispatchFrontmostText(
+        _ text: String,
+        submitKeyCode: CGKeyCode,
+        submitFlags: CGEventFlags,
+        submitCount: Int,
+        bundleID: String
+    ) async throws {}
+
     func dispatchedTexts() -> [String] {
         texts
     }

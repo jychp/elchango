@@ -37,7 +37,7 @@ public actor CodexProvider: AgentProvider {
         id: "codex",
         displayName: "Codex",
         icon: .codex,
-        capabilities: [.focusSession, .newSession]
+        capabilities: [.focusSession, .newSession, .executeCommand]
     )
 
     public static let bundleID = "com.openai.codex"
@@ -47,9 +47,14 @@ public actor CodexProvider: AgentProvider {
     public static let tailScanBytes = 256 * 1_024
     static let idleStateDetail =
         "Persistent Codex Desktop session; no live hook signal"
+    // Naive first pass. `accept` is a double Command+Return. The text commands
+    // type a prompt into the focused composer and submit with Command+Return;
+    // this is best-effort (no verified input-target marker for the Chromium app),
+    // so the user verifies the result.
     public static let commands: Set<CommandID> = [
         .accept, .createPR, .commitPush, .compact,
     ]
+    private static let returnKeyCode: CGKeyCode = 36
 
     private let sessionsRootURL: URL
     private let sessionIndexURL: URL
@@ -58,6 +63,10 @@ public actor CodexProvider: AgentProvider {
     private let automation: any NativeAutomating
     private let actionGate: PrivilegedActionGate
     private var recordCache: [URL: CachedCodexRecord] = [:]
+    // Codex Desktop persists no selected-thread signal, so track the session
+    // elChango last focused (via the deep link) and treat it as selected while
+    // Codex is frontmost. This is what lets commands target a session.
+    private var lastFocusedNativeID: String?
 
     public init(
         sessionsRootURL: URL = CodexProvider.defaultSessionsRootURL,
@@ -103,6 +112,13 @@ public actor CodexProvider: AgentProvider {
                 }
                 newest[record.nativeID] = record
             }
+            // Only treat the last-focused id as selected if it is still a live
+            // session; otherwise drop the stale reference.
+            let selectedID =
+                lastFocusedNativeID.flatMap { id in
+                    newest[id] != nil ? id : nil
+                }
+            lastFocusedNativeID = selectedID
             var sessions: [AgentSession] = []
             for record in newest.values {
                 let activity = activityStore.state(
@@ -122,10 +138,10 @@ public actor CodexProvider: AgentProvider {
                         state: activity?.0 ?? .idle,
                         confidence: activity?.1 ?? .persisted,
                         stateDetail: activity?.2 ?? Self.idleStateDetail,
-                        selected: false,
+                        selected: record.nativeID == selectedID,
                         lastActivityAtMilliseconds:
                             record.lastActivityAtMilliseconds,
-                        commands: []
+                        commands: Self.commands
                     )
                 )
             }
@@ -142,9 +158,10 @@ public actor CodexProvider: AgentProvider {
                 providerID: descriptor.id,
                 capabilities: descriptor.capabilities,
                 observedAtMilliseconds: observedAtMilliseconds,
-                // No authoritative static selected-session signal exists for
-                // Codex Desktop; selection stays unknown until live evidence.
-                selectedNativeSessionID: nil,
+                // Codex Desktop persists no selected-thread signal, so report the
+                // session elChango last focused. Command targeting downstream is
+                // additionally gated on Codex being frontmost.
+                selectedNativeSessionID: selectedID,
                 sessions: sessions,
                 source: sessionsRootURL.path,
                 readOnly: true
@@ -194,8 +211,10 @@ public actor CodexProvider: AgentProvider {
         // exactness comes from the id carried in the deep link.
         let frontmost = await waitForFrontmost()
         if frontmost {
-            // Focusing a completed session acknowledges its terminal signal so a
-            // green (done) tile returns to idle, matching the other providers.
+            // Remember this as the selected session so commands can target it,
+            // and acknowledge any completion so a green (done) tile returns to
+            // idle, matching the other providers.
+            lastFocusedNativeID = nativeSessionID
             activityStore.acknowledge(
                 nativeSessionID,
                 observedAtMilliseconds: clock()
@@ -283,19 +302,104 @@ public actor CodexProvider: AgentProvider {
         nativeSessionID: String,
         commandID: CommandID
     ) async throws -> ProviderActionResult {
-        // Commands require an exact selected-session signal and a verified
-        // agent prompt-input target, neither of which Codex Desktop exposes
-        // statically. Fail closed.
+        guard Self.commands.contains(commandID) else {
+            return ProviderActionResult(
+                accepted: false,
+                verdict: "COMMAND_UNSUPPORTED",
+                details: [
+                    "session_id": .string(nativeSessionID),
+                    "command_id": .string(commandID.rawValue),
+                    "message": .string(
+                        "Codex has no proven recipe for \(commandID.rawValue) yet."
+                    ),
+                ]
+            )
+        }
+        let records = try readDesktopRecords()
+        guard records.contains(where: { $0.nativeID == nativeSessionID }) else {
+            throw ProviderOperationError.targetUnverified(
+                "unknown Codex Desktop session: \(nativeSessionID)"
+            )
+        }
+        // Naive first pass: Codex exposes no static selected-thread signal, so
+        // focus the exact thread by its deep link (which foregrounds the app and
+        // selects the thread by id) and then send the keystroke recipe. The
+        // target is only as exact as the id in the deep link plus a frontmost
+        // check; the user verifies the result manually.
+        guard let url = URL(string: "codex://threads/\(nativeSessionID)") else {
+            throw ProviderOperationError.system(
+                "invalid Codex focus deep link for \(nativeSessionID)"
+            )
+        }
+        try await automation.open(url: url)
+        guard await waitForFrontmost() else {
+            return ProviderActionResult(
+                accepted: false,
+                verdict: "TARGET_UNVERIFIED",
+                details: [
+                    "session_id": .string(nativeSessionID),
+                    "command_id": .string(commandID.rawValue),
+                    "message": .string(
+                        "Codex Desktop did not come to the foreground for the command."
+                    ),
+                ]
+            )
+        }
+        lastFocusedNativeID = nativeSessionID
+        try await dispatchRecipe(for: commandID)
         return ProviderActionResult(
-            accepted: false,
-            verdict: "TARGET_NOT_SELECTED",
+            accepted: true,
+            verdict: "COMMAND_DISPATCHED",
             details: [
                 "session_id": .string(nativeSessionID),
                 "command_id": .string(commandID.rawValue),
+                "strategy": .string("keystroke"),
                 "message": .string(
-                    "Codex Desktop exposes no verifiable command target yet."
+                    "Dispatched the \(commandID.rawValue) keystroke recipe to the focused Codex thread (naive; verify manually)."
                 ),
             ]
+        )
+    }
+
+    /// Send the keystroke recipe for a command. Guarded by `Self.commands`, so
+    /// only commands with a proven recipe reach here.
+    private func dispatchRecipe(for commandID: CommandID) async throws {
+        switch commandID {
+        case .accept:
+            // Codex "accept" is a double Command+Return.
+            try await sendCommandReturn()
+            try await Task.sleep(for: .milliseconds(150))
+            try await sendCommandReturn()
+        case .createPR:
+            try await dispatchPrompt(
+                "Open a pull request for the current branch."
+            )
+        case .commitPush:
+            try await dispatchPrompt(
+                "Commit the current changes with a Conventional Commit message and push the current branch."
+            )
+        case .compact:
+            try await dispatchPrompt("/compact")
+        }
+    }
+
+    private func sendCommandReturn() async throws {
+        try await automation.postShortcut(
+            keyCode: Self.returnKeyCode,
+            flags: .maskCommand,
+            bundleID: Self.bundleID
+        )
+    }
+
+    /// Naive prompt dispatch: type the recipe into the focused composer, then
+    /// submit with Command+Return. Best-effort; the user verifies the result.
+    private func dispatchPrompt(_ text: String) async throws {
+        try await automation.dispatchFrontmostText(
+            text,
+            submitKeyCode: Self.returnKeyCode,
+            submitFlags: .maskCommand,
+            submitCount: 1,
+            bundleID: Self.bundleID
         )
     }
 
@@ -313,9 +417,9 @@ public actor CodexProvider: AgentProvider {
 
     private static func sessionCapabilities() -> Set<ProviderCapability> {
         // Every Desktop thread is addressable by its id through the
-        // `codex://threads/<thread-id>` deep link, so focus is offered for all
-        // sessions. New-session and command dispatch stay unproven.
-        [.focusSession]
+        // `codex://threads/<thread-id>` deep link, so focus and command dispatch
+        // are offered for all sessions (commands limited to `Self.commands`).
+        [.focusSession, .executeCommand]
     }
 
     // MARK: - Inventory
