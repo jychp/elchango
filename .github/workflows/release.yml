@@ -412,33 +412,37 @@ jobs:
             exit 1
           fi
           tag="v${VERSION}"
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release $tag already exists; refreshing assets"
-          else
-            gh release create "$tag" \
+          # Immutable releases freeze every asset at publish time, so the
+          # release must be created with all assets attached in one atomic call.
+          # gh does this internally: it creates a draft, uploads the assets, and
+          # then publishes, with immutability enforced only once the draft is
+          # published. There is therefore no post-publish --clobber step to
+          # retry: assets can no longer be replaced after publication.
+          if release_state="$(
+            gh release view "$tag" \
               --repo "$GITHUB_REPOSITORY" \
-              --generate-notes
+              --json isDraft \
+              --jq 'if .isDraft then "draft" else "published" end' \
+              2>/dev/null
+          )"; then
+            if [[ "$release_state" == "published" ]]; then
+              echo "Release $tag is already published and immutable; nothing to do"
+              exit 0
+            fi
+            # A leftover draft means a previous run failed before publishing.
+            # An immutable release cannot be completed in place, so delete the
+            # incomplete draft and recreate it cleanly. Keep the tag: it is
+            # created and pushed by `make release`, upstream of this job.
+            echo "Deleting incomplete draft release $tag before recreating"
+            gh release delete "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --cleanup-tag=false \
+              --yes
           fi
-          # Upload with --clobber to replace any existing (possibly partial)
-          # assets. --clobber deletes an asset before re-uploading it, so a
-          # transient failure could momentarily leave the release missing an
-          # asset; retry so such a blip is re-uploaded rather than left
-          # degraded. Assets are deterministic build outputs, so re-running
-          # the whole command is safe and self-healing.
-          for attempt in 1 2 3; do
-            if gh release upload "$tag" \
-              --repo "$GITHUB_REPOSITORY" \
-              --clobber \
-              "${assets[@]}"; then
-              break
-            fi
-            if [[ "$attempt" -eq 3 ]]; then
-              echo "::error::Failed to upload release assets after ${attempt} attempts"
-              exit 1
-            fi
-            echo "Asset upload attempt ${attempt} failed; retrying..."
-            sleep $((attempt * 5))
-          done
+          gh release create "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --generate-notes \
+            "${assets[@]}"
 
       - name: Dispatch Homebrew Cask update
         timeout-minutes: 5

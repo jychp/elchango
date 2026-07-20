@@ -169,7 +169,9 @@ step. Release artifacts include SHA-256 checksum files.
 Development builds use an available Apple Development or Developer ID identity
 when possible, then fall back to ad hoc signing. They are not official
 distribution artifacts. See [docs/releasing.md](docs/releasing.md) for the
-release process, secret rotation, and independent verification commands.
+release process and independent verification commands, and
+[docs/release-setup.md](docs/release-setup.md) for pipeline credentials and
+secret rotation.
 
 ## Known limitations
 
