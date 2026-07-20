@@ -1,0 +1,117 @@
+{
+  "description": "Report Codex Desktop lifecycle events to the local elChango app.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider codex",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider codex",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider codex",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider codex",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider codex",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "manual|auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider codex",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "matcher": "manual|auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider codex",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider codex",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider codex",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider codex",
+            "timeout": 2
+          }
+        ]
+      }
+    ]
+  }
+}

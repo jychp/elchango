@@ -299,7 +299,7 @@ struct CursorProviderTests {
         #expect(!FileManager.default.fileExists(atPath: databaseURL.path))
     }
 
-    @Test("commands require and preserve the exact selected target")
+    @Test("commands dispatch the recipe to the frontmost window")
     func verifiedCommandDispatch() async throws {
         let fixture = try Fixture()
         let automation = FakeNativeAutomation(
@@ -588,6 +588,14 @@ private actor FakeNativeAutomation: NativeAutomating {
             details: ["executed": .boolean(true)]
         )
     }
+
+    func dispatchFrontmostText(
+        _ text: String,
+        submitKeyCode: CGKeyCode,
+        submitFlags: CGEventFlags,
+        submitCount: Int,
+        bundleID: String
+    ) async throws {}
 
     func dispatchedTexts() -> [String] {
         texts

@@ -25,8 +25,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let accessibility = AccessibilityAuthorizer()
     private let streamDeckPluginBundleIdentifier = "com.elgato.StreamDeck"
     private let cursorBundleIdentifier = "com.todesktop.230313mzl4w4u92"
+    private let codexBundleIdentifier = "com.openai.codex"
     private var lastStreamDeckInstallFailure: String?
     private var lastClaudeInstallFailure: String?
+    private var lastCodexInstallFailure: String?
     private var runtimeProfile: RuntimeProfile = .stable
     private var serviceLease: ServiceLease?
     private var service: LoopbackService?
@@ -101,7 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 registry.providers.map { $0.descriptor.id }
             )
             providerStatuses = Dictionary(
-                uniqueKeysWithValues: ["cursor", "claude-code"].map { id in
+                uniqueKeysWithValues: ["cursor", "claude-code", "codex"].map { id in
                     if let reason = registry.unavailableProviders[id] {
                         return (id, "unavailable: \(reason)")
                     }
@@ -237,6 +239,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             break
         }
 
+        switch codexPluginState {
+        case .pluginMissing:
+            let installItem = menu.addItem(
+                withTitle: "Install Codex Plugin",
+                action: #selector(installCodexPlugin),
+                keyEquivalent: ""
+            )
+            installItem.target = self
+            installItem.image = menuIcon(named: "square.and.arrow.down")
+        case .mismatched:
+            let updateItem = menu.addItem(
+                withTitle: "Update Codex Plugin",
+                action: #selector(installCodexPlugin),
+                keyEquivalent: ""
+            )
+            updateItem.target = self
+            updateItem.image = menuIcon(named: "arrow.down.circle")
+        case .codexNotDetected, .matching, .managed, .malformed, .unreadable:
+            break
+        }
+
         let diagnosticsItem = menu.addItem(
             withTitle: "Diagnostics",
             action: #selector(showDiagnostics),
@@ -369,6 +392,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc
+    private func installCodexPlugin() {
+        guard let executable = CodexCLILocator().locate() else {
+            lastCodexInstallFailure = "the codex CLI could not be found"
+            rebuildMenu()
+            return
+        }
+        // Run the official plugin commands off the main thread so the menu stays
+        // responsive; report the outcome through Diagnostics.
+        Task {
+            let result = await Task.detached {
+                await CodexPluginInstaller().install(
+                    codexExecutable: executable
+                )
+            }.value
+            switch result {
+            case .success:
+                lastCodexInstallFailure = nil
+            case .failure(let error):
+                lastCodexInstallFailure = error.localizedDescription
+            }
+            rebuildMenu()
+        }
+    }
+
+    @objc
     private func showDiagnostics() {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
@@ -405,6 +453,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Stream Deck: \(streamDeckDiagnosticsDetail)
             Claude: \(claudeDiagnosticsDetail)
             Cursor: \(cursorDiagnosticsDetail)
+            Codex: \(codexDiagnosticsDetail)
             """
     }
 
@@ -456,6 +505,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .unreadable(let reason):
             return "unreadable: \(reason)"
         }
+    }
+
+    private var codexDiagnosticsDetail: String {
+        if let unavailable = unavailableProviderDetail(for: "codex") {
+            return unavailable
+        }
+        let stateDetail: String
+        switch codexPluginState {
+        case .codexNotDetected:
+            stateDetail = "Codex not detected"
+        case .pluginMissing:
+            stateDetail = "not installed"
+        case .matching(let installedVersion):
+            stateDetail = installedVersion
+        case .mismatched(let installedVersion, let expectedVersion):
+            stateDetail = "\(installedVersion) -> \(expectedVersion)"
+        case .malformed:
+            stateDetail = "malformed"
+        case .managed(let version):
+            if let version {
+                stateDetail = "manual (\(version))"
+            } else {
+                stateDetail = "manual"
+            }
+        case .unreadable(let reason):
+            stateDetail = "unreadable: \(reason)"
+        }
+        guard let failure = lastCodexInstallFailure else {
+            return stateDetail
+        }
+        return "\(stateDetail); last install failed: \(failure)"
     }
 
     private var streamDeckDiagnosticsDetail: String {
@@ -527,6 +607,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var cursorPluginState: CursorPluginState {
         let inspector = CursorPluginInspector(expectedVersion: appVersion)
         return inspector.classify(cursorInstalled: isCursorInstalled)
+    }
+
+    private var isCodexInstalled: Bool {
+        NSWorkspace.shared.urlForApplication(
+            withBundleIdentifier: codexBundleIdentifier
+        ) != nil
+    }
+
+    private var codexPluginState: CodexPluginState {
+        let inspector = CodexPluginInspector(expectedVersion: appVersion)
+        return inspector.classify(codexInstalled: isCodexInstalled)
     }
 
     private static var bundledStreamDeckPluginURL: URL? {

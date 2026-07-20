@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "elchango",
   "displayName": "elChango",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Reports Claude Code lifecycle events to the local elChango app.",
   "author": {
     "name": "jychp",

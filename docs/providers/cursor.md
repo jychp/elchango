@@ -233,15 +233,17 @@ The observed Cursor composer is an enabled `AXTextArea` with exact
 focuses it from the conversation area when it is not already focused. Text
 dispatch follows the shared
 [native text command dispatch contract](../command-dispatch.md): activate
-Cursor, verify the foreground process, selected composer, enabled role, and
-exact class, then capture, replace, submit, and restore any existing draft.
+Cursor, verify the foreground process, enabled role, and exact class, then
+capture, replace, submit, and restore any existing draft. The command acts on
+whatever session the frontmost Cursor window has on screen; elChango no longer
+verifies which composer is selected.
 
 Provider mappings:
 
 - `accept`: send `Cmd+Enter`, as explicitly validated by the operator.
-  Dispatch requires the selected composer, frontmost Cursor application, and
-  exact composer input. Semantic completion against a live pending approval has
-  not been observed.
+  Dispatch requires the frontmost Cursor application and exact composer input; it
+  acts on the active window without verifying the selected composer. Semantic
+  completion against a live pending approval has not been observed.
 - `create_pr`: submit `Open a pull request for the current branch.` as an agent
   instruction.
 - `commit_push`: submit `Commit the current changes with a Conventional Commit
@@ -265,15 +267,16 @@ completion.
   schema.
 - Resolve every public button again to a current provider-native composer ID.
 - Reject absent, filtered, ambiguous, or unmapped identities.
-- Rebuild sidebar order, selected session, and foreground evidence immediately
-  before native input.
-- Verify the exact selected composer after focus.
+- Focus rebuilds sidebar order, selected session, and foreground evidence
+  immediately before native input, and verifies the exact selected composer
+  after acting. Commands require only that Cursor is the frontmost application
+  and act on the active window (no selected-composer verification).
 - Require the exact enabled composer marker and bounded draft capture for text
   recipes.
 - Serialize privileged actions across providers. Shortcuts target the verified
   process ID. Text and submission events use the global HID tap only after an
-  atomic foreground, selected-session, and exact-input preflight because the
-  observed Electron editor ignored PID-targeted Unicode events.
+  atomic foreground and exact-input preflight because the observed Electron
+  editor ignored PID-targeted Unicode events.
 - Send one bounded recipe or shortcut sequence with no fallback or retry.
 - Keep pagination provider-neutral and free of Cursor side effects.
 - Do not treat undocumented fields, successful keystrokes, or transport

@@ -47,9 +47,11 @@ unless exact post-action identity can be verified.
 For command reconnaissance, use only stable semantic IDs already validated for
 the shared contract. Keep provider recipes outside surfaces. A POC must require
 an explicit recipe when no official mapping is available, default to dry-run,
-require `--execute`, recheck the session, frontmost application, and exact
-command target immediately before one dispatch, and never retry an ambiguous
-result. Use the `new-command` skill for the full workflow.
+require `--execute`, recheck the frontmost application and exact command target
+immediately before one dispatch, and never retry an ambiguous result. (The
+shipped provider targets the frontmost harness window, not a specific session;
+see Personalized commands below.) Use the `new-command` skill for the full
+workflow.
 
 ## 3. Define the provider identity
 
@@ -100,10 +102,36 @@ file modification time plus size.
 ## 5. Implement state signals
 
 If the harness has lifecycle hooks, create a provider-specific activity store
-and expose a loopback hook recorder through:
+(add it to `macos-app/Sources/ElChangoCore/Models/ActivityStores.swift`
+alongside the existing stores) and expose a loopback hook recorder through:
 
 Implement `recordHook(_:observedAtMilliseconds:)` on the provider and route it
-through the existing provider registry.
+through the existing provider registry. The HTTP route `/api/hooks/<provider_id>`
+dispatches by id (`FoundationHTTPHandler` -> `DeckService.recordHook`), but it is
+gated by an allow-list: **you must add the new `<provider_id>` to
+`FoundationHTTPHandler.defaultAllowedHookProviderIDs`**, or every hook POST is
+rejected with `hook provider is not supported` and live state silently never
+appears. This is easy to miss because the test helpers add the provider id to the
+allow-list automatically; add a test that exercises the shipped default (see
+`defaultHookProvidersIncludeAllShippedPlugins`).
+
+The relay mechanism depends on the harness's hook type:
+
+- If the harness supports HTTP hooks (as Claude Code does), the plugin can POST
+  directly to `http://127.0.0.1:8765/api/hooks/<provider_id>`.
+- If the harness only supports command hooks (as Cursor and Codex do), add a
+  `case` for the provider to `macos-app/Sources/ElChangoHookReporter/main.swift`
+  with a strict sanitized key allow-list. The plugin invokes
+  `elChangoHookReporter --provider <provider_id>`, which POSTs the sanitized
+  payload. Read the harness's official hook docs first: capture the exact event
+  names, payload field names, and whether an HTTP hook type exists; record
+  absent evidence rather than inferring. Declare only events the official docs
+  list: do not copy another harness's set (for example Claude Code's `SessionEnd`
+  does not exist in Codex, and declaring it registers a dead hook). Also check
+  whether the harness gates command hooks behind a trust step: Codex will not run
+  a plugin's command hooks until the user reviews and trusts them (persisted in
+  `~/.codex/config.toml` under `[hooks.state]`), so document that the user must
+  trust the hooks or no live state appears.
 
 Map signals conservatively to:
 
@@ -111,7 +139,16 @@ Map signals conservatively to:
 - orange: `waiting`;
 - red: rendered terminal `error`;
 - green: `done`;
-- gray: `idle` or unknown.
+- gray: `idle` (and `unknown`, which has no dedicated color and renders gray).
+
+Live state comes only from hooks. A session with no live hook signal must be
+`idle` at persisted confidence, exactly as the Claude Code and Codex providers do
+(`state: activity?.0 ?? .idle`). Never derive `working`/`waiting`/`done` from
+persisted files (a rollout tail, a database row): doing so paints the deck with a
+stale green/blue state by default. Persisted files may still be read to order
+sessions by last activity, but never to set a state. There is no `unknown`
+`DeckColor`; a `SessionState.unknown` (for example a stale-expired hook) maps to
+gray via `DeckLayout.displayColor`.
 
 Expire stale working or waiting signals when an expected terminal event never
 arrives. Retain metadata only, never prompts, responses, or transcript content.
@@ -131,6 +168,12 @@ Before acting:
 Return `accepted=True` only for an exact verified target. Otherwise return a
 conservative verdict and keep the deck action rejected.
 
+On a verified focus, acknowledge the session's terminal signal in its activity
+store (`activityStore.acknowledge(nativeSessionID, observedAtMilliseconds:)`), as
+the Claude Code and Codex providers do. Without this, a `done` (green) tile never
+returns to idle when the user focuses it, diverging from the other providers. The
+store maps an acknowledged completion back to idle.
+
 ### New session
 
 Prefer an official deep link or documented API. Opening a composer is allowed;
@@ -139,19 +182,28 @@ was requested and what still requires user confirmation.
 
 ### Personalized commands
 
-Do not declare a command capability from focus evidence alone. Establish:
+A command applies to whatever session the frontmost harness window has on screen.
+The command target is resolved centrally in `DeckService` as "the frontmost
+command-capable provider", so the provider's `executeCommand` must **not** verify
+which session is selected (the desktop harnesses expose no reliable live signal
+for it, and requiring it makes commands unusable after a manual window focus).
+Establish:
 
-1. a fresh public-button to provider-native target resolution;
-2. exact selected-session and frontmost-application evidence;
-3. exact command-target evidence: agent prompt-input focus for text recipes, or
-   an explicitly validated application-level shortcut scope;
-4. an official provider recipe or an explicitly configured local recipe;
-5. one dispatch with no fallback or automatic retry;
-6. a conservative post-dispatch verdict that does not claim semantic completion
-   without provider evidence.
+1. frontmost-application evidence (the command acts on the active window);
+2. a command recipe: an explicitly validated application-level shortcut (for
+   example Codex `accept` = a double `Cmd+Return`), or a typed prompt into the
+   focused composer for text recipes;
+3. exact input-target verification where the harness exposes it (an accessibility
+   marker, as Claude Code and Cursor do via `dispatchText`); a harness without a
+   verified marker (Electron/Chromium, like Codex) uses a best-effort typed
+   dispatch and the user verifies the result;
+4. one dispatch with no fallback or automatic retry;
+5. a conservative post-dispatch verdict that does not claim semantic completion
+   or that the keystrokes hit a specific session.
 
 Surfaces emit stable semantic IDs only. They must never supply arbitrary prompt,
-shortcut, command, or script strings.
+shortcut, command, or script strings. This trades exact-session safety for
+usability: the user is responsible for having the intended session in front.
 
 ## 7. Register the provider
 
@@ -162,27 +214,83 @@ Update `macos-app/Sources/ElChangoProviders/ProviderRegistry.swift` to:
 3. add the provider to the registry without coupling its availability to other
    providers.
 
-Add the implementation to the `ElChangoProviders` SwiftPM target.
+The `ElChangoProviders` SwiftPM target uses directory-based sources, so a new
+file under `macos-app/Sources/ElChangoProviders/<Provider>/` is picked up
+automatically; no `Package.swift` edit is needed.
 
 Do not add provider-specific branches to `DeckService`, the HTTP surfaces, web,
 or Stream Deck. Routing must use provider metadata and capabilities.
+
+If the provider ships a hook plugin, also wire it so `make test` covers it:
+
+1. add `plugins/<provider>/` mirroring an existing plugin: its manifest (for
+   example `.codex-plugin/plugin.json` with `"hooks": "./hooks/hooks.json"`),
+   `hooks/hooks.json`, `README.md`, and `CHANGELOG.md`. If the harness's manifest
+   supports a logo/icon, ship one so the plugin is not blank in the harness UI
+   (Codex uses an `interface` block with `logo`/`composerIcon`); reuse the
+   elChango logo from `docs/assets/`;
+2. add the root marketplace file in the location the harness reads
+   (`source` = `./plugins/<provider>`, versions matching `VERSION`). Confirm the
+   exact path against the harness docs, do not assume: Claude Code and Cursor use
+   `.<provider>-plugin/marketplace.json`, but Codex reads
+   `.agents/plugins/marketplace.json` (or the legacy `.claude-plugin/marketplace.json`)
+   and ignores `.codex-plugin/marketplace.json`. Verify with a local
+   `<harness> plugin marketplace add <path>` before shipping;
+3. add a `validate_<provider>()` and a CLI choice to
+   `scripts/validate_provider_plugins.py`, asserting the exact event set and the
+   fail-open hook contract;
+4. add the manifest and marketplace to the version checks in
+   `scripts/validate_versions.py`;
+5. add a `test-plugin-<provider>` target to the `Makefile`, add it to
+   `test-plugins`, and add the provider's POC glob to `test-pocs`.
+6. add a read-only `<Provider>PluginInspector` in
+   `macos-app/Sources/ElChangoCore/System/` that classifies whether the elChango
+   plugin is installed (missing / matching / mismatched / managed / malformed /
+   unreadable), modeled on `CursorPluginInspector`/`CodexPluginInspector` (which
+   read the marketplace cache) or `ClaudeCodePluginInspector` (which uses the
+   harness CLI). Detect the host app by bundle id with
+   `NSWorkspace.urlForApplication`. Surface it in `AppDelegate` Diagnostics and
+   in the `providerStatuses` map.
+7. add a `<Provider>PluginInstaller` (and menu Install/Update actions) only when
+   the harness exposes an official, evidence-backed install command. Verify it
+   from the harness CLI's own `--help` before implementing (for example
+   `codex plugin add PLUGIN@MARKETPLACE` after `codex plugin marketplace add
+   owner/repo`, mirrored on `ClaudePluginInstaller`); pass identifiers as fixed
+   argument arrays with no shell. If no official command exists, keep the
+   provider inspect-only (as Cursor is) rather than inventing an install path.
 
 ## 8. Add the icon across contracts
 
 If the provider needs a new icon:
 
-1. extend `DeckIcon` in
-   `macos-app/Sources/ElChangoCore/Contracts/DeckContracts.swift`;
-2. extend `DeckIconName` in `web/src/lib/contracts.ts`;
-3. render it in `web/src/lib/DeckIcon.svelte`;
-4. extend `DeckIconName` and parser validation in
-   `plugins/streamdeck/src/contracts.ts`;
-5. render it in `plugins/streamdeck/src/render.ts`.
+1. add the icon name to the `DeckIconName` enum in the single source of truth,
+   `contracts/http/v1/openapi.json`;
+2. run `python3 scripts/generate_http_contracts.py` to regenerate the three
+   contract files (`macos-app/Sources/ElChangoCore/Contracts/HTTPContracts.swift`,
+   `web/src/lib/contracts.ts`, `plugins/streamdeck/src/contracts.ts`). Do not
+   hand-edit these generated files; `make test` runs the generator with
+   `--check` and fails on drift;
+3. render it in `web/src/lib/DeckIcon.svelte` (add the name to the
+   non-Phosphor `Exclude<...>` type and add a branch);
+4. render it in `plugins/streamdeck/src/render.ts` (`iconSvg`);
+5. if the icon should be user-selectable, add it to the
+   `personalizationOptions` list in
+   `macos-app/Sources/ElChangoCore/Contracts/DeckIcon+Personalization.swift`.
 
-Use official artwork with a documented source. When editing Svelte, follow the
-Svelte skills and run the Svelte autofixer until clean.
+Use official artwork with a documented source (for example Simple Icons, CC0).
+Provider icons render dynamically via `currentColor` SVG paths, so no per-icon
+static asset is needed. When editing Svelte, follow the Svelte skills and run
+the Svelte autofixer until clean.
 
 ## 9. Test each boundary
+
+Put versioned fixtures under `contracts/providers/<provider>/v1/` and share them
+between the Python POC and the Swift tests, as Cursor and Claude Code do. Include
+an `expected-inventory.json` whose shape matches the other providers' files;
+the Swift test decodes it and compares it to a snapshot mapped from the provider
+(see `CodexProviderTests` / `ClaudeCodeProviderTests`). Keep timestamps explicit
+in fixtures so ordering and last-activity assertions are deterministic (do not
+rely on file mtime for expected values).
 
 Add provider tests covering:
 
@@ -193,9 +301,8 @@ Add provider tests covering:
 - every state transition and stale-signal degradation;
 - focus success, rejection, and exact verification;
 - official new-session launch and encoded parameters.
-- command recipe resolution, exact command-target refusal, stale preflight
-  refusal, one-shot dispatch, and ambiguous-result handling when commands are
-  in scope.
+- command recipe resolution, refusal when the harness is not frontmost, one-shot
+  dispatch, and ambiguous-result handling when commands are in scope.
 
 Extend deck and server tests to prove:
 
@@ -211,16 +318,29 @@ If adding an icon or action contract, update web and Stream Deck tests too.
 
 ## 10. Verify and document
 
-Run:
+Run `make test`, which is the full gate. It includes, and you can run
+individually while iterating:
 
 ```bash
+python3 scripts/validate_versions.py
+python3 scripts/generate_http_contracts.py --check    # regenerate first if this fails
+swift format lint --recursive --strict --configuration .swift-format \
+  macos-app/Sources macos-app/Tests                   # swift format --in-place to fix
 swift test --package-path macos-app
+python3 scripts/validate_provider_plugins.py <provider>
+npm --prefix web run lint
+npm --prefix web run format:check
 npm --prefix web run check
+npm --prefix web test
 npm --prefix web run build
 npm --prefix plugins/streamdeck run check
 npm --prefix plugins/streamdeck run validate
+for poc in scripts/poc/<provider>/*.py; do \
+  python3 -m py_compile "$poc"; python3 "$poc" --help >/dev/null; done
 git diff --check
 ```
+
+Also grep the diff for em-dashes (project writing rule) before finishing.
 
 Update `docs/providers/<provider>.md` using the required structure in
 [`templates/provider-doc.md`](templates/provider-doc.md). It defines all thirteen

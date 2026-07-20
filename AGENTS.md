@@ -88,4 +88,5 @@ durable contracts and build a vertical slice using a real session.
 ## Provider documentation
 
 Cursor findings are documented in `docs/providers/cursor.md`. Claude Code
-findings are documented in `docs/providers/claude-code.md`.
+findings are documented in `docs/providers/claude-code.md`. Codex Desktop
+findings are documented in `docs/providers/codex.md`.

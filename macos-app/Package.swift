@@ -19,7 +19,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/swhitty/FlyingFox.git",
-            exact: "0.27.0"
+            exact: "0.27.1"
         ),
     ],
     targets: [

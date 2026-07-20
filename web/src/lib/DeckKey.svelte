@@ -316,10 +316,6 @@
     --icon: #e77b77;
   }
 
-  .deck-key--unknown {
-    --icon: #afa2c2;
-  }
-
   .deck-key--control {
     --icon: #e0e4e7;
     background: #1c1f22;

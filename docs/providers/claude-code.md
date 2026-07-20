@@ -222,8 +222,10 @@ The observed Claude composer is an enabled `AXTextArea` with description
 `Prompt` and exact `AXDOMClassList` value
 `tiptapProseMirrorProseMirror-focused`. Product text dispatch follows the shared
 [native text command dispatch contract](../command-dispatch.md): activate
-Claude, verify the foreground process, selected target, enabled input role, and
-exact marker, then capture, replace, submit, and restore any existing draft.
+Claude, verify the foreground process, enabled input role, and exact marker, then
+capture, replace, submit, and restore any existing draft. The command acts on
+whatever session the frontmost Claude window has on screen; elChango no longer
+verifies which session is selected.
 The POC remains a dry-run-first evidence probe and does not define the product
 transaction.
 
@@ -245,9 +247,9 @@ submitted by the second. The `/compact` sequence also triggered compaction with
 two Returns. The implementation preserves this operator-approved timing but
 does not claim to identify the intermediate suggestion state semantically.
 
-`DISPATCH_SENT` proves only that one recipe was injected while the exact Desktop
-target remained uniquely selected immediately afterward. It does not prove
-Claude understood or completed the semantic operation.
+`DISPATCH_SENT` proves only that one recipe was injected while Claude remained
+the frontmost application. It does not prove the command hit a specific session,
+nor that Claude understood or completed the semantic operation.
 
 ## Safety and target verification
 
@@ -256,8 +258,9 @@ Claude understood or completed the semantic operation.
 - Inventory, transcript, hook, and process identities are correlated only by
   exact IDs.
 - Provider actions share one serialized native automation boundary with Cursor.
-- Every privileged action rechecks the exact selected session and frontmost
-  bundle immediately before dispatch.
+- Focus rechecks the exact selected session and frontmost bundle. Command
+  dispatch rechecks only the frontmost bundle: it acts on whatever session the
+  active window shows and does not verify the selected session.
 - Text dispatch additionally requires the enabled provider-specific
   Accessibility target and bounded draft capture when the input is focused.
   If Accessibility successfully reports the observed non-text `AXGroup` role,
@@ -268,12 +271,13 @@ Claude understood or completed the semantic operation.
   read failures reject the action without typing.
 - Shortcuts target the verified process. Text and submission events use the
   global HID tap because the observed Electron editor ignored PID-targeted
-  Unicode events. The verified path requires foreground, selected-session, and
-  exact-input preflight; the best-effort exception omits only the input
-  preflight. Each recipe is sent at most once, with no automatic retry.
+  Unicode events. The verified path requires foreground and exact-input
+  preflight; the best-effort exception omits only the input preflight. Each
+  recipe is sent at most once, with no automatic retry.
 - Existing-session focus requires exact preflight and bounded shortcut
-  verification. A newly focused Claude target is not considered selected for
-  command eligibility until later inventory uniquely confirms it.
+  verification. Commands, by contrast, are eligible whenever Claude is the
+  frontmost application, whether the session was focused from the deck or by
+  hand; the user is responsible for having the intended session in front.
 - Surface requests carry semantic IDs, not arbitrary recipe text.
 
 ## Degradation behavior
@@ -315,7 +319,8 @@ live hook testing.
   verified native sidebar focus. Verdict: `FOCUS_VERIFIED` for tested positions
   3 and 10.
 - `scripts/poc/claude/04_claude_command_dispatch.py`: dry-run-first,
-  exact-target, one-shot command dispatch. Verdict:
+  input-verified, one-shot command dispatch (the shipped provider dispatches on
+  the frontmost window without verifying the session). Verdict:
   `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
 
 ## References

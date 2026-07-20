@@ -572,7 +572,7 @@ struct ClaudeCodeProviderTests {
         #expect(await automation.heldShortcutRepeatCounts() == [1])
     }
 
-    @Test("verified commands preserve the selected Claude target")
+    @Test("commands dispatch the recipe to the frontmost Claude window")
     func verifiedCommand() async throws {
         let fixture = try ClaudeTemporaryFixture()
         try fixture.writeRecord(
@@ -1057,6 +1057,14 @@ private actor ClaudeAutomation: NativeAutomating {
             details: ["executed": .boolean(true)]
         )
     }
+
+    func dispatchFrontmostText(
+        _ text: String,
+        submitKeyCode: CGKeyCode,
+        submitFlags: CGEventFlags,
+        submitCount: Int,
+        bundleID: String
+    ) async throws {}
 
     func dispatchedTexts() -> [String] {
         texts
