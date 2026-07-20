@@ -1,7 +1,7 @@
 {
   "name": "elchango",
   "displayName": "elChango",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Reports Cursor agent lifecycle events to the local elChango app.",
   "author": {
     "name": "jychp"

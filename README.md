@@ -129,11 +129,21 @@ Restart Cursor or run **Developer: Reload Window**, then confirm that
 organizations can import `https://github.com/jychp/elchango` through their
 managed Team Marketplace.
 
+The elChango menu detects the installed Cursor plugin and reports its status
+(up to date, missing, or mismatched) under **Diagnostics**. Cursor has no
+supported command-line or deep-link install for Marketplace plugins, so the app
+never installs it for you; use the steps above.
+
 The plugin expects the app at `/Applications/elChango.app`. See the
 [Cursor plugin guide](plugins/cursor/README.md) for its event and privacy
 boundaries.
 
 ### Claude Code
+
+When the plugin is missing or out of date, the elChango menu offers **Install
+Claude Code Plugin** or **Update Claude Code Plugin**, which runs the official
+commands below for you. To do it manually, or if the `claude` CLI is not on your
+`PATH` (reported under **Diagnostics**), run:
 
 ```bash
 claude plugin marketplace add jychp/elchango

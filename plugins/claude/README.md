@@ -40,7 +40,10 @@ lifecycle fields against current inventory, and are rate-limited. See the root
 
 ## Installation
 
-Add the repository marketplace and install the plugin:
+When the plugin is missing or out of date, the elChango menu offers **Install
+Claude Code Plugin** or **Update Claude Code Plugin**, which runs the commands
+below for you. To install manually, add the repository marketplace and install
+the plugin:
 
 ```bash
 claude plugin marketplace add jychp/elchango
