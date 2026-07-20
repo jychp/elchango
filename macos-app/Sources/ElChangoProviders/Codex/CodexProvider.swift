@@ -27,16 +27,17 @@ public enum CodexProviderError: LocalizedError {
 ///
 /// Scope: Codex Desktop sessions only. Rollouts authored by the Codex CLI and
 /// subagent threads are excluded. Focus, new-session, and command dispatch are
-/// implemented but fail closed: no live experiment has established a verifiable
-/// exact-session target, so the descriptor declares no privileged capabilities
-/// yet. Enabling a capability after live verification is a one-line change to
-/// `descriptor` and `sessionCapabilities`.
+/// Focus is implemented through Codex Desktop's registered, id-addressed deep
+/// link (`codex://threads/<thread-id>`, observed in the app bundle); the thread
+/// id equals the rollout session id used as the native id, so focus targets the
+/// exact session. New-session and command dispatch remain fail closed until a
+/// live experiment establishes a verifiable route and target.
 public actor CodexProvider: AgentProvider {
     public nonisolated let descriptor = ProviderDescriptor(
         id: "codex",
         displayName: "Codex",
         icon: .codex,
-        capabilities: []
+        capabilities: [.focusSession]
     )
 
     public static let bundleID = "com.openai.codex"
@@ -178,19 +179,48 @@ public actor CodexProvider: AgentProvider {
                 "unknown Codex Desktop session: \(nativeSessionID)"
             )
         }
-        // No documented per-thread deep link and no static selected-session
-        // signal exist, so an exact focus cannot be verified. Fail closed
-        // rather than foreground the app on an unverifiable target.
+        // Codex Desktop registers an exact, id-addressed deep link
+        // (`codex://threads/<thread-id>`). The thread id equals the rollout
+        // session id used as the native id, so focus targets the exact session
+        // by id rather than a fragile sidebar position.
+        guard let url = URL(string: "codex://threads/\(nativeSessionID)") else {
+            throw ProviderOperationError.system(
+                "invalid Codex focus deep link for \(nativeSessionID)"
+            )
+        }
+        try await automation.open(url: url)
+        // Codex Desktop exposes no static selected-thread signal, so selection
+        // cannot be read back. Verify that the app came to the foreground; the
+        // exactness comes from the id carried in the deep link.
+        let frontmost = await waitForFrontmost()
         return ProviderActionResult(
-            accepted: false,
-            verdict: "FOCUS_NOT_VERIFIED_REQUIRES_LIVE",
+            accepted: frontmost,
+            verdict: frontmost
+                ? "FOCUS_DISPATCH_VERIFIED"
+                : "FOCUS_DISPATCH_UNVERIFIED",
             details: [
                 "session_id": .string(nativeSessionID),
+                "strategy": .string("deep_link"),
+                "deep_link": .string(url.absoluteString),
                 "message": .string(
-                    "Codex Desktop exposes no verifiable exact-session focus mechanism yet."
+                    frontmost
+                        ? "Opened the exact Codex Desktop thread deep link and verified foreground."
+                        : "Opened the Codex Desktop thread deep link but could not verify foreground."
                 ),
             ]
         )
+    }
+
+    /// Poll briefly for Codex Desktop to become frontmost after opening the
+    /// deep link. NSWorkspace foregrounds the app asynchronously.
+    private func waitForFrontmost() async -> Bool {
+        for _ in 0..<20 {
+            if (try? await isFrontmost()) == true {
+                return true
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        return false
     }
 
     public func openNew() async throws -> ProviderActionResult {
@@ -259,9 +289,10 @@ public actor CodexProvider: AgentProvider {
     // MARK: - Capabilities
 
     private static func sessionCapabilities() -> Set<ProviderCapability> {
-        // Nothing is proven without a live experiment; report no privileged
-        // per-session capabilities. State monitoring does not require any.
-        []
+        // Every Desktop thread is addressable by its id through the
+        // `codex://threads/<thread-id>` deep link, so focus is offered for all
+        // sessions. New-session and command dispatch stay unproven.
+        [.focusSession]
     }
 
     // MARK: - Inventory

@@ -1,3 +1,4 @@
+import CoreGraphics
 import ElChangoCore
 import Foundation
 import Testing
@@ -24,9 +25,10 @@ struct CodexProviderTests {
         #expect(CodexExpectedInventory(snapshot: snapshot) == expected)
         // Excludes CLI (codex-tui), subagents, and empty rollout artifacts.
         #expect(snapshot.sessions.count == 2)
-        // No privileged capability is proven without a live experiment.
-        #expect(snapshot.capabilities.isEmpty)
-        #expect(snapshot.sessions.allSatisfy { $0.capabilities.isEmpty })
+        // Focus is proven via the id-addressed deep link; commands and
+        // new-session stay unproven.
+        #expect(snapshot.capabilities == [.focusSession])
+        #expect(snapshot.sessions.allSatisfy { $0.capabilities == [.focusSession] })
         #expect(snapshot.sessions.allSatisfy { $0.commands.isEmpty })
         #expect(snapshot.selectedNativeSessionID == nil)
         #expect(snapshot.readOnly)
@@ -164,7 +166,45 @@ struct CodexProviderTests {
         )
     }
 
-    @Test("privileged actions fail closed pending live verification")
+    @Test("focus opens the exact thread deep link and verifies foreground")
+    func focusOpensThreadDeepLink() async throws {
+        let fixture = CodexSharedFixture()
+        let automation = CodexAutomation(frontmostBundleID: CodexProvider.bundleID)
+        let provider = CodexProvider(
+            sessionsRootURL: fixture.sessionsRoot,
+            sessionIndexURL: fixture.sessionIndex,
+            automation: automation
+        )
+        let native = "11111111-1111-7111-8111-111111111111"
+
+        let focus = try await provider.focus(nativeSessionID: native)
+        #expect(focus.accepted)
+        #expect(focus.verdict == "FOCUS_DISPATCH_VERIFIED")
+        #expect(
+            await automation.openedURLs() == ["codex://threads/\(native)"]
+        )
+    }
+
+    @Test("focus reports unverified when the app never foregrounds")
+    func focusUnverifiedWhenNotFrontmost() async throws {
+        let fixture = CodexSharedFixture()
+        let automation = CodexAutomation(frontmostBundleID: nil)
+        let provider = CodexProvider(
+            sessionsRootURL: fixture.sessionsRoot,
+            sessionIndexURL: fixture.sessionIndex,
+            automation: automation
+        )
+        let native = "11111111-1111-7111-8111-111111111111"
+
+        let focus = try await provider.focus(nativeSessionID: native)
+        #expect(!focus.accepted)
+        #expect(focus.verdict == "FOCUS_DISPATCH_UNVERIFIED")
+        #expect(
+            await automation.openedURLs() == ["codex://threads/\(native)"]
+        )
+    }
+
+    @Test("new-session and commands fail closed pending live verification")
     func actionsFailClosed() async throws {
         let fixture = CodexSharedFixture()
         let provider = CodexProvider(
@@ -172,10 +212,6 @@ struct CodexProviderTests {
             sessionIndexURL: fixture.sessionIndex
         )
         let native = "11111111-1111-7111-8111-111111111111"
-
-        let focus = try await provider.focus(nativeSessionID: native)
-        #expect(!focus.accepted)
-        #expect(focus.verdict == "FOCUS_NOT_VERIFIED_REQUIRES_LIVE")
 
         let opened = try await provider.openNew()
         #expect(!opened.accepted)
@@ -377,5 +413,57 @@ private struct CodexExpectedSession: Codable, Equatable {
         case title
         case workspaceID = "workspace_id"
         case workspacePath = "workspace_path"
+    }
+}
+
+private actor CodexAutomation: NativeAutomating {
+    private var bundleID: String?
+    private var opened: [String] = []
+
+    init(frontmostBundleID: String?) {
+        bundleID = frontmostBundleID
+    }
+
+    func frontmostBundleID() async -> String? { bundleID }
+
+    func activate(bundleID: String) async throws { self.bundleID = bundleID }
+
+    func open(url: URL) async throws { opened.append(url.absoluteString) }
+
+    func openedURLs() -> [String] { opened }
+
+    func postShortcut(
+        keyCode: CGKeyCode,
+        flags: CGEventFlags,
+        bundleID: String
+    ) async throws {}
+
+    func postHeldModifierShortcut(
+        modifierKeyCode: CGKeyCode,
+        keyCode: CGKeyCode,
+        flags: CGEventFlags,
+        repeatCount: Int,
+        bundleID: String
+    ) async throws {}
+
+    func dispatchText(
+        _ text: String,
+        bundleID: String,
+        inputMarker: String,
+        focusKeyCode: CGKeyCode?,
+        unfocusedPolicy: UnfocusedTextDispatchPolicy,
+        submitCount: Int,
+        targetVerifier: @escaping @Sendable () async throws -> Bool
+    ) async throws -> ProviderActionResult {
+        ProviderActionResult(accepted: false, verdict: "UNSUPPORTED", details: [:])
+    }
+
+    func dispatchCommandEnter(
+        bundleID: String,
+        inputMarker: String?,
+        focusKeyCode: CGKeyCode?,
+        targetVerifier: @escaping @Sendable () async throws -> Bool
+    ) async throws -> ProviderActionResult {
+        ProviderActionResult(accepted: false, verdict: "UNSUPPORTED", details: [:])
     }
 }

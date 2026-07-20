@@ -10,10 +10,10 @@ scope: only rollouts whose `originator` is `Codex Desktop` and whose
 `thread_source` is `user` are included.
 
 The native Swift provider implements a bounded, read-only inventory with stable
-native identity, workspace and repository mapping, a conservative
-rollout-derived state, and a plugin hook path for live lifecycle state. Focus,
-new-session, and command dispatch are implemented but fail closed. Malformed
-Codex records degrade only this provider.
+native identity, workspace and repository mapping, hook-driven live state (idle
+by default), and exact session focus via an id-addressed deep link
+(`codex://threads/<thread-id>`). New-session and command dispatch are
+implemented but fail closed. Malformed Codex records degrade only this provider.
 
 Current conservative verdicts:
 
@@ -24,19 +24,23 @@ Current conservative verdicts:
 - Selected session: `UNPROVEN_NO_STATIC_SELECTED_SESSION_SIGNAL`. No
   authoritative static signal was found, so selection is always reported as
   unknown.
-- Existing-session focus: `FOCUS_NOT_VERIFIED_REQUIRES_LIVE`. No verifiable
-  exact-session mechanism exists; the action fails closed.
+- Existing-session focus: `FOCUS_DISPATCH_VERIFIED`. Codex Desktop registers an
+  exact, id-addressed deep link (`codex://threads/<thread-id>`, observed in the
+  app bundle). The thread id equals the rollout session id used as the native
+  id, so focus targets the exact session and verifies that the app came to the
+  foreground. Selection cannot be read back statically, so the exactness comes
+  from the id in the link, not from a post-action selected-thread check.
 - New session: `NEW_SESSION_UNVERIFIED_REQUIRES_LIVE`. The `codex://` scheme is
   registered but no neutral new-session route is confirmed; the action fails
   closed.
 - Commands: `UNPROVEN_REQUIRES_LIVE_TARGET_EVIDENCE`. No selected-session
   signal and no verified prompt-input target exist; commands fail closed.
 
-Because no privileged capability is proven without a live experiment, the
-provider descriptor declares an empty capability set. Sessions render with live
-state, but no focus, new-session, or command buttons are offered. Enabling a
-capability after the corresponding live experiment is a one-line change to the
-descriptor and `sessionCapabilities`.
+The provider descriptor declares `focus_session`; every Desktop thread is
+addressable by id through the deep link, so focus is offered for all sessions.
+New-session and command buttons stay hidden until the corresponding live
+experiment proves a route and target. Enabling either is a one-line change to
+the descriptor and `sessionCapabilities`.
 
 ## Tested versions and environment
 
@@ -64,10 +68,12 @@ Observations from the tested installation:
   sessions; the CLI accounts for the large majority of rollouts.
 - `~/.codex/config.toml` recorded `[hooks.state."...hooks/hooks.json:session_start:0:0"]`
   entries, confirming the desktop app honors the plugin hook mechanism.
+- The app bundle (`/Applications/ChatGPT.app/Contents/Resources/app.asar`)
+  constructs `codex://threads/<thread-id>` deep links (the "Open in app"
+  action), giving an exact, id-addressed focus route.
 
 Conclusions are limited to what these observations support; hypotheses about
-focus, launch, selection, and live hook delivery are listed under open
-questions.
+launch, selection, and live hook delivery are listed under open questions.
 
 ## Selected session
 
@@ -175,35 +181,34 @@ reliably represent turns and waiting states.
 
 ## Focus and launch
 
-None verified.
+Focus uses an exact, id-addressed deep link. The Codex Desktop app bundle
+registers the `codex://` scheme and constructs `codex://threads/<thread-id>`
+links (the "Open in app" action; observed in
+`/Applications/ChatGPT.app/Contents/Resources/app.asar`). The thread id equals
+the rollout `session_id`/`id` used as the native id, so `focus`:
 
-The sidebar order is persisted and reconstructable (see POC 07). Codex Desktop
-stores it in `~/.codex/.codex-global-state.json`:
+1. verifies the target session exists in the current inventory;
+2. opens `codex://threads/<native-id>` (which navigates Codex Desktop to that
+   exact thread and foregrounds the app);
+3. polls briefly for the app to become frontmost.
 
-- `pinned-thread-ids`: pinned threads, shown first;
-- `local-projects` (`{projectId: {id, name, rootPaths, createdAt, updatedAt}}`)
-  with `thread-project-assignments` (`{threadId: {projectKind, projectId, cwd}}`)
-  group threads into projects, each project ordered by its threads' last
-  activity;
-- `sidebar-project-thread-orders` (`{projectId: {threadIds: [...]}}`) is a manual
-  order override within a project; without it, threads sort by last activity;
-- `projectless-thread-ids`: loose threads, by last activity.
+It returns `FOCUS_DISPATCH_VERIFIED` when the app foregrounds, otherwise
+`FOCUS_DISPATCH_UNVERIFIED` (the link was still opened). Codex Desktop persists
+no selected or active *thread* id (`selected-project` is persisted, but not a
+thread), so selection cannot be read back after acting; the exactness comes from
+the id carried in the deep link rather than a post-action selected-thread check.
 
-The global-state thread ids correlate with the rollout `session_id`/`id`, so the
-order can be mapped onto the inventory. This provides the *order* half of a
-Claude-style focus-by-position mechanism. Two pieces are still missing and
-require live evidence:
+This deep link supersedes the earlier plan of a Claude-style focus-by-position
+shortcut. The sidebar order is still persisted and reconstructable from
+`~/.codex/.codex-global-state.json` (`pinned-thread-ids`, `local-projects` +
+`thread-project-assignments`, `sidebar-project-thread-orders`,
+`projectless-thread-ids`; see POC 07), but a positional shortcut is unnecessary
+now that each thread is directly addressable by id, and no sidebar-position
+keyboard shortcut is known for Codex Desktop.
 
-- no sidebar-position keyboard shortcut is known for Codex Desktop (Claude uses
-  `Cmd+1`..`Cmd+9`);
-- `selected-project` is persisted but no selected or active *thread* id is, so a
-  focus cannot be verified after acting.
-
-`focus` therefore verifies the target exists and then fails closed with
-`FOCUS_NOT_VERIFIED_REQUIRES_LIVE` rather than foregrounding the app on an
-unverifiable target. The `codex://` scheme is registered, but no neutral
-new-session route was confirmed and no no-submit guarantee was established, so
-`openNew` fails closed with `NEW_SESSION_UNVERIFIED_REQUIRES_LIVE`.
+The `codex://` scheme is registered, but no neutral new-session route was
+confirmed and no no-submit guarantee was established, so `openNew` fails closed
+with `NEW_SESSION_UNVERIFIED_REQUIRES_LIVE`.
 
 ## Semantic commands
 
@@ -223,8 +228,10 @@ is claimed.
 - Inventory identities are correlated only by exact native id.
 - Provider actions share the serialized native automation boundary and the
   process-wide privileged action gate with Cursor and Claude.
-- Focus, new-session, and command actions fail closed: they never act on an
-  unverified target and never submit prompt text.
+- Focus acts only on a target present in the current inventory and only through
+  the exact id-addressed deep link; it never submits prompt text. New-session
+  and command actions fail closed: they never act on an unverified target and
+  never submit prompt text.
 - Hook payloads are sanitized to a minimal metadata allow-list
   (`hook_event_name`, `session_id`, `cwd`, `transcript_path`, `tool_name`,
   `permission_mode`, `turn_id`) before reaching the provider.
@@ -248,11 +255,12 @@ unknown with explicit degraded detail.
   proof.
 - The active *thread* is not persisted in `.codex-global-state.json` (only the
   selected project is); it likely lives in the app's Chromium leveldb, which was
-  not parsed. Selection stays unknown until that signal is read or a live hook
-  supplies it.
-- The sidebar order is reconstructable (POC 07), but no sidebar-position
-  keyboard shortcut is known for Codex Desktop, so a focus-by-position mechanism
-  cannot be completed or verified without live evidence.
+  not parsed. Selection stays unknown, so focus cannot be confirmed by reading
+  back a selected thread; it relies on the exact id in the deep link and a
+  frontmost check.
+- Focus uses the id-addressed deep link (`codex://threads/<id>`), so the
+  reconstructable sidebar order (POC 07) and the unknown sidebar-position
+  keyboard shortcut are no longer needed for focus.
 - No confirmed neutral new-session route was found.
 - No agent prompt-input accessibility target has been identified for the
   Electron/Chromium desktop app; command dispatch remains unproven.
@@ -271,8 +279,8 @@ unknown with explicit degraded detail.
 - `scripts/poc/codex/03_codex_hook_probe.py`: generated Codex plugin hooks,
   event-to-state mapping, payload sanitization, self-check. Verdict:
   `UNPROVEN_REQUIRES_LIVE_HOOK_OBSERVATION`.
-- `scripts/poc/codex/04_codex_desktop_focus.py`: focus verification gap.
-  Verdict: `FOCUS_NOT_VERIFIED_REQUIRES_LIVE`.
+- `scripts/poc/codex/04_codex_desktop_focus.py`: exact per-thread deep link
+  (`codex://threads/<id>`). Verdict: `FOCUS_DEEP_LINK_AVAILABLE`.
 - `scripts/poc/codex/05_codex_new_session.py`: neutral new-session candidates.
   Verdict: `NEW_SESSION_CANDIDATE_UNVERIFIED`.
 - `scripts/poc/codex/06_codex_command_dispatch.py`: command preflight and

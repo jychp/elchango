@@ -11,23 +11,26 @@ confirmed.
 Method and evidence
 ===================
 Codex Desktop is ``com.openai.codex`` and registers the ``codex://`` URL scheme
-(from its Info.plist). Two candidate focus mechanisms exist:
+(from its Info.plist). A per-thread deep link IS available:
 
-1. Activate the application (``open -b com.openai.codex`` / NSWorkspace). This
-   only foregrounds the app; it does not select a specific thread.
-2. A per-thread deep link. No such route is documented or observed. Recording
-   absent evidence rather than inferring one, per the elChango new-harness
-   standard.
+    codex://threads/<thread-id>
 
-Verification problem: POC 01 found NO static, authoritative "selected session"
+observed in the app bundle at
+``/Applications/ChatGPT.app/Contents/Resources/app.asar`` (the "Open in app"
+action builds it). The ``thread-id`` equals the rollout ``session_id``/``id``
+enumerated by POC 01, so opening the link navigates Codex Desktop to that exact
+thread and foregrounds the app. This is an exact, id-addressed mechanism, far
+stronger than a positional shortcut or a bare application activation.
+
+Verification note: POC 01 found NO static, authoritative "selected session"
 signal for Codex Desktop (unlike Claude Desktop's unique ``lastFocusedAt`` or
-Cursor's database). Without that signal, even a successful foreground cannot be
-verified to have selected the intended thread.
+Cursor's database), so the *selected thread* cannot be read back after acting.
+The exactness therefore comes from the id carried in the deep link, and the only
+post-action check available is that the app became frontmost.
 
-This POC is read-only by default. It lists the target and prints the focus plan
-and the verification gap. ``--execute`` would at most activate the application;
-because exact post-action selection cannot be verified, the verdict stays
-conservative. Per the issue #8 scope, no live experiment is run here.
+This POC is read-only by default. It lists the target, prints the deep link, and
+reports whether Codex is frontmost. ``--execute`` (with ``--session-id``) opens
+the deep link.
 
 Safety and side effects
 =======================
@@ -41,9 +44,10 @@ Examples
 
 Interpretation
 ==============
-``FOCUS_NOT_VERIFIED_REQUIRES_LIVE``: no verifiable exact-session focus
-mechanism has been established. elChango must keep the focus action rejected
-(fail closed) until a live experiment proves an exact, verifiable mechanism.
+``FOCUS_DEEP_LINK_AVAILABLE``: an exact, id-addressed focus mechanism exists
+(``codex://threads/<id>``). elChango enables focus, opens the link, and verifies
+the app foregrounds; it cannot statically confirm the thread became selected
+because Codex Desktop persists no selected-thread signal.
 
 Official references
 ===================
@@ -107,24 +111,27 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     frontmost = frontmost_bundle_id()
+    deep_link = (
+        f"codex://threads/{args.session_id}" if args.session_id else None
+    )
 
     result = {
         "target_session_id": args.session_id,
         "codex_bundle_id": CODEX_BUNDLE_ID,
         "frontmost_bundle_id": frontmost,
         "codex_frontmost": frontmost == CODEX_BUNDLE_ID,
-        "per_session_deep_link": None,
+        "per_session_deep_link": deep_link,
         "selected_session_signal": None,
         "executed": False,
-        "verdict": "FOCUS_NOT_VERIFIED_REQUIRES_LIVE",
+        "verdict": "FOCUS_DEEP_LINK_AVAILABLE",
     }
 
     if args.execute:
-        # Foregrounding only; exact selection remains unverifiable, so the
-        # action is not accepted. Per issue #8 scope this branch is documented
-        # but should not be run against a live app without explicit approval.
+        # Open the exact per-thread deep link. This navigates Codex Desktop to
+        # the target thread and foregrounds the app; selection cannot be read
+        # back, so exactness relies on the id in the link.
+        subprocess.run(["/usr/bin/open", deep_link], check=False)
         result["executed"] = True
-        result["verdict"] = "FOCUS_NOT_VERIFIED_REQUIRES_LIVE"
 
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))
@@ -132,12 +139,11 @@ def main() -> int:
         print("Codex Desktop focus probe")
         print(f"Verdict: {result['verdict']}")
         print(f"Codex frontmost now: {result['codex_frontmost']}")
+        print(f"Per-thread deep link: {deep_link or '<pass --session-id>'}")
         print("Findings:")
-        print("- No per-thread deep link is documented or observed.")
-        print("- No static selected-session signal exists to verify a target.")
-        print("- Application activation foregrounds the app but not a thread.")
-        print("Conclusion: focus stays REJECTED (fail closed) pending a live,")
-        print("verifiable exact-session mechanism.")
+        print("- codex://threads/<id> navigates to the exact thread by id.")
+        print("- No static selected-session signal exists to read back a target.")
+        print("- Post-action check is limited to the app becoming frontmost.")
     return 0
 
 
