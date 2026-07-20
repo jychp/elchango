@@ -59,6 +59,15 @@ Add these environment secrets:
 
 Add `APPLE_TEAM_ID` as an environment variable. The team ID is not a secret.
 
+The same PAT is stored as `HOMEBREW_TAP_TOKEN` in `jychp/homebrew-tap`. There it
+needs both scopes: the elChango release job uses it only for the repository
+dispatch (`Contents: write`), but the tap's Cask-update workflow uses it to open
+the Cask pull request and enable auto-merge (`Pull requests: read/write`). A
+default `GITHUB_TOKEN` cannot open that pull request because pull requests it
+creates do not trigger another `pull_request` workflow. Protect the tap's `main`
+branch with the Homebrew and elChango Cask checks, enable squash auto-merge, and
+delete merged automation branches.
+
 Encode each binary secret without writing an additional unencrypted file:
 
 ```bash
