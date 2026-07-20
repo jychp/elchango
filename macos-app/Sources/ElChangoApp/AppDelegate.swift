@@ -23,6 +23,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private let accessibility = AccessibilityAuthorizer()
+    private let streamDeckPluginBundleIdentifier = "com.elgato.StreamDeck"
+    private var lastStreamDeckInstallFailure: String?
     private var runtimeProfile: RuntimeProfile = .stable
     private var serviceLease: ServiceLease?
     private var service: LoopbackService?
@@ -149,10 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func rebuildMenu() {
         let menu = NSMenu()
 
-        let version =
-            Bundle.main.object(
-                forInfoDictionaryKey: "CFBundleShortVersionString"
-            ) as? String ?? "unknown"
+        let version = appVersion
         let titleItem = NSMenuItem(
             title: "",
             action: nil,
@@ -192,6 +191,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 action: #selector(requestAccessibilityAccess),
                 keyEquivalent: ""
             ).target = self
+        }
+
+        switch streamDeckPluginState {
+        case .pluginMissing:
+            let installItem = menu.addItem(
+                withTitle: "Install Stream Deck Plugin",
+                action: #selector(installStreamDeckPlugin),
+                keyEquivalent: ""
+            )
+            installItem.target = self
+            installItem.image = menuIcon(named: "square.and.arrow.down")
+        case .mismatched:
+            let updateItem = menu.addItem(
+                withTitle: "Update Stream Deck Plugin",
+                action: #selector(installStreamDeckPlugin),
+                keyEquivalent: ""
+            )
+            updateItem.target = self
+            updateItem.image = menuIcon(named: "arrow.down.circle")
+        case .streamDeckNotDetected, .matching, .malformed, .unreadable:
+            break
         }
 
         let diagnosticsItem = menu.addItem(
@@ -283,6 +303,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc
+    private func installStreamDeckPlugin() {
+        guard let url = Self.bundledStreamDeckPluginURL else {
+            lastStreamDeckInstallFailure =
+                "the bundled Stream Deck plugin could not be found"
+            rebuildMenu()
+            return
+        }
+        // Hand the artifact to the system association for .streamDeckPlugin so
+        // Stream Deck owns confirmation and installation.
+        NSWorkspace.shared.open(url)
+        lastStreamDeckInstallFailure = nil
+        rebuildMenu()
+    }
+
+    @objc
     private func showDiagnostics() {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
@@ -300,10 +335,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var diagnosticsText: String {
         let serviceDetails: String
-        let version =
-            Bundle.main.object(
-                forInfoDictionaryKey: "CFBundleShortVersionString"
-            ) as? String ?? "unknown"
+        let version = appVersion
         switch serviceState {
         case .starting:
             serviceDetails = "starting"
@@ -319,9 +351,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Endpoint: http://127.0.0.1:\(LoopbackService.defaultPort)
             Accessibility: \(accessibility.isTrusted ? "granted" : "not granted")
 
+            Stream Deck: \(streamDeckDiagnosticsDetail)
+            Claude: \(providerStatuses["claude-code"] ?? "unknown")
             Cursor: \(providerStatuses["cursor"] ?? "unknown")
-            Claude Code: \(providerStatuses["claude-code"] ?? "unknown")
             """
+    }
+
+    private var streamDeckDiagnosticsDetail: String {
+        let stateDetail: String
+        switch streamDeckPluginState {
+        case .streamDeckNotDetected:
+            stateDetail = "Stream Deck not detected"
+        case .pluginMissing:
+            stateDetail = "plugin not installed"
+        case .matching(let installedVersion):
+            stateDetail = "up to date (\(installedVersion))"
+        case .mismatched(let installedVersion, let bundledVersion):
+            stateDetail =
+                "update available (installed \(installedVersion) -> "
+                + "bundled \(bundledVersion))"
+        case .malformed:
+            stateDetail = "installed manifest malformed"
+        case .unreadable(let reason):
+            stateDetail = "installed manifest unreadable: \(reason)"
+        }
+        guard let failure = lastStreamDeckInstallFailure else {
+            return stateDetail
+        }
+        return "\(stateDetail); last install failed: \(failure)"
+    }
+
+    private var appVersion: String {
+        Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleShortVersionString"
+        ) as? String ?? "unknown"
+    }
+
+    private var isStreamDeckInstalled: Bool {
+        NSWorkspace.shared.urlForApplication(
+            withBundleIdentifier: streamDeckPluginBundleIdentifier
+        ) != nil
+    }
+
+    private var streamDeckPluginState: StreamDeckPluginState {
+        let inspector = StreamDeckPluginInspector(
+            bundledVersion: "\(appVersion).0"
+        )
+        return inspector.classify(streamDeckInstalled: isStreamDeckInstalled)
+    }
+
+    private static var bundledStreamDeckPluginURL: URL? {
+        let fileManager = FileManager.default
+        let resourceName = "com.jychp.elchango"
+        let resourceExtension = "streamDeckPlugin"
+        if let bundled = Bundle.main.url(
+            forResource: resourceName,
+            withExtension: resourceExtension
+        ) {
+            return bundled
+        }
+
+        let development = URL(
+            fileURLWithPath: fileManager.currentDirectoryPath,
+            isDirectory: true
+        )
+        .appendingPathComponent("../plugins/streamdeck", isDirectory: true)
+        .appendingPathComponent(
+            "\(resourceName).\(resourceExtension)",
+            isDirectory: false
+        )
+        .standardizedFileURL
+        if fileManager.fileExists(atPath: development.path) {
+            return development
+        }
+        return nil
     }
 
     private static var webAssetRoot: URL? {

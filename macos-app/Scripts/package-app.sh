@@ -190,6 +190,16 @@ cp \
 cp "${REPO_DIR}/TRADEMARKS.md" "${RESOURCES_DIR}/TRADEMARKS.md"
 cp -R "${REPO_DIR}/web/dist/." "${RESOURCES_DIR}/Web/"
 
+STREAMDECK_PLUGIN_ARTIFACT="${REPO_DIR}/plugins/streamdeck/com.jychp.elchango.streamDeckPlugin"
+if [[ ! -f "${STREAMDECK_PLUGIN_ARTIFACT}" ]]; then
+  echo "ERROR: missing bundled Stream Deck plugin artifact at ${STREAMDECK_PLUGIN_ARTIFACT}." >&2
+  echo "Run 'make build-plugin-streamdeck' first." >&2
+  exit 1
+fi
+cp \
+  "${STREAMDECK_PLUGIN_ARTIFACT}" \
+  "${RESOURCES_DIR}/com.jychp.elchango.streamDeckPlugin"
+
 cat > "${CONTENTS_DIR}/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

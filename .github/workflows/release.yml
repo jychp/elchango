@@ -143,6 +143,11 @@ jobs:
         run: npm ci
         working-directory: web
 
+      - name: Install Stream Deck dependencies for bundled plugin
+        timeout-minutes: 7
+        run: npm ci
+        working-directory: plugins/streamdeck
+
       - name: Build secret-free Universal 2 app
         timeout-minutes: 30
         env:
