@@ -572,7 +572,7 @@ struct ClaudeCodeProviderTests {
         #expect(await automation.heldShortcutRepeatCounts() == [1])
     }
 
-    @Test("verified commands preserve the selected Claude target")
+    @Test("commands dispatch the recipe to the frontmost Claude window")
     func verifiedCommand() async throws {
         let fixture = try ClaudeTemporaryFixture()
         try fixture.writeRecord(

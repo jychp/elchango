@@ -342,28 +342,16 @@ public actor ClaudeCodeProvider: AgentProvider {
                 ]
             )
         }
-        guard try await isSelected(nativeSessionID),
-            try await isFrontmost()
-        else {
+        // The command acts on whatever session the frontmost Claude window has on
+        // screen; elChango only verifies Claude is the frontmost app, not which
+        // session is selected.
+        guard try await isFrontmost() else {
             return ProviderActionResult(
                 accepted: false,
                 verdict: "TARGET_UNVERIFIED",
                 details: [
                     "message": .string(
-                        "Claude target is not uniquely selected and frontmost."
-                    )
-                ]
-            )
-        }
-        guard try await isSelected(nativeSessionID),
-            try await isFrontmost()
-        else {
-            return ProviderActionResult(
-                accepted: false,
-                verdict: "STALE_PREFLIGHT",
-                details: [
-                    "message": .string(
-                        "Claude target changed before command dispatch."
+                        "Claude is not the frontmost application."
                     )
                 ]
             )
@@ -376,7 +364,7 @@ public actor ClaudeCodeProvider: AgentProvider {
                 inputMarker: nil,
                 focusKeyCode: nil,
                 targetVerifier: {
-                    try await self.isSelected(nativeSessionID)
+                    try await self.isFrontmost()
                 }
             )
         case .createPR:
@@ -390,7 +378,7 @@ public actor ClaudeCodeProvider: AgentProvider {
                 ),
                 submitCount: 2,
                 targetVerifier: {
-                    try await self.isSelected(nativeSessionID)
+                    try await self.isFrontmost()
                 }
             )
         case .commitPush:
@@ -404,7 +392,7 @@ public actor ClaudeCodeProvider: AgentProvider {
                 ),
                 submitCount: 2,
                 targetVerifier: {
-                    try await self.isSelected(nativeSessionID)
+                    try await self.isFrontmost()
                 }
             )
         case .compact:
@@ -418,12 +406,11 @@ public actor ClaudeCodeProvider: AgentProvider {
                 ),
                 submitCount: 2,
                 targetVerifier: {
-                    try await self.isSelected(nativeSessionID)
+                    try await self.isFrontmost()
                 }
             )
         }
         guard dispatched.accepted,
-            try await isSelected(nativeSessionID),
             try await isFrontmost()
         else {
             return ProviderActionResult(
@@ -450,12 +437,6 @@ public actor ClaudeCodeProvider: AgentProvider {
             payload,
             observedAtMilliseconds: observedAtMilliseconds
         )
-    }
-
-    private func isSelected(_ nativeSessionID: String) async throws -> Bool {
-        let visibleRecords = try readRecords().filter { !$0.isArchived }
-        return Self.selectedNativeSessionID(from: visibleRecords)
-            == nativeSessionID
     }
 
     private func shortcutOrder(

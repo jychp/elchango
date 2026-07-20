@@ -299,7 +299,7 @@ struct CursorProviderTests {
         #expect(!FileManager.default.fileExists(atPath: databaseURL.path))
     }
 
-    @Test("commands require and preserve the exact selected target")
+    @Test("commands dispatch the recipe to the frontmost window")
     func verifiedCommandDispatch() async throws {
         let fixture = try Fixture()
         let automation = FakeNativeAutomation(

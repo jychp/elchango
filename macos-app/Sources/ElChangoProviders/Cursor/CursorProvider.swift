@@ -895,30 +895,16 @@ public actor CursorProvider: AgentProvider {
                 ]
             )
         }
-        let before = try await snapshot()
-        guard before.selectedNativeSessionID == nativeSessionID,
-            try await isFrontmost()
-        else {
+        // The command acts on whatever session the frontmost Cursor window has on
+        // screen; elChango only verifies Cursor is the frontmost app, not which
+        // session is selected.
+        guard try await isFrontmost() else {
             return ProviderActionResult(
                 accepted: false,
                 verdict: "TARGET_UNVERIFIED",
                 details: [
                     "message": .string(
-                        "Cursor target is not uniquely selected and frontmost."
-                    )
-                ]
-            )
-        }
-        let latest = try await snapshot()
-        guard latest.selectedNativeSessionID == nativeSessionID,
-            try await isFrontmost()
-        else {
-            return ProviderActionResult(
-                accepted: false,
-                verdict: "STALE_PREFLIGHT",
-                details: [
-                    "message": .string(
-                        "Cursor target changed before command dispatch."
+                        "Cursor is not the frontmost application."
                     )
                 ]
             )
@@ -932,7 +918,7 @@ public actor CursorProvider: AgentProvider {
                 inputMarker: Self.inputMarker,
                 focusKeyCode: 37,
                 targetVerifier: {
-                    try await self.isSelected(nativeSessionID)
+                    try await self.isFrontmost()
                 }
             )
         case .createPR:
@@ -944,7 +930,7 @@ public actor CursorProvider: AgentProvider {
                 unfocusedPolicy: .reject,
                 submitCount: 1,
                 targetVerifier: {
-                    try await self.isSelected(nativeSessionID)
+                    try await self.isFrontmost()
                 }
             )
         case .commitPush:
@@ -956,7 +942,7 @@ public actor CursorProvider: AgentProvider {
                 unfocusedPolicy: .reject,
                 submitCount: 1,
                 targetVerifier: {
-                    try await self.isSelected(nativeSessionID)
+                    try await self.isFrontmost()
                 }
             )
         case .compact:
@@ -968,13 +954,11 @@ public actor CursorProvider: AgentProvider {
                 unfocusedPolicy: .reject,
                 submitCount: 2,
                 targetVerifier: {
-                    try await self.isSelected(nativeSessionID)
+                    try await self.isFrontmost()
                 }
             )
         }
-        let after = try await snapshot()
         guard dispatched.accepted,
-            after.selectedNativeSessionID == nativeSessionID,
             try await isFrontmost()
         else {
             return ProviderActionResult(
@@ -1004,10 +988,6 @@ public actor CursorProvider: AgentProvider {
             payload,
             observedAtMilliseconds: observedAtMilliseconds
         )
-    }
-
-    private func isSelected(_ nativeSessionID: String) async throws -> Bool {
-        try await snapshot().selectedNativeSessionID == nativeSessionID
     }
 
     private func sidebarOrder() throws -> [String] {

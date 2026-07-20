@@ -26,9 +26,8 @@ Current conservative verdicts:
   remains outstanding: `UNPROVEN_REQUIRES_LIVE_HOOK_OBSERVATION`.
 - Selected session: `TRACKED_FROM_FOCUS`. No authoritative static signal exists,
   so the provider reports the session elChango last focused as selected (dropped
-  when it leaves the inventory). Command targeting is additionally gated on Codex
-  being frontmost. Without this, commands could never be enabled because the deck
-  resolves a command target from the selected session.
+  when it leaves the inventory). This drives only the deck's selected highlight;
+  commands no longer depend on it (see below).
 - Existing-session focus: `FOCUS_DISPATCH_VERIFIED`. Codex Desktop registers an
   exact, id-addressed deep link (`codex://threads/<thread-id>`, observed in the
   app bundle). The thread id equals the rollout session id used as the native
@@ -39,13 +38,13 @@ Current conservative verdicts:
   `codex://threads/new` to a neutral new-thread surface; with no `prompt` query
   parameter it opens the composer and submits nothing. The action opens that
   link and verifies the app came to the foreground.
-- Commands: `COMMAND_DISPATCHED` (naive, all four). The provider first focuses
-  the exact thread via the deep link, then dispatches a per-command recipe:
-  `accept` is a double Command+Return; `create_pr`, `commit_push`, and `compact`
-  type a prompt into the composer and submit with Command+Return. Codex exposes
-  no static selected-thread signal and the text commands have no verified
-  input-target marker, so dispatch is best-effort and the user verifies the
-  result.
+- Commands: `COMMAND_DISPATCHED` (naive, all four). A command acts on whatever
+  thread Codex has on screen; the only requirement is that Codex is the frontmost
+  app (no session targeting, no re-focus). Recipes: `accept` is a double
+  Command+Return; `create_pr`, `commit_push`, and `compact` type a prompt into the
+  focused composer and submit with Command+Return. Best-effort (no verified
+  input-target marker), so the user is responsible for having the right thread in
+  front and verifies the result.
 
 The provider descriptor declares `focus_session` and `execute_command` (per
 session) and `new_session` (provider level); every Desktop thread is addressable
@@ -93,15 +92,16 @@ No static signal. `~/.codex/.codex-global-state.json` persists `selected-project
 likely lives in renderer state (the app's Chromium `Local Storage`/`Session
 Storage` leveldb), which was not parsed.
 
-To make commands usable, the provider tracks the session elChango last focused
-(set on a verified focus or command dispatch) and reports it as
-`selectedNativeSessionID`, marking that session selected. The reference is
-dropped as soon as the session leaves the inventory. This is a proxy, not ground
-truth: if the user switches threads inside Codex, the tracked selection goes
-stale until elChango focuses again. Command targeting is therefore additionally
-gated on Codex being frontmost, and `executeCommand` re-focuses the exact thread
-by deep link before dispatching. Reading the true active thread from renderer
-state remains an open question.
+For the deck's selected highlight, the provider tracks the session elChango last
+focused (set on a verified focus) and reports it as `selectedNativeSessionID`,
+dropped when it leaves the inventory. This is a proxy for display only: if the
+user switches threads inside Codex, it goes stale until elChango focuses again.
+
+Commands do not use this signal. A command acts on whatever Codex has on screen
+and only requires Codex to be frontmost, so it works whether the thread was
+focused from the deck or by hand. Reading the true active thread from renderer
+state remains an open question, and would let elChango show an accurate highlight
+and confirm the command hit the intended thread.
 
 ## Inventory and identity
 
@@ -261,11 +261,9 @@ still opened). Both routes were read from the app bundle's deep-link parser
 
 Naive first pass: all four commands are wired, best-effort.
 
-Because Codex Desktop exposes no static selected-thread signal, `executeCommand`
-first focuses the exact thread through its deep link (`codex://threads/<id>`,
-which foregrounds the app and selects the thread by id) and confirms the app is
-frontmost. It then dispatches a per-command recipe via the shared automation
-boundary:
+A command acts on whatever thread Codex has on screen. `executeCommand` verifies
+only that Codex is the frontmost application (no session targeting, no re-focus),
+then dispatches a per-command recipe via the shared automation boundary:
 
 - `accept`: a double Command+Return (`postShortcut` twice). No text.
 - `create_pr`, `commit_push`, `compact`: type a fixed prompt into the focused
@@ -273,13 +271,15 @@ boundary:
   providers; `compact` types `/compact`), then submit with a single
   Command+Return.
 
-All return `COMMAND_DISPATCHED`; the user verifies the effect. Two honest limits:
-there is no post-action confirmation the keystrokes landed on the intended thread
-(the target is only as exact as the id in the focus link plus the frontmost
-check), and the text commands type into whatever the composer focus is, because
-the Electron/Chromium app exposes no verified input-target marker
-(`dispatchFrontmostText` skips the accessibility-marker verification that
-`dispatchText` uses for Claude Code). Refining a recipe means editing
+This is why commands work whether the thread was focused from the deck or by
+hand: the requirement is just "Codex is in front". All return
+`COMMAND_DISPATCHED`; the user verifies the effect. Two honest limits: there is
+no post-action confirmation the keystrokes landed on the intended thread (elChango
+cannot read the active thread), and the text commands type into whatever the
+composer focus is, because the Electron/Chromium app exposes no verified
+input-target marker (`dispatchFrontmostText` skips the accessibility-marker
+verification that `dispatchText` uses for Claude Code). Refining a recipe means
+editing
 `CodexProvider.commands` / `dispatchRecipe(for:)`. Surfaces still emit only
 stable semantic ids, never arbitrary prompt text.
 
@@ -293,11 +293,11 @@ stable semantic ids, never arbitrary prompt text.
 - Focus acts only on a target present in the current inventory and only through
   the exact id-addressed deep link; it never submits prompt text. New session
   opens only the neutral `codex://threads/new` link with no query parameters, so
-  it submits nothing. Command dispatch first focuses the exact thread, then runs
-  a fixed per-command recipe: `accept` sends only keystrokes, and the text
-  commands type a fixed instruction (never free-form user text) and submit.
-  Surfaces carry only stable semantic ids, so no arbitrary prompt text can be
-  injected through a command.
+  it submits nothing. Command dispatch requires only that Codex is frontmost and
+  runs a fixed per-command recipe on the active window: `accept` sends only
+  keystrokes, and the text commands type a fixed instruction (never free-form
+  user text) and submit. Surfaces carry only stable semantic ids, so no arbitrary
+  prompt text can be injected through a command.
 - Hook payloads are sanitized to a minimal metadata allow-list
   (`hook_event_name`, `session_id`, `cwd`, `transcript_path`, `tool_name`,
   `permission_mode`, `turn_id`) before reaching the provider.

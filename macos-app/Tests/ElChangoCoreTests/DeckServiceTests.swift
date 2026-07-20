@@ -197,12 +197,14 @@ struct DeckServiceTests {
         #expect(optionIDs.contains("shield-check"))
     }
 
-    @Test("only one frontmost selected target enables commands")
+    @Test("a frontmost command-capable provider enables commands")
     func commandTarget() async throws {
         let context = try TestContext()
         defer { context.remove() }
+        // No selected session: commands enable purely because the provider is
+        // frontmost, targeting its most-recently-active session.
         let provider = MutableProvider(
-            snapshot: makeSnapshot(count: 1, selected: true),
+            snapshot: makeSnapshot(count: 2, selected: false),
             frontmost: true
         )
         let service = try DeckService(
@@ -216,6 +218,26 @@ struct DeckServiceTests {
         #expect(snapshot.buttons[12].enabled)
         #expect(snapshot.buttons[13].enabled)
         #expect(snapshot.buttons[11].sessionID == "test:session-0")
+    }
+
+    @Test("commands are disabled when no supported harness is frontmost")
+    func commandTargetRequiresFrontmost() async throws {
+        let context = try TestContext()
+        defer { context.remove() }
+        let provider = MutableProvider(
+            snapshot: makeSnapshot(count: 1, selected: true),
+            frontmost: false
+        )
+        let service = try DeckService(
+            providers: [provider],
+            preferences: context.preferences
+        )
+
+        let snapshot = try await service.snapshot()
+
+        #expect(!snapshot.buttons[11].enabled)
+        #expect(!snapshot.buttons[12].enabled)
+        #expect(!snapshot.buttons[13].enabled)
     }
 
     @Test("provider failures do not hide healthy providers")

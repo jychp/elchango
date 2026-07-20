@@ -47,9 +47,11 @@ unless exact post-action identity can be verified.
 For command reconnaissance, use only stable semantic IDs already validated for
 the shared contract. Keep provider recipes outside surfaces. A POC must require
 an explicit recipe when no official mapping is available, default to dry-run,
-require `--execute`, recheck the session, frontmost application, and exact
-command target immediately before one dispatch, and never retry an ambiguous
-result. Use the `new-command` skill for the full workflow.
+require `--execute`, recheck the frontmost application and exact command target
+immediately before one dispatch, and never retry an ambiguous result. (The
+shipped provider targets the frontmost harness window, not a specific session;
+see Personalized commands below.) Use the `new-command` skill for the full
+workflow.
 
 ## 3. Define the provider identity
 
@@ -180,19 +182,28 @@ was requested and what still requires user confirmation.
 
 ### Personalized commands
 
-Do not declare a command capability from focus evidence alone. Establish:
+A command applies to whatever session the frontmost harness window has on screen.
+The command target is resolved centrally in `DeckService` as "the frontmost
+command-capable provider", so the provider's `executeCommand` must **not** verify
+which session is selected (the desktop harnesses expose no reliable live signal
+for it, and requiring it makes commands unusable after a manual window focus).
+Establish:
 
-1. a fresh public-button to provider-native target resolution;
-2. exact selected-session and frontmost-application evidence;
-3. exact command-target evidence: agent prompt-input focus for text recipes, or
-   an explicitly validated application-level shortcut scope;
-4. an official provider recipe or an explicitly configured local recipe;
-5. one dispatch with no fallback or automatic retry;
-6. a conservative post-dispatch verdict that does not claim semantic completion
-   without provider evidence.
+1. frontmost-application evidence (the command acts on the active window);
+2. a command recipe: an explicitly validated application-level shortcut (for
+   example Codex `accept` = a double `Cmd+Return`), or a typed prompt into the
+   focused composer for text recipes;
+3. exact input-target verification where the harness exposes it (an accessibility
+   marker, as Claude Code and Cursor do via `dispatchText`); a harness without a
+   verified marker (Electron/Chromium, like Codex) uses a best-effort typed
+   dispatch and the user verifies the result;
+4. one dispatch with no fallback or automatic retry;
+5. a conservative post-dispatch verdict that does not claim semantic completion
+   or that the keystrokes hit a specific session.
 
 Surfaces emit stable semantic IDs only. They must never supply arbitrary prompt,
-shortcut, command, or script strings.
+shortcut, command, or script strings. This trades exact-session safety for
+usability: the user is responsible for having the intended session in front.
 
 ## 7. Register the provider
 
@@ -290,9 +301,8 @@ Add provider tests covering:
 - every state transition and stale-signal degradation;
 - focus success, rejection, and exact verification;
 - official new-session launch and encoded parameters.
-- command recipe resolution, exact command-target refusal, stale preflight
-  refusal, one-shot dispatch, and ambiguous-result handling when commands are
-  in scope.
+- command recipe resolution, refusal when the harness is not frontmost, one-shot
+  dispatch, and ambiguous-result handling when commands are in scope.
 
 Extend deck and server tests to prove:
 

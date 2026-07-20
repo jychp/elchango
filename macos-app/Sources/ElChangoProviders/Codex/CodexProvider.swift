@@ -307,7 +307,6 @@ public actor CodexProvider: AgentProvider {
                 accepted: false,
                 verdict: "COMMAND_UNSUPPORTED",
                 details: [
-                    "session_id": .string(nativeSessionID),
                     "command_id": .string(commandID.rawValue),
                     "message": .string(
                         "Codex has no proven recipe for \(commandID.rawValue) yet."
@@ -315,47 +314,31 @@ public actor CodexProvider: AgentProvider {
                 ]
             )
         }
-        let records = try readDesktopRecords()
-        guard records.contains(where: { $0.nativeID == nativeSessionID }) else {
-            throw ProviderOperationError.targetUnverified(
-                "unknown Codex Desktop session: \(nativeSessionID)"
-            )
-        }
-        // Naive first pass: Codex exposes no static selected-thread signal, so
-        // focus the exact thread by its deep link (which foregrounds the app and
-        // selects the thread by id) and then send the keystroke recipe. The
-        // target is only as exact as the id in the deep link plus a frontmost
-        // check; the user verifies the result manually.
-        guard let url = URL(string: "codex://threads/\(nativeSessionID)") else {
-            throw ProviderOperationError.system(
-                "invalid Codex focus deep link for \(nativeSessionID)"
-            )
-        }
-        try await automation.open(url: url)
-        guard await waitForFrontmost() else {
+        // The command acts on whatever thread Codex Desktop currently has on
+        // screen. elChango only verifies that Codex is the frontmost app; it does
+        // not target a specific session (Codex exposes no active-thread signal),
+        // so the user is responsible for having the intended thread in front.
+        guard try await isFrontmost() else {
             return ProviderActionResult(
                 accepted: false,
                 verdict: "TARGET_UNVERIFIED",
                 details: [
-                    "session_id": .string(nativeSessionID),
                     "command_id": .string(commandID.rawValue),
                     "message": .string(
-                        "Codex Desktop did not come to the foreground for the command."
+                        "Codex Desktop is not the frontmost application."
                     ),
                 ]
             )
         }
-        lastFocusedNativeID = nativeSessionID
         try await dispatchRecipe(for: commandID)
         return ProviderActionResult(
             accepted: true,
             verdict: "COMMAND_DISPATCHED",
             details: [
-                "session_id": .string(nativeSessionID),
                 "command_id": .string(commandID.rawValue),
                 "strategy": .string("keystroke"),
                 "message": .string(
-                    "Dispatched the \(commandID.rawValue) keystroke recipe to the focused Codex thread (naive; verify manually)."
+                    "Dispatched the \(commandID.rawValue) recipe to the frontmost Codex window (naive; verify manually)."
                 ),
             ]
         )

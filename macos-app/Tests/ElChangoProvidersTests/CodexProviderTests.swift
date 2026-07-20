@@ -288,7 +288,7 @@ struct CodexProviderTests {
         #expect(await automation.openedURLs() == ["codex://threads/new"])
     }
 
-    @Test("accept focuses the thread and sends a double Command+Return")
+    @Test("accept sends a double Command+Return to the frontmost window")
     func acceptDispatchesDoubleCommandReturn() async throws {
         let fixture = CodexSharedFixture()
         let automation = CodexAutomation(frontmostBundleID: CodexProvider.bundleID)
@@ -305,15 +305,36 @@ struct CodexProviderTests {
         )
         #expect(command.accepted)
         #expect(command.verdict == "COMMAND_DISPATCHED")
-        // Focused the exact thread first, then sent Command+Return twice.
-        #expect(await automation.openedURLs() == ["codex://threads/\(native)"])
+        // Acts on the frontmost window: no deep-link re-focus, just Command+Return
+        // twice.
+        #expect(await automation.openedURLs().isEmpty)
         #expect(await automation.shortcuts().count == 2)
         #expect(
             await automation.shortcuts().allSatisfy { $0 == 36 }
         )
     }
 
-    @Test("a text command focuses the thread and types the prompt")
+    @Test("a command fails closed when Codex is not the frontmost app")
+    func commandRequiresFrontmost() async throws {
+        let fixture = CodexSharedFixture()
+        let automation = CodexAutomation(frontmostBundleID: nil)
+        let provider = CodexProvider(
+            sessionsRootURL: fixture.sessionsRoot,
+            sessionIndexURL: fixture.sessionIndex,
+            automation: automation
+        )
+        let native = "11111111-1111-7111-8111-111111111111"
+
+        let command = try await provider.executeCommand(
+            nativeSessionID: native,
+            commandID: .accept
+        )
+        #expect(!command.accepted)
+        #expect(command.verdict == "TARGET_UNVERIFIED")
+        #expect(await automation.shortcuts().isEmpty)
+    }
+
+    @Test("a text command types the prompt into the frontmost window")
     func textCommandTypesPrompt() async throws {
         let fixture = CodexSharedFixture()
         let automation = CodexAutomation(frontmostBundleID: CodexProvider.bundleID)
@@ -330,8 +351,8 @@ struct CodexProviderTests {
         )
         #expect(command.accepted)
         #expect(command.verdict == "COMMAND_DISPATCHED")
-        // Focused the exact thread, then typed the prompt (no raw keystrokes).
-        #expect(await automation.openedURLs() == ["codex://threads/\(native)"])
+        // Acts on the frontmost window: no deep-link re-focus, just typed text.
+        #expect(await automation.openedURLs().isEmpty)
         #expect(await automation.typedTexts() == ["/compact"])
         #expect(await automation.shortcuts().isEmpty)
     }
