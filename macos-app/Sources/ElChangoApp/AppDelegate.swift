@@ -24,7 +24,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private let accessibility = AccessibilityAuthorizer()
     private let streamDeckPluginBundleIdentifier = "com.elgato.StreamDeck"
+    private let cursorBundleIdentifier = "com.todesktop.230313mzl4w4u92"
     private var lastStreamDeckInstallFailure: String?
+    private var lastClaudeInstallFailure: String?
     private var runtimeProfile: RuntimeProfile = .stable
     private var serviceLease: ServiceLease?
     private var service: LoopbackService?
@@ -214,6 +216,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             break
         }
 
+        switch claudeCodePluginState {
+        case .pluginMissing:
+            let installItem = menu.addItem(
+                withTitle: "Install Claude Code Plugin",
+                action: #selector(installClaudeCodePlugin),
+                keyEquivalent: ""
+            )
+            installItem.target = self
+            installItem.image = menuIcon(named: "square.and.arrow.down")
+        case .mismatched:
+            let updateItem = menu.addItem(
+                withTitle: "Update Claude Code Plugin",
+                action: #selector(installClaudeCodePlugin),
+                keyEquivalent: ""
+            )
+            updateItem.target = self
+            updateItem.image = menuIcon(named: "arrow.down.circle")
+        case .cliNotAvailable, .matching, .malformed, .unreadable:
+            break
+        }
+
         let diagnosticsItem = menu.addItem(
             withTitle: "Diagnostics",
             action: #selector(showDiagnostics),
@@ -321,6 +344,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc
+    private func installClaudeCodePlugin() {
+        guard let executable = ClaudeCLILocator().locate() else {
+            lastClaudeInstallFailure = "the claude CLI could not be found"
+            rebuildMenu()
+            return
+        }
+        // Run the official plugin commands off the main thread so the menu stays
+        // responsive; report the outcome through Diagnostics.
+        Task {
+            let result = await Task.detached {
+                await ClaudePluginInstaller().install(
+                    claudeExecutable: executable
+                )
+            }.value
+            switch result {
+            case .success:
+                lastClaudeInstallFailure = nil
+            case .failure(let error):
+                lastClaudeInstallFailure = error.localizedDescription
+            }
+            rebuildMenu()
+        }
+    }
+
+    @objc
     private func showDiagnostics() {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
@@ -355,9 +403,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Accessibility: \(accessibility.isTrusted ? "granted" : "not granted")
 
             Stream Deck: \(streamDeckDiagnosticsDetail)
-            Claude: \(providerStatuses["claude-code"] ?? "unknown")
-            Cursor: \(providerStatuses["cursor"] ?? "unknown")
+            Claude: \(claudeDiagnosticsDetail)
+            Cursor: \(cursorDiagnosticsDetail)
             """
+    }
+
+    private var claudeDiagnosticsDetail: String {
+        if let unavailable = unavailableProviderDetail(for: "claude-code") {
+            return unavailable
+        }
+        let stateDetail: String
+        switch claudeCodePluginState {
+        case .cliNotAvailable:
+            stateDetail = "claude CLI not found"
+        case .pluginMissing:
+            stateDetail = "not installed"
+        case .matching(let installedVersion):
+            stateDetail = installedVersion
+        case .mismatched(let installedVersion, let expectedVersion):
+            stateDetail = "\(installedVersion) -> \(expectedVersion)"
+        case .malformed:
+            stateDetail = "malformed"
+        case .unreadable(let reason):
+            stateDetail = "unreadable: \(reason)"
+        }
+        guard let failure = lastClaudeInstallFailure else {
+            return stateDetail
+        }
+        return "\(stateDetail); last install failed: \(failure)"
+    }
+
+    private var cursorDiagnosticsDetail: String {
+        if let unavailable = unavailableProviderDetail(for: "cursor") {
+            return unavailable
+        }
+        switch cursorPluginState {
+        case .cursorNotDetected:
+            return "Cursor not detected"
+        case .pluginMissing:
+            return "not installed"
+        case .matching(let installedVersion):
+            return installedVersion
+        case .mismatched(let installedVersion, let expectedVersion):
+            return "\(installedVersion) -> \(expectedVersion)"
+        case .malformed:
+            return "malformed"
+        case .managed(let version):
+            if let version {
+                return "manual (\(version))"
+            }
+            return "manual"
+        case .unreadable(let reason):
+            return "unreadable: \(reason)"
+        }
     }
 
     private var streamDeckDiagnosticsDetail: String {
@@ -366,22 +464,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .streamDeckNotDetected:
             stateDetail = "Stream Deck not detected"
         case .pluginMissing:
-            stateDetail = "plugin not installed"
+            stateDetail = "not installed"
         case .matching(let installedVersion):
-            stateDetail = "up to date (\(installedVersion))"
+            stateDetail = installedVersion
         case .mismatched(let installedVersion, let bundledVersion):
-            stateDetail =
-                "update available (installed \(installedVersion) -> "
-                + "bundled \(bundledVersion))"
+            stateDetail = "\(installedVersion) -> \(bundledVersion)"
         case .malformed:
-            stateDetail = "installed manifest malformed"
+            stateDetail = "malformed"
         case .unreadable(let reason):
-            stateDetail = "installed manifest unreadable: \(reason)"
+            stateDetail = "unreadable: \(reason)"
         }
         guard let failure = lastStreamDeckInstallFailure else {
             return stateDetail
         }
         return "\(stateDetail); last install failed: \(failure)"
+    }
+
+    /// The provider's runtime status only when it is unavailable, so a real
+    /// initialization failure is still surfaced; otherwise nil, so the line
+    /// shows the plugin version instead of a redundant "enabled".
+    private func unavailableProviderDetail(for providerID: String) -> String? {
+        guard let status = providerStatuses[providerID],
+            status.hasPrefix("unavailable")
+        else {
+            return nil
+        }
+        return status
     }
 
     private var appVersion: String {
@@ -401,6 +509,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             bundledVersion: "\(appVersion).0"
         )
         return inspector.classify(streamDeckInstalled: isStreamDeckInstalled)
+    }
+
+    private var isCursorInstalled: Bool {
+        NSWorkspace.shared.urlForApplication(
+            withBundleIdentifier: cursorBundleIdentifier
+        ) != nil
+    }
+
+    private var claudeCodePluginState: ClaudeCodePluginState {
+        let inspector = ClaudeCodePluginInspector(expectedVersion: appVersion)
+        return inspector.classify(
+            cliAvailable: ClaudeCLILocator().locate() != nil
+        )
+    }
+
+    private var cursorPluginState: CursorPluginState {
+        let inspector = CursorPluginInspector(expectedVersion: appVersion)
+        return inspector.classify(cursorInstalled: isCursorInstalled)
     }
 
     private static var bundledStreamDeckPluginURL: URL? {
