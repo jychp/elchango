@@ -67,6 +67,14 @@ Add these environment secrets:
 
 Add `APPLE_TEAM_ID` as an environment variable. The team ID is not a secret.
 
+Enable immutable releases for the repository. In **Settings**, open the Releases
+section and turn on immutable releases. This must be done through the web
+interface; GitHub does not yet expose an API to toggle it. Once enabled, every
+new published release freezes its tag and assets and gains a release
+attestation. The Homebrew tap requires this: it rejects any source release that
+is not published, final, and immutable. Enable it before cutting the first
+release that should reach Homebrew.
+
 Encode each binary secret without writing an additional unencrypted file:
 
 ```bash
@@ -142,6 +150,15 @@ The Make target verifies that local `main` exactly matches `origin/main`, then
 creates and pushes the annotated `v1.0.0` tag. The tag workflow repeats its own
 exact-main and version checks. It publishes only after both release artifacts
 have built successfully.
+
+The publish job creates the GitHub Release in a single atomic call that attaches
+every asset before publication. This is required for immutable releases, which
+freeze assets at publish time and reject any later change, so there is no
+post-publish asset re-upload. If a previous run left an incomplete draft, the
+job deletes it and recreates the release cleanly; a release that is already
+published is left untouched. After publication you can confirm the attestation
+with `gh release verify v1.0.0` and check an individual asset with
+`gh release verify-asset v1.0.0 <asset>`.
 
 After the GitHub Release exists, the publish job sends an `elchango-release`
 repository dispatch to `jychp/homebrew-tap`. The tap downloads the immutable
