@@ -1,7 +1,7 @@
 {
   "name": "elchango",
   "displayName": "elChango",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Reports Codex Desktop lifecycle events to the local elChango app.",
   "author": {
     "name": "jychp"
