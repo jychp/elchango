@@ -403,30 +403,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Accessibility: \(accessibility.isTrusted ? "granted" : "not granted")
 
             Stream Deck: \(streamDeckDiagnosticsDetail)
-            Claude: \(providerStatuses["claude-code"] ?? "unknown")
-            Cursor: \(providerStatuses["cursor"] ?? "unknown")
-            Claude Code plugin: \(claudeCodePluginDiagnosticsDetail)
-            Cursor plugin: \(cursorPluginDiagnosticsDetail)
+            Claude: \(claudeDiagnosticsDetail)
+            Cursor: \(cursorDiagnosticsDetail)
             """
     }
 
-    private var claudeCodePluginDiagnosticsDetail: String {
+    private var claudeDiagnosticsDetail: String {
+        if let unavailable = unavailableProviderDetail(for: "claude-code") {
+            return unavailable
+        }
         let stateDetail: String
         switch claudeCodePluginState {
         case .cliNotAvailable:
             stateDetail = "claude CLI not found"
         case .pluginMissing:
-            stateDetail = "plugin not installed"
+            stateDetail = "not installed"
         case .matching(let installedVersion):
-            stateDetail = "up to date (\(installedVersion))"
+            stateDetail = installedVersion
         case .mismatched(let installedVersion, let expectedVersion):
-            stateDetail =
-                "update available (installed \(installedVersion) -> "
-                + "expected \(expectedVersion))"
+            stateDetail = "\(installedVersion) -> \(expectedVersion)"
         case .malformed:
-            stateDetail = "installed registry malformed"
+            stateDetail = "malformed"
         case .unreadable(let reason):
-            stateDetail = "installed registry unreadable: \(reason)"
+            stateDetail = "unreadable: \(reason)"
         }
         guard let failure = lastClaudeInstallFailure else {
             return stateDetail
@@ -434,27 +433,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return "\(stateDetail); last install failed: \(failure)"
     }
 
-    private var cursorPluginDiagnosticsDetail: String {
+    private var cursorDiagnosticsDetail: String {
+        if let unavailable = unavailableProviderDetail(for: "cursor") {
+            return unavailable
+        }
         switch cursorPluginState {
         case .cursorNotDetected:
             return "Cursor not detected"
         case .pluginMissing:
-            return "plugin not installed; Marketplace publication unavailable"
+            return "not installed"
         case .matching(let installedVersion):
-            return "up to date (\(installedVersion))"
+            return installedVersion
         case .mismatched(let installedVersion, let expectedVersion):
-            return
-                "update available (installed \(installedVersion) -> "
-                + "expected \(expectedVersion))"
+            return "\(installedVersion) -> \(expectedVersion)"
         case .malformed:
-            return "installed manifest malformed"
+            return "malformed"
         case .managed(let version):
             if let version {
-                return "managed installation (\(version)); left untouched"
+                return "manual (\(version))"
             }
-            return "managed installation; left untouched"
+            return "manual"
         case .unreadable(let reason):
-            return "installed manifest unreadable: \(reason)"
+            return "unreadable: \(reason)"
         }
     }
 
@@ -464,22 +464,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .streamDeckNotDetected:
             stateDetail = "Stream Deck not detected"
         case .pluginMissing:
-            stateDetail = "plugin not installed"
+            stateDetail = "not installed"
         case .matching(let installedVersion):
-            stateDetail = "up to date (\(installedVersion))"
+            stateDetail = installedVersion
         case .mismatched(let installedVersion, let bundledVersion):
-            stateDetail =
-                "update available (installed \(installedVersion) -> "
-                + "bundled \(bundledVersion))"
+            stateDetail = "\(installedVersion) -> \(bundledVersion)"
         case .malformed:
-            stateDetail = "installed manifest malformed"
+            stateDetail = "malformed"
         case .unreadable(let reason):
-            stateDetail = "installed manifest unreadable: \(reason)"
+            stateDetail = "unreadable: \(reason)"
         }
         guard let failure = lastStreamDeckInstallFailure else {
             return stateDetail
         }
         return "\(stateDetail); last install failed: \(failure)"
+    }
+
+    /// The provider's runtime status only when it is unavailable, so a real
+    /// initialization failure is still surfaced; otherwise nil, so the line
+    /// shows the plugin version instead of a redundant "enabled".
+    private func unavailableProviderDetail(for providerID: String) -> String? {
+        guard let status = providerStatuses[providerID],
+            status.hasPrefix("unavailable")
+        else {
+            return nil
+        }
+        return status
     }
 
     private var appVersion: String {
