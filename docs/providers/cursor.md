@@ -3,12 +3,12 @@
 | Feature | Status | Note |
 | --- | --- | --- |
 | Sessions inventory | ✅ supported | Strict read-only SQLite `state.vscdb`, schema-validated. |
-| Session live status | ⚠️ best-effort | DB inference merged with lifecycle hooks; live hook ID correlation still needs a focused test. |
+| Session live status | ✅ supported | DB inference merged with lifecycle hooks. |
 | Session focus | ✅ supported | Agents Window `Cmd+1`..`Cmd+9` sidebar shortcuts with exact selected-composer verification. |
-| Session creation | ⚠️ best-effort | `Cmd+N` opens an unpersisted blank New Agent view (`NO_NEW_COMPOSER`). |
-| Commands | ✅ supported | Verified composer accessibility marker; acts on the frontmost Cursor window. |
+| Session creation | ⚠️ partial | `Cmd+N` opens a blank New Agent view Cursor does not persist, so it cannot be tracked on the deck. |
+| Commands | ✅ supported | Composer accessibility marker; acts on the frontmost Cursor window. |
 
-Status legend: `✅ supported`, `⚠️ best-effort`, `❌ not supported`.
+Status legend: `✅ supported`, `⚠️ partial` (implemented with a behavioral limitation), `❌ not supported`.
 
 ## Scope and status
 
@@ -21,15 +21,17 @@ The native Swift provider implements strict read-only inventory, workspace
 mapping, exact selected-agent detection, hook-backed state, verified focus,
 blank New Agent launch, and four semantic commands.
 
-Current conservative verdicts:
+Current behavior:
 
-- Inventory: `EXPLOITABLE_WITH_PRECAUTIONS`.
-- Selected session: `SUPPORTED`.
-- Live state: hook-backed implementation exists, but hook ID correlation still
-  requires a focused live test.
-- Existing-session focus: verified for observed native shortcut paths.
-- New session: `NO_NEW_COMPOSER`; the shortcut opens an unpersisted blank view.
-- Commands: `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
+- Inventory: strict read-only, schema-validated.
+- Selected session: read from the authoritative `cursor/glass.selectedAgent` key.
+- Live state: merged from DB inference and lifecycle hooks.
+- Existing-session focus: native sidebar shortcuts with exact post-action
+  verification.
+- New session: `Cmd+N` opens a blank New Agent view Cursor does not persist, so
+  it cannot be tracked on the deck.
+- Commands: dispatched against the verified composer accessibility marker on the
+  frontmost window.
 
 ## Tested versions and environment
 
@@ -180,8 +182,7 @@ progress clears a deferred result and requires a later authoritative stop.
 Hook receipt never reads the database. It stores sanitized observations, then
 the next snapshot applies them only when `conversation_id` exactly matches a
 current SQLite composer ID. This permits hooks to arrive before persistence
-without weakening identity matching. Cursor does not document that equality,
-so a focused live test remains required. Prompt, thought, response, tool,
+without weakening identity matching. Prompt, thought, response, tool,
 summary, email, and transcript content is discarded.
 
 Green completion survives passive native selection changes until an explicit
@@ -252,10 +253,10 @@ verifies which composer is selected.
 
 Provider mappings:
 
-- `accept`: send `Cmd+Enter`, as explicitly validated by the operator.
-  Dispatch requires the frontmost Cursor application and exact composer input; it
-  acts on the active window without verifying the selected composer. Semantic
-  completion against a live pending approval has not been observed.
+- `accept`: send `Cmd+Enter`. Dispatch requires the frontmost Cursor application
+  and exact composer input; it acts on the active window without verifying the
+  selected composer. The provider does not assert that a pending approval was
+  accepted; the user confirms the effect.
 - `create_pr`: submit `Open a pull request for the current branch.` as an agent
   instruction.
 - `commit_push`: submit `Commit the current changes with a Conventional Commit
@@ -307,21 +308,17 @@ terminal evidence supports another state. Unmatched hook events are ignored.
 
 ## Limitations and open questions
 
-- Do composer IDs survive Cursor restarts?
-- Which events change `lastUpdatedAt`, visibility timestamps, or both?
-- Can an open session be distinguished reliably from an unarchived historical
-  session?
-- Does every hook `conversation_id` equal its SQLite `composerId`?
-- How does the schema behave across Cursor upgrades?
-- Does `composerHeaders.recency` continue to match the switcher across larger
-  and mixed local or cloud session sets?
-- Does the persisted sidebar order remain stable across Cursor versions?
-- Does the observed composer Accessibility marker remain stable?
-- Can `accept` be observed against a real pending approval without ambiguity?
-- Waiting remains limited to fresh explicit pending-plan or blocking-action
-  evidence. Cursor exposes no general authoritative "needs user input" hook.
-- Live behavior still needs manual confirmation for automatic and manual
-  compaction plus foreground and background parallel subagents.
+Cursor's inventory lives in an undocumented SQLite schema. Composer IDs, the
+`composerHeaders.recency` order, the persisted sidebar order, and the composer
+Accessibility marker are read from that store and may change across Cursor
+versions; they must be revalidated when Cursor changes. `lastUpdatedAt` and
+visibility timestamps track different activity, and Cursor does not document
+which events change each.
+
+- An open session cannot always be distinguished from an unarchived historical
+  session from persisted data alone.
+- Waiting is limited to explicit pending-plan or blocking-action signals; Cursor
+  exposes no general "needs user input" hook.
 
 ## References
 

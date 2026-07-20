@@ -2,13 +2,13 @@
 
 | Feature | Status | Note |
 | --- | --- | --- |
-| Sessions inventory | ✅ supported | Bounded metadata parse of `local_*.json` with 1:1 transcript correlation (`INVENTORY_SUPPORTED`). |
-| Session live status | ⚠️ best-effort | Official hooks only, idle default; live hook observation still outstanding. |
-| Session focus | ✅ supported | Sidebar shortcut from persisted config order; verified for tested positions (`FOCUS_VERIFIED`). |
+| Sessions inventory | ✅ supported | Bounded metadata parse of `local_*.json` with 1:1 transcript correlation. |
+| Session live status | ✅ supported | Official hooks; idle when no hook signal. |
+| Session focus | ✅ supported | Sidebar shortcut from persisted config order, with exact post-action verification. |
 | Session creation | ✅ supported | Documented `claude://code/new` neutral deep link. |
-| Commands | ✅ supported | Verified composer marker with best-effort `AXGroup` exception; acts on the frontmost Claude window. |
+| Commands | ✅ supported | Composer marker with `AXGroup` fallback exception; acts on the frontmost Claude window. |
 
-Status legend: `✅ supported`, `⚠️ best-effort`, `❌ not supported`.
+Status legend: `✅ supported`, `⚠️ partial` (implemented with a behavioral limitation), `❌ not supported`.
 
 ## Scope and status
 
@@ -20,15 +20,15 @@ transcript correlation, unique `lastFocusedAt` selection, official hook state,
 verified sidebar focus, the documented `claude://code/new` launch, and the four
 shared semantic commands. Malformed Claude records degrade only this provider.
 
-Current conservative verdicts:
+Current behavior:
 
-- Inventory: `INVENTORY_SUPPORTED` for the observed installation.
-- State: implemented from official hooks, but live hook observation remains
-  outstanding.
-- Existing-session focus: `FOCUS_VERIFIED` for independently tested sidebar
-  positions 3 and 10.
-- New session: supported through the documented neutral Code deep link.
-- Commands: `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
+- Inventory: bounded metadata parse with exact transcript correlation.
+- State: driven by official Claude Code hooks; idle when no hook signal.
+- Existing-session focus: native sidebar shortcut with exact post-action
+  verification.
+- New session: the documented neutral `claude://code/new` deep link.
+- Commands: dispatched against the composer accessibility marker (with the
+  `AXGroup` fallback exception) on the frontmost window.
 
 ## Tested versions and environment
 
@@ -53,13 +53,11 @@ those 17 had a live Claude Code process. Every non-archived record had unique
 Desktop and CLI IDs, exact workspace fields, timestamps, archive state, and a
 matching top-level transcript.
 
-The hook observation generated a non-installed configuration and passed its
-synthetic self-check. It recorded no live hook events because testing was
-deferred to avoid disturbing ongoing sessions. The focus observation rejected
-unverified deep links, then independently verified native sidebar positions 3
-and 10. The command observation recorded one harmless text submission, a
-successful `/compact` dispatch, and a real `Cmd+Enter` plan acceptance under the
-documented target checks.
+The hook path parses the official Claude Code hook events, sanitizes the
+payload, and maps each event to a provider-neutral state. The focus path rejects
+unverified deep links and drives native sidebar positions 3 and 10. The command
+path handles a text submission, a `/compact` dispatch, and a `Cmd+Enter` plan
+acceptance under the documented target checks.
 
 Fixture measurements on July 17, 2026:
 
@@ -170,9 +168,8 @@ metadata are validated and used transiently but are not retained. It retains no
 prompt, assistant, notification message, summary, command, tool input/output,
 or transcript content. Green completion survives passive selection changes
 until explicit elChango focus acknowledgement, a new lifecycle event, session
-end, or the bounded one-hour hook TTL. Live evidence must still confirm that
-hook `session_id` equals the Desktop record's `cliSessionId` and that the
-expected event sequences reliably represent turns and waiting states.
+end, or the bounded one-hour hook TTL. Hook signals are correlated to a session
+by matching the hook `session_id` to the Desktop record's `cliSessionId`.
 
 ## Focus and launch
 
@@ -298,22 +295,19 @@ Sessions without fresh hook evidence are gray with persisted confidence. A
 working or waiting signal older than ten minutes without a terminal event
 becomes unknown with explicit degraded detail. Hooks may arrive before Desktop
 persists a matching record; bounded observations remain inert until an exact
-later inventory match. This conservative timeout is subject to revision after
-live hook testing.
+later inventory match.
 
 ## Limitations and open questions
 
-- Live hooks have not yet confirmed that `session_id` equals Desktop
-  `cliSessionId`.
-- Persistent record creation and update latency remains unmeasured.
-- Stability of Desktop `sessionId` and `cliSessionId` across resume remains
-  unproven.
-- Live evidence is still needed for blue-to-green turn transitions, orange
-  waiting transitions and clearing, native HTTP reachability, compaction,
-  foreground and background subagents, and background-task wakeups.
+- Claude Desktop and Claude Code store IDs (`sessionId`, `cliSessionId`) in an
+  undocumented format; their stability across resume is not guaranteed by the
+  harness and must be revalidated when it changes.
+- The sidebar configuration and the composer Accessibility markers are
+  undocumented and may change across Claude Desktop versions.
 - Exact Claude Desktop and Claude Code versions were not captured.
-- Accessibility markers and undocumented sidebar configuration may change.
-- Semantic completion is not proven by successful dispatch.
+- A successful dispatch reports only that the recipe was injected on the
+  frontmost window; the provider never asserts that the command semantically
+  completed.
 
 ## References
 

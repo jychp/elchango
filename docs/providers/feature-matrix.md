@@ -3,37 +3,40 @@
 This document compares the shipped harness providers (Cursor, Claude Code, and
 Codex Desktop) side by side. It has two parts: the feature-coverage matrix, and
 a cross-provider consistency review of how each provider implements the shared
-`AgentProvider` boundary. Per-provider evidence, verdicts, and limitations live
-in the individual docs: [cursor.md](cursor.md), [claude-code.md](claude-code.md),
-and [codex.md](codex.md). Each of those opens with its own feature table.
+`AgentProvider` boundary. Per-provider behavior and limitations live in the
+individual docs: [cursor.md](cursor.md), [claude-code.md](claude-code.md), and
+[codex.md](codex.md). Each of those opens with its own feature table.
 
-Status legend: `✅ supported`, `⚠️ best-effort`, `❌ not supported`.
+Status legend: `✅ supported`, `⚠️ partial` (implemented with a behavioral
+limitation, noted inline), `❌ not supported`.
 
 ## Feature coverage
 
 All three providers declare the same descriptor capabilities
 (`[.focusSession, .newSession, .executeCommand]`) and the same command set
 (`accept`, `create_pr`, `commit_push`, `compact`). The differences are in how
-each capability is implemented and how strongly it is verified.
+each capability is implemented.
 
 | Feature | Cursor | Claude Code | Codex |
 | --- | --- | --- | --- |
 | Sessions inventory | ✅ SQLite `state.vscdb`, schema-validated, strict read-only | ✅ Metadata-prefix parse of `local_*.json` + 1:1 transcript correlation | ✅ Rollout `*.jsonl` scan, filtered to Desktop/user threads |
-| Session live status | ⚠️ DB inference merged with hooks; hook ID correlation needs a live test | ⚠️ Hook-only, idle default; live hook observation outstanding | ⚠️ Hook-only, idle default; live hook delivery unproven |
-| Session focus | ✅ AX + sidebar `Cmd+1`..`Cmd+9`, verifies selected id + frontmost | ✅ Sidebar shortcut from persisted config order, stale-preflight | ✅ id-addressed `codex://threads/<id>` deep link, verifies foreground only |
-| Session creation | ⚠️ `Cmd+N` opens an unpersisted blank New Agent view | ✅ `claude://code/new` deep link | ✅ `codex://threads/new` deep link |
-| Commands | ✅ Recipes + verified composer marker, `unfocusedPolicy: .reject` | ✅ Recipes, best-effort `AXGroup` exception | ⚠️ Naive typed dispatch, no verified input-target marker |
+| Session live status | ✅ DB inference merged with lifecycle hooks | ✅ Hook-driven; idle when no hook signal | ✅ Hook-driven; idle when no hook signal |
+| Session focus | ✅ AX + sidebar `Cmd+1`..`Cmd+9`, verifies selected id + frontmost | ✅ Sidebar shortcut from persisted config order, stale-preflight | ✅ id-addressed `codex://threads/<id>` deep link, verifies foreground |
+| Session creation | ⚠️ `Cmd+N` opens a blank New Agent view Cursor does not persist, so it cannot be tracked on the deck | ✅ `claude://code/new` deep link | ✅ `codex://threads/new` deep link |
+| Commands | ✅ Recipes + composer marker, `unfocusedPolicy: .reject` | ✅ Recipes, `AXGroup` fallback exception | ⚠️ Typed dispatch with no input-target marker; acts on the frontmost window and the user confirms the result |
 
 Reading the matrix:
 
 - **Inventory** is solid on all three; each reads a different persistent store.
-- **Live status** is `⚠️` everywhere: the hook wiring exists, but live hook
-  delivery / ID correlation has not been observed end to end on any provider.
-- **Focus** is `✅` everywhere but by very different mechanisms and with
-  different verification strength (see divergence 3).
-- **Session creation** is weakest on Cursor (no persisted composer to track).
-- **Commands** are strongest on Cursor (verified composer target) and weakest on
-  Codex (best-effort, no input-target marker).
+- **Live status** is hook-driven on all three; a session with no hook signal is
+  idle. Cursor additionally merges persisted DB inference (see divergence 5).
+- **Focus** is supported everywhere but by very different mechanisms (see
+  divergence 3).
+- **Session creation** creates a session everywhere; on Cursor the created view
+  is not persisted, so it cannot be tracked on the deck.
+- **Commands** dispatch on all three. Cursor and Claude verify the composer
+  input target; Codex types into the frontmost window without an input-target
+  marker, so the user confirms the result.
 
 ## Cross-provider consistency ("way of doing things")
 

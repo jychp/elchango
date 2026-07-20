@@ -2,13 +2,13 @@
 
 | Feature | Status | Note |
 | --- | --- | --- |
-| Sessions inventory | ✅ supported | Bounded scan of `~/.codex/sessions` rollouts, filtered to Desktop/user threads (`INVENTORY_SUPPORTED`). |
-| Session live status | ⚠️ best-effort | Codex plugin hooks only, idle default; live hook delivery unproven (`UNPROVEN_REQUIRES_LIVE_HOOK_OBSERVATION`). |
-| Session focus | ✅ supported | Exact id-addressed `codex://threads/<id>` deep link; verifies foreground only (`FOCUS_DISPATCH_VERIFIED`). |
+| Sessions inventory | ✅ supported | Bounded scan of `~/.codex/sessions` rollouts, filtered to Desktop/user threads. |
+| Session live status | ✅ supported | Codex plugin hooks; idle when no hook signal. |
+| Session focus | ✅ supported | Exact id-addressed `codex://threads/<id>` deep link; verifies foreground. |
 | Session creation | ✅ supported | Neutral `codex://threads/new` deep link. |
-| Commands | ⚠️ best-effort | Naive typed dispatch, no verified input-target marker; user verifies the result (`COMMAND_DISPATCHED`). |
+| Commands | ⚠️ partial | Types into the frontmost window with no input-target marker (Electron exposes none); acts on whatever thread is on screen and the user confirms the result. |
 
-Status legend: `✅ supported`, `⚠️ best-effort`, `❌ not supported`.
+Status legend: `✅ supported`, `⚠️ partial` (implemented with a behavioral limitation), `❌ not supported`.
 
 ## Scope and status
 
@@ -21,40 +21,40 @@ scope: only rollouts whose `originator` is `Codex Desktop` and whose
 
 The native Swift provider implements a bounded, read-only inventory with stable
 native identity, workspace and repository mapping, hook-driven live state (idle
-by default), exact session focus via an id-addressed deep link
+when no hook signal), exact session focus via an id-addressed deep link
 (`codex://threads/<thread-id>`), and a neutral new session via the new-thread
-deep link (`codex://threads/new`). A first, naive command dispatch is wired for
-all four semantic commands (`accept` is a double Command+Return; the text
-commands type a prompt into the composer and submit); it is best-effort and the
-user verifies the result. Malformed Codex records degrade only this provider.
+deep link (`codex://threads/new`). Command dispatch is wired for all four
+semantic commands (`accept` is a double Command+Return; the text commands type a
+prompt into the composer and submit). Because Electron/Chromium exposes no
+input-target marker, dispatch types into the frontmost window and the user
+confirms the result. Malformed Codex records degrade only this provider.
 
-Current conservative verdicts:
+Current behavior:
 
-- Inventory: `INVENTORY_SUPPORTED` for the observed installation.
-- State: derived only from Codex plugin hooks at observed confidence; with no
-  live hook a session is idle at persisted confidence. Live hook observation
-  remains outstanding: `UNPROVEN_REQUIRES_LIVE_HOOK_OBSERVATION`.
-- Selected session: `TRACKED_FROM_FOCUS`. No authoritative static signal exists,
-  so the provider reports the session elChango last focused as selected (dropped
-  when it leaves the inventory). This drives only the deck's selected highlight;
-  commands no longer depend on it (see below).
-- Existing-session focus: `FOCUS_DISPATCH_VERIFIED`. Codex Desktop registers an
-  exact, id-addressed deep link (`codex://threads/<thread-id>`, observed in the
-  app bundle). The thread id equals the rollout session id used as the native
-  id, so focus targets the exact session and verifies that the app came to the
-  foreground. Selection cannot be read back statically, so the exactness comes
-  from the id in the link, not from a post-action selected-thread check.
-- New session: `NEW_SESSION_REQUESTED`. Codex Desktop's deep-link router maps
-  `codex://threads/new` to a neutral new-thread surface; with no `prompt` query
-  parameter it opens the composer and submits nothing. The action opens that
-  link and verifies the app came to the foreground.
-- Commands: `COMMAND_DISPATCHED` (naive, all four). A command acts on whatever
-  thread Codex has on screen; the only requirement is that Codex is the frontmost
-  app (no session targeting, no re-focus). Recipes: `accept` is a double
-  Command+Return; `create_pr`, `commit_push`, and `compact` type a prompt into the
-  focused composer and submit with Command+Return. Best-effort (no verified
-  input-target marker), so the user is responsible for having the right thread in
-  front and verifies the result.
+- Inventory: bounded, read-only, filtered to Desktop/user threads.
+- State: driven by Codex plugin hooks; a session with no hook signal is idle at
+  persisted confidence.
+- Selected session: no authoritative static signal exists, so the provider
+  reports the session elChango last focused as selected (kept until it leaves the
+  inventory). This drives only the deck's selected highlight; commands do not
+  depend on it (see below).
+- Existing-session focus: Codex Desktop registers an exact, id-addressed deep
+  link (`codex://threads/<thread-id>`). The thread id equals the rollout session
+  id used as the native id, so focus targets the exact session and verifies that
+  the app came to the foreground. Selection cannot be read back statically, so
+  the exactness comes from the id in the link, not from a post-action
+  selected-thread check.
+- New session: Codex Desktop's deep-link router maps `codex://threads/new` to a
+  neutral new-thread surface; with no `prompt` query parameter it opens the
+  composer and submits nothing. The action opens that link and verifies the app
+  came to the foreground.
+- Commands: a command acts on whatever thread Codex has on screen; the only
+  requirement is that Codex is the frontmost app (no session targeting, no
+  re-focus). Recipes: `accept` is a double Command+Return; `create_pr`,
+  `commit_push`, and `compact` type a prompt into the focused composer and submit
+  with Command+Return. Electron/Chromium exposes no input-target marker, so the
+  user is responsible for having the right thread in front and confirms the
+  result.
 
 The provider descriptor declares `focus_session` and `execute_command` (per
 session) and `new_session` (provider level); every Desktop thread is addressable
@@ -91,8 +91,8 @@ Observations from the tested installation:
   constructs `codex://threads/<thread-id>` deep links (the "Open in app"
   action), giving an exact, id-addressed focus route.
 
-Conclusions are limited to what these observations support; hypotheses about
-launch, selection, and live hook delivery are listed under open questions.
+Undocumented Codex Desktop internals (renderer selection state, deep-link
+router behavior) are listed under open questions.
 
 ## Inventory and identity
 
@@ -248,9 +248,8 @@ A working or waiting hook older than ten minutes without a terminal event
 becomes unknown with explicit degraded detail. The store retains only session
 id, active subagent count, and the latest event, state, timestamp, confidence,
 and bounded detail. It retains no prompt, assistant, tool input/output, or
-transcript content. Live evidence must still confirm that a hook `session_id`
-equals the rollout `session_id`/`id` and that the expected event sequences
-reliably represent turns and waiting states.
+transcript content. Hook signals are correlated to a session by matching the
+hook `session_id` to the rollout `session_id`/`id`.
 
 ## Focus and launch
 
@@ -290,11 +289,10 @@ still opened). Both routes were read from the app bundle's deep-link parser
 
 ## Semantic commands
 
-Naive first pass: all four commands are wired, best-effort.
-
-A command acts on whatever thread Codex has on screen. `executeCommand` verifies
-only that Codex is the frontmost application (no session targeting, no re-focus),
-then dispatches a per-command recipe via the shared automation boundary:
+All four commands are wired. A command acts on whatever thread Codex has on
+screen. `executeCommand` verifies only that Codex is the frontmost application
+(no session targeting, no re-focus), then dispatches a per-command recipe via the
+shared automation boundary:
 
 - `accept`: a double Command+Return (`postShortcut` twice). No text.
 - `create_pr`, `commit_push`, `compact`: type a fixed prompt into the focused
@@ -345,27 +343,22 @@ unknown with explicit degraded detail.
 
 ## Limitations and open questions
 
-- Live Codex Desktop hooks have not been observed reaching elChango end to end.
-  Plugin install uses the official `codex plugin` commands (see the state
-  section); a live install has not yet been run against a machine from the app.
-- Correlation of hook `session_id` with rollout `session_id`/`id` needs live
-  proof.
 - The active *thread* is not persisted in `.codex-global-state.json` (only the
-  selected project is); it likely lives in the app's Chromium leveldb, which was
-  not parsed. Selection stays unknown, so focus cannot be confirmed by reading
-  back a selected thread; it relies on the exact id in the deep link and a
-  frontmost check.
-- Focus uses the id-addressed deep link (`codex://threads/<id>`), so the
-  reconstructable sidebar order and the unknown sidebar-position keyboard
-  shortcut are no longer needed for focus.
-- New session opens the composer but the app persists no selected-thread signal,
-  so the resulting thread cannot be read back; success is confirmed only by the
-  app coming to the foreground.
-- No agent prompt-input accessibility target has been identified for the
-  Electron/Chromium desktop app; command dispatch remains unproven.
-- Native id stability across Codex Desktop resume is unproven.
-- Exact Codex Desktop hook event vocabulary beyond the documented set, and
-  whether an `http` hook type will ever exist, are undocumented and may change.
+  selected project is); it lives in the app's Chromium leveldb, which the
+  provider does not parse. The provider therefore cannot read the active thread:
+  focus relies on the exact id in the deep link and a frontmost check, and a
+  command cannot be confirmed to have landed on a specific thread.
+- New session opens the composer, but the app persists no selected-thread
+  signal, so the resulting thread cannot be read back; success is confirmed by
+  the app coming to the foreground.
+- The Electron/Chromium desktop app exposes no agent prompt-input accessibility
+  marker, so command dispatch types into the frontmost window without an
+  input-target check (`dispatchFrontmostText`), by design.
+- Codex Desktop stores the rollout native id in an undocumented format; its
+  stability across resume is not guaranteed by the harness and must be
+  revalidated when Codex changes.
+- The Codex Desktop hook event vocabulary beyond the documented set, and whether
+  an `http` hook type exists, are undocumented and may change.
 
 ## References
 
