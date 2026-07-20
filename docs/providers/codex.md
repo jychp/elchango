@@ -161,9 +161,13 @@ observed confidence:
 Plugin install status is detected read-only by `CodexPluginInspector`, which
 classifies the elChango plugin under `~/.codex/plugins/cache/<marketplace>/elchango/<ref>/.codex-plugin/plugin.json`
 (missing, matching, mismatched, managed, malformed, or unreadable) and surfaces
-it in the app's Diagnostics. Detection is inspect-only: unlike Claude Code, no
-official command to install a local elChango Codex plugin is confirmed yet, so
-the app does not offer a Codex install action (mirroring Cursor).
+it in the app's Diagnostics. Install and update use Codex's official plugin
+commands via `CodexPluginInstaller`: `codex plugin marketplace add jychp/elchango`,
+then `codex plugin marketplace upgrade elchango`, then `codex plugin add
+elchango@elchango`. The menu offers Install/Update Codex Plugin when the plugin
+is missing or mismatched, mirroring the Claude Code flow. The `codex` executable
+is located across well-known paths plus `PATH`; identifiers are passed as fixed
+argument arrays with no shell involved.
 
 A working or waiting hook older than ten minutes without a terminal event
 becomes unknown with explicit degraded detail. The store retains only session
@@ -241,8 +245,9 @@ minutes becomes unknown with explicit degraded detail.
 
 ## Limitations and open questions
 
-- Live Codex Desktop hooks have not been observed reaching elChango, and the
-  install path for a local (non-marketplace) elChango plugin is unconfirmed.
+- Live Codex Desktop hooks have not been observed reaching elChango end to end.
+  Plugin install uses the official `codex plugin` commands (see the state
+  section); a live install has not yet been run against a machine from the app.
 - Correlation of hook `session_id` with rollout `session_id`/`id` needs live
   proof.
 - The active *thread* is not persisted in `.codex-global-state.json` (only the

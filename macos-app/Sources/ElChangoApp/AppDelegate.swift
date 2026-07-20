@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let codexBundleIdentifier = "com.openai.codex"
     private var lastStreamDeckInstallFailure: String?
     private var lastClaudeInstallFailure: String?
+    private var lastCodexInstallFailure: String?
     private var runtimeProfile: RuntimeProfile = .stable
     private var serviceLease: ServiceLease?
     private var service: LoopbackService?
@@ -238,6 +239,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             break
         }
 
+        switch codexPluginState {
+        case .pluginMissing:
+            let installItem = menu.addItem(
+                withTitle: "Install Codex Plugin",
+                action: #selector(installCodexPlugin),
+                keyEquivalent: ""
+            )
+            installItem.target = self
+            installItem.image = menuIcon(named: "square.and.arrow.down")
+        case .mismatched:
+            let updateItem = menu.addItem(
+                withTitle: "Update Codex Plugin",
+                action: #selector(installCodexPlugin),
+                keyEquivalent: ""
+            )
+            updateItem.target = self
+            updateItem.image = menuIcon(named: "arrow.down.circle")
+        case .codexNotDetected, .matching, .managed, .malformed, .unreadable:
+            break
+        }
+
         let diagnosticsItem = menu.addItem(
             withTitle: "Diagnostics",
             action: #selector(showDiagnostics),
@@ -370,6 +392,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc
+    private func installCodexPlugin() {
+        guard let executable = CodexCLILocator().locate() else {
+            lastCodexInstallFailure = "the codex CLI could not be found"
+            rebuildMenu()
+            return
+        }
+        // Run the official plugin commands off the main thread so the menu stays
+        // responsive; report the outcome through Diagnostics.
+        Task {
+            let result = await Task.detached {
+                await CodexPluginInstaller().install(
+                    codexExecutable: executable
+                )
+            }.value
+            switch result {
+            case .success:
+                lastCodexInstallFailure = nil
+            case .failure(let error):
+                lastCodexInstallFailure = error.localizedDescription
+            }
+            rebuildMenu()
+        }
+    }
+
+    @objc
     private func showDiagnostics() {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
@@ -464,25 +511,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let unavailable = unavailableProviderDetail(for: "codex") {
             return unavailable
         }
+        let stateDetail: String
         switch codexPluginState {
         case .codexNotDetected:
-            return "Codex not detected"
+            stateDetail = "Codex not detected"
         case .pluginMissing:
-            return "not installed"
+            stateDetail = "not installed"
         case .matching(let installedVersion):
-            return installedVersion
+            stateDetail = installedVersion
         case .mismatched(let installedVersion, let expectedVersion):
-            return "\(installedVersion) -> \(expectedVersion)"
+            stateDetail = "\(installedVersion) -> \(expectedVersion)"
         case .malformed:
-            return "malformed"
+            stateDetail = "malformed"
         case .managed(let version):
             if let version {
-                return "manual (\(version))"
+                stateDetail = "manual (\(version))"
+            } else {
+                stateDetail = "manual"
             }
-            return "manual"
         case .unreadable(let reason):
-            return "unreadable: \(reason)"
+            stateDetail = "unreadable: \(reason)"
         }
+        guard let failure = lastCodexInstallFailure else {
+            return stateDetail
+        }
+        return "\(stateDetail); last install failed: \(failure)"
     }
 
     private var streamDeckDiagnosticsDetail: String {

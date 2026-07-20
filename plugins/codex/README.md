@@ -28,9 +28,21 @@ The reporter forwards only a minimal, sanitized metadata subset
 `permission_mode`, `turn_id`) to `http://127.0.0.1:8765/api/hooks/codex`. It
 never forwards prompt, assistant, tool input/output, or transcript content.
 
+## Install
+
+elChango installs and updates this plugin through Codex's official commands:
+
+```text
+codex plugin marketplace add jychp/elchango
+codex plugin marketplace upgrade elchango
+codex plugin add elchango@elchango
+```
+
+The menu bar app offers **Install/Update Codex Plugin** when it detects the
+plugin is missing or out of date.
+
 ## Status
 
-Live hook delivery has not yet been verified end to end against Codex Desktop,
-and the install path for a local (non-marketplace) plugin is not yet confirmed.
+Live hook delivery has not yet been verified end to end against Codex Desktop.
 See `docs/providers/codex.md` for the current conservative verdicts and open
 questions.

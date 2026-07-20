@@ -20,9 +20,7 @@ public enum CodexPluginState: Equatable, Sendable {
     /// The installed manifest could not be read.
     case unreadable(String)
 
-    /// Whether an install action would apply. The menu does not currently render
-    /// a Codex action (the install path is not yet confirmed); the
-    /// classification is provided for symmetry and for Diagnostics.
+    /// Whether an install action would apply.
     public var needsInstall: Bool {
         self == .pluginMissing
     }
@@ -46,9 +44,8 @@ public protocol CodexPluginInspecting: Sendable {
 
 /// Codex Desktop caches marketplace plugins under
 /// `~/.codex/plugins/cache/<marketplace>/<plugin>/<ref>/.codex-plugin/plugin.json`,
-/// the same shape Cursor uses. This inspector is read-only: the exact install
-/// path for a local elChango plugin is not yet confirmed (see
-/// `docs/providers/codex.md`), so no installer is provided.
+/// the same shape Cursor uses. This inspector is read-only; `CodexPluginInstaller`
+/// performs installs and updates through the official `codex plugin` commands.
 public struct CodexPluginInspector: CodexPluginInspecting, Sendable {
     /// The directory name Codex uses for the elChango plugin.
     public static let pluginName = "elchango"
@@ -57,6 +54,16 @@ public struct CodexPluginInspector: CodexPluginInspecting, Sendable {
     /// contain. This guards against an unrelated plugin that merely happens to
     /// be named `elchango`.
     public static let officialRepositoryFragment = "jychp/elchango"
+
+    /// The marketplace source passed to `codex plugin marketplace add`.
+    public static let marketplaceReference = "jychp/elchango"
+
+    /// The registered marketplace name passed to `codex plugin marketplace
+    /// upgrade`. It is the `name` declared in the marketplace manifest.
+    public static let marketplaceName = "elchango"
+
+    /// The plugin selector passed to `codex plugin add` (PLUGIN@MARKETPLACE).
+    public static let pluginReference = "elchango@elchango"
 
     private let expectedVersion: String
     private let pluginsRootURL: URL

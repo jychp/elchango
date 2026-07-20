@@ -201,13 +201,18 @@ If the provider ships a hook plugin, also wire it so `make test` covers it:
 6. add a read-only `<Provider>PluginInspector` in
    `macos-app/Sources/ElChangoCore/System/` that classifies whether the elChango
    plugin is installed (missing / matching / mismatched / managed / malformed /
-   unreadable), modeled on `CursorPluginInspector` (which reads the marketplace
-   cache) or `ClaudeCodePluginInspector` (which uses the harness CLI). Detect the
-   host app by bundle id with `NSWorkspace.urlForApplication`. Surface it in
-   `AppDelegate` Diagnostics and in the `providerStatuses` map. Add an installer
-   and a menu install action only when an official, evidence-backed install
-   command exists (as Claude Code has); otherwise keep it inspect-only (as
-   Cursor and Codex are) rather than inventing an install path.
+   unreadable), modeled on `CursorPluginInspector`/`CodexPluginInspector` (which
+   read the marketplace cache) or `ClaudeCodePluginInspector` (which uses the
+   harness CLI). Detect the host app by bundle id with
+   `NSWorkspace.urlForApplication`. Surface it in `AppDelegate` Diagnostics and
+   in the `providerStatuses` map.
+7. add a `<Provider>PluginInstaller` (and menu Install/Update actions) only when
+   the harness exposes an official, evidence-backed install command. Verify it
+   from the harness CLI's own `--help` before implementing (for example
+   `codex plugin add PLUGIN@MARKETPLACE` after `codex plugin marketplace add
+   owner/repo`, mirrored on `ClaudePluginInstaller`); pass identifiers as fixed
+   argument arrays with no shell. If no official command exists, keep the
+   provider inspect-only (as Cursor is) rather than inventing an install path.
 
 ## 8. Add the icon across contracts
 
