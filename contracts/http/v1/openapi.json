@@ -216,7 +216,6 @@
           "waiting",
           "done",
           "error",
-          "unknown",
           "control"
         ]
       },

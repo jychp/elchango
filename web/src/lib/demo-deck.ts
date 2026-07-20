@@ -71,6 +71,15 @@ export const demoSessions = [
     selected: false,
   },
   {
+    id: 'codex:refactor',
+    providerId: 'codex',
+    label: 'Codex',
+    detail: 'Codex',
+    icon: 'codex',
+    color: 'idle',
+    selected: false,
+  },
+  {
     id: 'cursor:monkeycoding',
     providerId: 'cursor',
     label: 'Cursor',

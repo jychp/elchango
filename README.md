@@ -5,8 +5,8 @@
 </p>
 
 elChango turns a physical Stream Deck into a dedicated control surface for
-native AI coding sessions on macOS. Its 15 keys show Cursor and Claude Code
-sessions at a glance, then let you return to the right session, start a new one,
+native AI coding sessions on macOS. Its 15 keys show Cursor, Claude Code, and
+Codex sessions at a glance, then let you return to the right session, start a new one,
 and run a small set of verified commands without leaving the hardware.
 
 The physical Stream Deck MK.2 experience is the main product. You can try the
@@ -23,7 +23,7 @@ guessing.
 - A Stream Deck MK.2 profile with a complete 5-by-3 physical control surface.
 - Support for the six-key free Stream Deck Mobile tier, with Mobile Pro required
   for the complete 5-by-3 layout.
-- A native menu bar app that discovers local Cursor and Claude Code sessions.
+- A native menu bar app that discovers local Cursor, Claude Code, and Codex sessions.
 - A browser fallback for setup, testing, and troubleshooting.
 - Shared working, waiting, done, error, idle, and degraded status.
 - Verified session focus and neutral new-session launch.
@@ -31,13 +31,13 @@ guessing.
   selected provider and session support them.
 
 <p align="center">
-  <img src="docs/assets/elchango-deck-demo.png" alt="elChango 15-key deck showing session states, Cursor and Claude providers, and agent controls" width="1024">
+  <img src="docs/assets/elchango-deck-demo.png" alt="elChango 15-key deck showing session states, Cursor, Claude, and Codex providers, and agent controls" width="1024">
 </p>
 
 ## Requirements
 
 - macOS 14 or newer.
-- Cursor and/or Claude Desktop with Claude Code sessions.
+- Cursor, Claude Desktop with Claude Code sessions, and/or the Codex desktop app.
 - Accessibility permission for session focus and commands.
 - Stream Deck 7.1 or newer for Stream Deck Mobile or the physical surface.
 
@@ -152,6 +152,22 @@ claude plugin install elchango@elchango
 
 Start elChango before beginning or resuming a Claude Code session. See the
 [Claude Code plugin guide](plugins/claude/README.md) for hook coverage.
+
+### Codex
+
+When the plugin is missing or out of date, the elChango menu offers **Install
+Codex Plugin** or **Update Codex Plugin**, which runs the official commands below
+for you. To do it manually, or if the `codex` CLI is not on your `PATH` (reported
+under **Diagnostics**), run:
+
+```bash
+codex plugin marketplace add jychp/elchango
+codex plugin add elchango@elchango
+```
+
+To update later, run `codex plugin marketplace upgrade elchango`. Start elChango
+before beginning or resuming a Codex session. See the
+[Codex plugin guide](plugins/codex/README.md) for hook coverage.
 
 ## Use and personalize the deck
 

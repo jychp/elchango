@@ -126,7 +126,16 @@ Map signals conservatively to:
 - orange: `waiting`;
 - red: rendered terminal `error`;
 - green: `done`;
-- gray: `idle` or unknown.
+- gray: `idle` (and `unknown`, which has no dedicated color and renders gray).
+
+Live state comes only from hooks. A session with no live hook signal must be
+`idle` at persisted confidence, exactly as the Claude Code and Codex providers do
+(`state: activity?.0 ?? .idle`). Never derive `working`/`waiting`/`done` from
+persisted files (a rollout tail, a database row): doing so paints the deck with a
+stale green/blue state by default. Persisted files may still be read to order
+sessions by last activity, but never to set a state. There is no `unknown`
+`DeckColor`; a `SessionState.unknown` (for example a stale-expired hook) maps to
+gray via `DeckLayout.displayColor`.
 
 Expire stale working or waiting signals when an expected terminal event never
 arrives. Retain metadata only, never prompts, responses, or transcript content.

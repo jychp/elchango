@@ -6,7 +6,6 @@ const SIGNAL_COLORS = {
   waiting: "#e4a83c",
   done: "#57b77a",
   error: "#de5c58",
-  unknown: "#8b7da0",
   control: "#adb4ba",
 } as const;
 const CONTROL_ICON_COLOR = "#e0e4e7";

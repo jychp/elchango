@@ -18,9 +18,9 @@ Codex records degrade only this provider.
 Current conservative verdicts:
 
 - Inventory: `INVENTORY_SUPPORTED` for the observed installation.
-- State: implemented from rollout tails at persisted confidence and from Codex
-  plugin hooks at observed confidence, but live hook observation remains
-  outstanding: `UNPROVEN_REQUIRES_LIVE_HOOK_OBSERVATION`.
+- State: derived only from Codex plugin hooks at observed confidence; with no
+  live hook a session is idle at persisted confidence. Live hook observation
+  remains outstanding: `UNPROVEN_REQUIRES_LIVE_HOOK_OBSERVATION`.
 - Selected session: `UNPROVEN_NO_STATIC_SELECTED_SESSION_SIGNAL`. No
   authoritative static signal was found, so selection is always reported as
   unknown.
@@ -130,19 +130,15 @@ workspace identity.
 
 ## State model and hooks
 
-State has two sources, preferring live hooks over the persisted fallback.
+Live state comes only from hooks. A session with no live hook signal is idle
+(gray) at persisted confidence, matching the Claude Code provider: green (done),
+blue (working), and orange (waiting) are never derived from persisted files, so
+the deck never shows a stale done/working state by default.
 
-Persisted fallback (no live hook): the provider scans a bounded rollout tail for
-the newest `event_msg` lifecycle marker and maps it at persisted confidence:
-
-- `task_started` (no later terminal marker): blue, working;
-- `task_complete`: green, done;
-- `turn_aborted`: gray, idle;
-- no marker: gray, idle.
-
-Observation, not conclusion: no persisted "waiting for approval" record was
-found in Desktop rollouts, so the waiting (orange) state is not derivable from
-rollouts.
+The provider still scans a bounded rollout tail, but only to timestamp the
+newest `event_msg` lifecycle marker (`task_started`, `task_complete`,
+`turn_aborted`) for last-activity ordering; the marker never sets a session
+state.
 
 Live hooks: Codex supports a plugin hook system with the same file schema and
 payload field names as Claude Code, but only `type: "command"` handlers run, so
@@ -239,9 +235,9 @@ is claimed.
 Malformed records, absent required metadata, and unreadable rollouts reject or
 skip only the affected record and never disable Cursor or Claude or prevent the
 host from starting. A missing `~/.codex/sessions` directory fails the Codex
-snapshot alone. Sessions without a fresh hook are reported at persisted
-confidence from the rollout tail; a stale working or waiting hook older than ten
-minutes becomes unknown with explicit degraded detail.
+snapshot alone. Sessions without a fresh hook are reported as idle at persisted
+confidence; a stale working or waiting hook older than ten minutes becomes
+unknown with explicit degraded detail.
 
 ## Limitations and open questions
 

@@ -44,6 +44,8 @@ public actor CodexProvider: AgentProvider {
     public static let desktopThreadSource = "user"
     public static let maximumMetadataPrefixBytes = 1_024 * 1_024
     public static let tailScanBytes = 256 * 1_024
+    static let idleStateDetail =
+        "Persistent Codex Desktop session; no live hook signal"
     public static let commands: Set<CommandID> = [
         .accept, .createPR, .commitPush, .compact,
     ]
@@ -106,7 +108,6 @@ public actor CodexProvider: AgentProvider {
                     for: record.nativeID,
                     observedAtMilliseconds: observedAtMilliseconds
                 )
-                let fallback = record.tailState
                 sessions.append(
                     AgentSession(
                         providerID: descriptor.id,
@@ -117,9 +118,9 @@ public actor CodexProvider: AgentProvider {
                             ?? "Untitled Codex session",
                         workspaceID: record.workspaceID,
                         workspacePath: record.cwd,
-                        state: activity?.0 ?? fallback.0,
-                        confidence: activity?.1 ?? fallback.1,
-                        stateDetail: activity?.2 ?? fallback.2,
+                        state: activity?.0 ?? .idle,
+                        confidence: activity?.1 ?? .persisted,
+                        stateDetail: activity?.2 ?? Self.idleStateDetail,
                         selected: false,
                         lastActivityAtMilliseconds:
                             record.lastActivityAtMilliseconds,
@@ -337,8 +338,7 @@ public actor CodexProvider: AgentProvider {
             nativeID: nativeID,
             cwd: cwd,
             workspaceID: repositoryURL ?? cwd,
-            lastActivityAtMilliseconds: lastActivity,
-            tailState: tail.state
+            lastActivityAtMilliseconds: lastActivity
         )
     }
 
@@ -492,7 +492,6 @@ public actor CodexProvider: AgentProvider {
         if size > Int64(tailScanBytes), !lines.isEmpty {
             lines.removeFirst()  // drop a possibly partial first line
         }
-        var marker: String?
         var markerAtMilliseconds: Int64?
         for line in lines {
             guard let lineData = line.data(using: .utf8),
@@ -505,10 +504,9 @@ public actor CodexProvider: AgentProvider {
             else {
                 continue
             }
-            marker = eventType
             markerAtMilliseconds = parseISOMilliseconds(record["timestamp"])
         }
-        return CodexTail(marker: marker, lastEventAtMilliseconds: markerAtMilliseconds)
+        return CodexTail(lastEventAtMilliseconds: markerAtMilliseconds)
     }
 
     private static func fileStatus(
@@ -555,36 +553,17 @@ private struct CodexSessionRecord {
     let cwd: String
     let workspaceID: String
     let lastActivityAtMilliseconds: Int64
-    let tailState: (SessionState, DeckConfidence, String)
 }
 
 private struct CodexTail {
+    // Live session state comes only from hook signals (the activity store);
+    // the rollout tail is scanned solely to timestamp the last lifecycle event
+    // for ordering, never to derive a state such as `done`.
     static let lifecycleMarkers: Set<String> = [
         "task_started", "task_complete", "turn_aborted",
     ]
 
-    let marker: String?
     let lastEventAtMilliseconds: Int64?
-
-    var state: (SessionState, DeckConfidence, String) {
-        switch marker {
-        case "task_started":
-            return (
-                .working, .persisted,
-                "Persistent Codex Desktop session; rollout shows an in-progress turn"
-            )
-        case "task_complete":
-            return (
-                .done, .persisted,
-                "Persistent Codex Desktop session; rollout shows a completed turn"
-            )
-        default:
-            return (
-                .idle, .persisted,
-                "Persistent Codex Desktop session; no fresh hook signal"
-            )
-        }
-    }
 }
 
 private struct CachedCodexRecord {

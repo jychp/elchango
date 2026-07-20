@@ -47,8 +47,10 @@ struct CodexProviderTests {
                 $0.nativeID == "11111111-1111-7111-8111-111111111111"
             }
         )
-        // The alpha thread has two rollouts; the newest completed turn wins.
-        #expect(alpha.state == .done)
+        // Persisted rollouts never derive a live state: without a hook signal
+        // the session is idle. The newest rollout still sets last activity.
+        #expect(alpha.state == .idle)
+        #expect(alpha.confidence == .persisted)
         #expect(alpha.lastActivityAtMilliseconds == 1_783_617_000_000)
     }
 
@@ -96,7 +98,7 @@ struct CodexProviderTests {
         #expect(snapshot.sessions.isEmpty)
     }
 
-    @Test("a fresh hook overrides the persisted tail state")
+    @Test("a fresh hook provides live state over the idle default")
     func hookOverridesTailState() async throws {
         let fixture = try CodexTemporaryFixture()
         let activity = CodexActivityStore()
@@ -122,7 +124,8 @@ struct CodexProviderTests {
             observedAtMilliseconds: 100
         )
         let session = try #require(try await provider.snapshot().sessions.first)
-        // Tail says done; the fresh hook says working at observed confidence.
+        // Without a hook the session is idle; the fresh hook makes it working
+        // at observed confidence.
         #expect(session.state == .working)
         #expect(session.confidence == .observed)
     }
@@ -138,7 +141,10 @@ struct CodexProviderTests {
                 """#,
             events: [("2026-07-09T10:00:05.000Z", "task_started")]
         )
-        #expect(try await provider.snapshot().sessions.first?.state == .working)
+        #expect(
+            try await provider.snapshot().sessions.first?
+                .lastActivityAtMilliseconds == 1_783_591_205_000
+        )
 
         try fixture.writeRollout(
             name: "rollout-2026-07-09T10-00-00-grow.jsonl",
@@ -150,7 +156,12 @@ struct CodexProviderTests {
                 ("2026-07-09T10:05:00.000Z", "task_complete"),
             ]
         )
-        #expect(try await provider.snapshot().sessions.first?.state == .done)
+        // The cache re-reads the grown rollout, so last activity advances to
+        // the newer lifecycle event.
+        #expect(
+            try await provider.snapshot().sessions.first?
+                .lastActivityAtMilliseconds == 1_783_591_500_000
+        )
     }
 
     @Test("privileged actions fail closed pending live verification")
