@@ -150,10 +150,11 @@ Live hooks: Codex supports a plugin hook system with the same file schema and
 payload field names as Claude Code, but only `type: "command"` handlers run, so
 elChango relays through `elChangoHookReporter --provider codex` (as the Cursor
 plugin does), which POSTs a sanitized payload to
-`http://127.0.0.1:8765/api/hooks/codex`. `CodexActivityStore` maps events at
-observed confidence:
+`http://127.0.0.1:8765/api/hooks/codex`. The ten events are exactly those in the
+official docs (https://learn.chatgpt.com/docs/hooks); Codex has no `SessionEnd`
+event. `CodexActivityStore` maps them at observed confidence:
 
-- `SessionStart`, `SessionEnd`: gray, idle;
+- `SessionStart`: gray, idle;
 - `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PreCompact`, `PostCompact`,
   `SubagentStart`, `SubagentStop`: blue, working;
 - `PermissionRequest`: orange, waiting (with the tool name);
@@ -170,6 +171,28 @@ elchango@elchango`. The menu offers Install/Update Codex Plugin when the plugin
 is missing or mismatched, mirroring the Claude Code flow. The `codex` executable
 is located across well-known paths plus `PATH`; identifiers are passed as fixed
 argument arrays with no shell involved.
+
+`marketplace add` reads the marketplace manifest from the repo's
+`.agents/plugins/marketplace.json` (Codex's primary location; it also accepts the
+legacy `.claude-plugin/marketplace.json`, but never `.codex-plugin/marketplace.json`).
+elChango therefore ships the Codex marketplace at `.agents/plugins/marketplace.json`
+with `source: ./plugins/codex`, kept separate from the Claude
+(`.claude-plugin/marketplace.json`) and Cursor (`.cursor-plugin/marketplace.json`)
+marketplaces.
+
+Trusting the hooks (required). Codex does not run a plugin's command hooks until
+they are trusted: "Non-managed command hooks must be reviewed and trusted before
+they run." Installing the plugin is not enough. The first time a Codex session
+loads the plugin, Codex prompts to review and trust its command hooks; approve
+them so `elChangoHookReporter` may run. Trust is persisted per hook in
+`~/.codex/config.toml` under
+`[hooks.state."elchango@<marketplace>:hooks/hooks.json:<event>:0:0"]` as a
+`trusted_hash` (a sha256 of the exact command); changing the hook command
+re-prompts. There is no dedicated `codex plugin trust` CLI command. For
+non-interactive or CI runs only, `codex --dangerously-bypass-hook-trust` runs
+enabled hooks without the trust gate for that invocation; it is dangerous and is
+not recommended for normal use. Until the hooks are trusted, the deck still shows
+Codex sessions as idle at persisted confidence (no live state).
 
 A working or waiting hook older than ten minutes without a terminal event
 becomes unknown with explicit degraded detail. The store retains only session

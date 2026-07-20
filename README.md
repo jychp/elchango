@@ -165,9 +165,12 @@ codex plugin marketplace add jychp/elchango
 codex plugin add elchango@elchango
 ```
 
-To update later, run `codex plugin marketplace upgrade elchango`. Start elChango
-before beginning or resuming a Codex session. See the
-[Codex plugin guide](plugins/codex/README.md) for hook coverage.
+To update later, run `codex plugin marketplace upgrade elchango`. The first time
+a Codex session loads the plugin, Codex prompts to review and trust its command
+hooks: approve them, or the reporter never runs and sessions stay idle on the
+deck. Start elChango before beginning or resuming a Codex session. See the
+[Codex plugin guide](plugins/codex/README.md) for hook coverage and trust
+details.
 
 ## Use and personalize the deck
 

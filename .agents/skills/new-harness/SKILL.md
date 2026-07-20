@@ -105,8 +105,13 @@ alongside the existing stores) and expose a loopback hook recorder through:
 
 Implement `recordHook(_:observedAtMilliseconds:)` on the provider and route it
 through the existing provider registry. The HTTP route `/api/hooks/<provider_id>`
-is already provider-agnostic (`FoundationHTTPHandler` -> `DeckService.recordHook`
-looks the provider up by id), so no surface change is needed.
+dispatches by id (`FoundationHTTPHandler` -> `DeckService.recordHook`), but it is
+gated by an allow-list: **you must add the new `<provider_id>` to
+`FoundationHTTPHandler.defaultAllowedHookProviderIDs`**, or every hook POST is
+rejected with `hook provider is not supported` and live state silently never
+appears. This is easy to miss because the test helpers add the provider id to the
+allow-list automatically; add a test that exercises the shipped default (see
+`defaultHookProvidersIncludeAllShippedPlugins`).
 
 The relay mechanism depends on the harness's hook type:
 
@@ -118,7 +123,13 @@ The relay mechanism depends on the harness's hook type:
   `elChangoHookReporter --provider <provider_id>`, which POSTs the sanitized
   payload. Read the harness's official hook docs first: capture the exact event
   names, payload field names, and whether an HTTP hook type exists; record
-  absent evidence rather than inferring.
+  absent evidence rather than inferring. Declare only events the official docs
+  list: do not copy another harness's set (for example Claude Code's `SessionEnd`
+  does not exist in Codex, and declaring it registers a dead hook). Also check
+  whether the harness gates command hooks behind a trust step: Codex will not run
+  a plugin's command hooks until the user reviews and trusts them (persisted in
+  `~/.codex/config.toml` under `[hooks.state]`), so document that the user must
+  trust the hooks or no live state appears.
 
 Map signals conservatively to:
 
@@ -154,6 +165,12 @@ Before acting:
 
 Return `accepted=True` only for an exact verified target. Otherwise return a
 conservative verdict and keep the deck action rejected.
+
+On a verified focus, acknowledge the session's terminal signal in its activity
+store (`activityStore.acknowledge(nativeSessionID, observedAtMilliseconds:)`), as
+the Claude Code and Codex providers do. Without this, a `done` (green) tile never
+returns to idle when the user focuses it, diverging from the other providers. The
+store maps an acknowledged completion back to idle.
 
 ### New session
 
@@ -197,9 +214,17 @@ If the provider ships a hook plugin, also wire it so `make test` covers it:
 
 1. add `plugins/<provider>/` mirroring an existing plugin: its manifest (for
    example `.codex-plugin/plugin.json` with `"hooks": "./hooks/hooks.json"`),
-   `hooks/hooks.json`, `README.md`, and `CHANGELOG.md`;
-2. add the root marketplace file `.<provider>-plugin/marketplace.json`
-   (`source` = `./plugins/<provider>`, versions matching `VERSION`);
+   `hooks/hooks.json`, `README.md`, and `CHANGELOG.md`. If the harness's manifest
+   supports a logo/icon, ship one so the plugin is not blank in the harness UI
+   (Codex uses an `interface` block with `logo`/`composerIcon`); reuse the
+   elChango logo from `docs/assets/`;
+2. add the root marketplace file in the location the harness reads
+   (`source` = `./plugins/<provider>`, versions matching `VERSION`). Confirm the
+   exact path against the harness docs, do not assume: Claude Code and Cursor use
+   `.<provider>-plugin/marketplace.json`, but Codex reads
+   `.agents/plugins/marketplace.json` (or the legacy `.claude-plugin/marketplace.json`)
+   and ignores `.codex-plugin/marketplace.json`. Verify with a local
+   `<harness> plugin marketplace add <path>` before shipping;
 3. add a `validate_<provider>()` and a CLI choice to
    `scripts/validate_provider_plugins.py`, asserting the exact event set and the
    fail-open hook contract;

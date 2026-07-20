@@ -193,6 +193,14 @@ public actor CodexProvider: AgentProvider {
         // cannot be read back. Verify that the app came to the foreground; the
         // exactness comes from the id carried in the deep link.
         let frontmost = await waitForFrontmost()
+        if frontmost {
+            // Focusing a completed session acknowledges its terminal signal so a
+            // green (done) tile returns to idle, matching the other providers.
+            activityStore.acknowledge(
+                nativeSessionID,
+                observedAtMilliseconds: clock()
+            )
+        }
         return ProviderActionResult(
             accepted: frontmost,
             verdict: frontmost

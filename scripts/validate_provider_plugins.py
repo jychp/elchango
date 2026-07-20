@@ -113,6 +113,8 @@ def validate_manifest(provider: str, hidden_directory: str) -> None:
     }
     if provider == "claude":
         allowed.add("$schema")
+    if provider == "codex":
+        allowed.add("interface")
     require_allowed_keys(manifest, allowed, path)
     require(manifest.get("name") == "elchango", f"{path}: invalid name")
     require(
@@ -138,6 +140,24 @@ def validate_manifest(provider: str, hidden_directory: str) -> None:
         f"{path}: hooks path escapes the plugin",
     )
     require(hook_path.is_file(), f"{path}: hooks file does not exist")
+
+    interface = manifest.get("interface")
+    if interface is not None:
+        require(isinstance(interface, dict), f"{path}: interface must be an object")
+        for asset_key in ("logo", "composerIcon"):
+            asset = interface.get(asset_key)
+            if asset is None:
+                continue
+            require(isinstance(asset, str), f"{path}: interface.{asset_key} must be a path")
+            asset_path = (path.parents[1] / asset).resolve()
+            require(
+                asset_path.is_relative_to(path.parents[1].resolve()),
+                f"{path}: interface.{asset_key} escapes the plugin",
+            )
+            require(
+                asset_path.is_file(),
+                f"{path}: interface.{asset_key} file does not exist",
+            )
 
 
 def validate_cursor() -> None:
@@ -239,7 +259,9 @@ def validate_claude() -> None:
 
 
 def validate_codex() -> None:
-    validate_marketplace("codex", ".codex-plugin")
+    # Codex reads the marketplace manifest from `.agents/plugins/marketplace.json`
+    # (or the legacy `.claude-plugin/marketplace.json`), never `.codex-plugin`.
+    validate_marketplace("codex", ".agents/plugins")
     validate_manifest("codex", ".codex-plugin")
     path = ROOT / "plugins/codex/hooks/hooks.json"
     document = load_object(path)
@@ -258,7 +280,6 @@ def validate_codex() -> None:
         "SubagentStart": None,
         "SubagentStop": None,
         "Stop": None,
-        "SessionEnd": None,
     }
     require(set(hooks) == set(expected_matchers), f"{path}: unexpected events")
     expected_command = {

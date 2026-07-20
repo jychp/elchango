@@ -8,6 +8,16 @@ struct FoundationHTTPHandlerTests {
     private let authority = "127.0.0.1:8765"
     private let controlToken = "test-control-token"
 
+    @Test("shipped default accepts every hook-capable provider route")
+    func defaultHookProvidersIncludeAllShippedPlugins() {
+        // Guards against a provider shipping a hook plugin whose /api/hooks/<id>
+        // route is silently rejected by the production default allow-list.
+        #expect(
+            FoundationHTTPHandler.defaultAllowedHookProviderIDs
+                == ["cursor", "claude-code", "codex"]
+        )
+    }
+
     @Test("health exposes degradation without blocking the host")
     func health() async throws {
         let handler = try makeHandler(

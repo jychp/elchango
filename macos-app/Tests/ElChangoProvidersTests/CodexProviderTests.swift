@@ -204,6 +204,41 @@ struct CodexProviderTests {
         )
     }
 
+    @Test("focusing a completed session clears the done state to idle")
+    func focusAcknowledgesCompletion() async throws {
+        let fixture = try CodexTemporaryFixture()
+        let activity = CodexActivityStore()
+        let automation = CodexAutomation(frontmostBundleID: CodexProvider.bundleID)
+        let provider = CodexProvider(
+            sessionsRootURL: fixture.sessionsRoot,
+            sessionIndexURL: fixture.sessionIndex,
+            activityStore: activity,
+            automation: automation,
+            clock: { 1_000 }
+        )
+        try fixture.writeRollout(
+            name: "rollout-2026-07-09T10-00-00-done.jsonl",
+            metaPayload: #"""
+                {"id":"done-thread","cwd":"/tmp/done","originator":"Codex Desktop","thread_source":"user","timestamp":"2026-07-09T10:00:00.000Z"}
+                """#,
+            events: []
+        )
+        _ = try await provider.recordHook(
+            ProviderHookPayload(
+                hookEventName: "Stop",
+                sessionID: "done-thread",
+                cwd: "/tmp/done"
+            ),
+            observedAtMilliseconds: 100
+        )
+        #expect(try await provider.snapshot().sessions.first?.state == .done)
+
+        let focus = try await provider.focus(nativeSessionID: "done-thread")
+        #expect(focus.accepted)
+        // Focusing acknowledges the completion, so the tile returns to idle.
+        #expect(try await provider.snapshot().sessions.first?.state == .idle)
+    }
+
     @Test("new-session and commands fail closed pending live verification")
     func actionsFailClosed() async throws {
         let fixture = CodexSharedFixture()
@@ -253,11 +288,14 @@ struct CodexProviderTests {
             )
             return observation?.state ?? .unknown
         }
-        #expect(record("UserPromptSubmit", at: 1) == .working)
-        #expect(record("PermissionRequest", tool: "shell", at: 2) == .waiting)
-        #expect(record("PostToolUse", at: 3) == .working)
-        #expect(record("Stop", at: 4) == .done)
-        #expect(record("SessionEnd", at: 5) == .idle)
+        #expect(record("SessionStart", at: 1) == .idle)
+        #expect(record("UserPromptSubmit", at: 2) == .working)
+        #expect(record("PermissionRequest", tool: "shell", at: 3) == .waiting)
+        #expect(record("PostToolUse", at: 4) == .working)
+        #expect(record("Stop", at: 5) == .done)
+        // SessionEnd is not a Codex hook event (per the official docs), so it is
+        // rejected rather than mapped.
+        #expect(record("SessionEnd", at: 6) == .unknown)
     }
 
     @Test("stale working hook degrades to unknown")

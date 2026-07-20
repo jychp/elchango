@@ -15,9 +15,10 @@ its web and Stream Deck surfaces can display live session state.
 Codex uses the same hook file schema as Claude Code, but only `type: "command"`
 handlers run, so this plugin relays each event through the elChango reporter
 command instead of an HTTP handler. The plugin registers fail-open handlers for
-`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`,
-`PostToolUse`, `PreCompact`, `PostCompact`, `SubagentStart`, `SubagentStop`,
-`Stop`, and `SessionEnd`. Each handler invokes:
+the ten Codex hook events (per the official docs,
+https://learn.chatgpt.com/docs/hooks): `SessionStart`, `UserPromptSubmit`,
+`PreToolUse`, `PermissionRequest`, `PostToolUse`, `PreCompact`, `PostCompact`,
+`SubagentStart`, `SubagentStop`, and `Stop`. Each handler invokes:
 
 ```text
 /Applications/elChango.app/Contents/MacOS/elChangoHookReporter --provider codex
@@ -40,6 +41,17 @@ codex plugin add elchango@elchango
 
 The menu bar app offers **Install/Update Codex Plugin** when it detects the
 plugin is missing or out of date.
+
+### Trust the hooks
+
+Codex does not run a plugin's command hooks until they are trusted. The first
+time a Codex session loads this plugin, Codex prompts to review and trust its
+command hooks: approve them so the reporter may run. Trust is persisted per hook
+in `~/.codex/config.toml` under `[hooks.state]` as a `trusted_hash`, and a
+changed hook command re-prompts. There is no dedicated `codex plugin trust`
+command; `codex --dangerously-bypass-hook-trust` skips the gate for a single
+invocation but is dangerous and is not for normal use. Until the hooks are
+trusted, sessions stay idle on the deck (no live state).
 
 ## Status
 

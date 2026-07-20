@@ -19,10 +19,11 @@ Codex supports a plugin hook system with the same file schema as Claude Code
   parsed but skipped. There is no ``http`` hook type. elChango therefore relays
   through the existing ``elChangoHookReporter`` command (as the Cursor plugin
   does), not an HTTP hook (as the Claude Code plugin does).
-- Supported events: thread/session scope ``SessionStart``, ``SubagentStart``;
-  turn scope ``UserPromptSubmit``, ``PreToolUse``, ``PermissionRequest``,
-  ``PostToolUse``, ``PreCompact``, ``PostCompact``, ``SubagentStop``, ``Stop``.
-  ``SessionEnd`` is used by OpenAI's own example plugin.
+- Supported events (per the official docs, https://learn.chatgpt.com/docs/hooks):
+  thread/session scope ``SessionStart``, ``SubagentStart``; turn scope
+  ``UserPromptSubmit``, ``PreToolUse``, ``PermissionRequest``, ``PostToolUse``,
+  ``PreCompact``, ``PostCompact``, ``SubagentStop``, ``Stop``. There is no
+  ``SessionEnd`` event in Codex.
 - stdin payload fields: ``session_id``, ``transcript_path``, ``cwd``,
   ``hook_event_name``, ``model``, ``permission_mode``; turn events add
   ``turn_id``; tool events add ``tool_name``, ``tool_use_id``, ``tool_input``,
@@ -83,7 +84,6 @@ EVENT_STATE = {
     "SubagentStart": ("working", "subagent progress"),
     "SubagentStop": ("working", "subagent finished, parent may continue"),
     "Stop": ("done", "turn finished"),
-    "SessionEnd": ("idle", "session ended"),
 }
 
 # Events elChango subscribes to and the matcher to apply (None means all).
@@ -98,7 +98,6 @@ SUBSCRIBED = {
     "SubagentStart": None,
     "SubagentStop": None,
     "Stop": None,
-    "SessionEnd": None,
 }
 
 # Strict allow-list of payload keys elChango retains. No prompt, assistant,

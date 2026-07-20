@@ -14,5 +14,14 @@
     "monitoring",
     "stream-deck"
   ],
-  "hooks": "./hooks/hooks.json"
+  "hooks": "./hooks/hooks.json",
+  "interface": {
+    "displayName": "elChango",
+    "shortDescription": "Surface Codex sessions on a Stream Deck",
+    "developerName": "jychp",
+    "category": "Productivity",
+    "brandColor": "#16181b",
+    "logo": "./assets/logo.png",
+    "composerIcon": "./assets/composer-icon.png"
+  }
 }

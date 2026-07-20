@@ -915,9 +915,6 @@ public final class CodexActivityStore: @unchecked Sendable {
             confidence: mapped.confidence,
             detail: detail
         )
-        if event == "SessionEnd" {
-            turn.activeAgentCount = 0
-        }
         turns[sessionID] = turn
         return turn.observation
     }
@@ -983,8 +980,6 @@ public final class CodexActivityStore: @unchecked Sendable {
         switch event {
         case "SessionStart":
             return (.idle, .observed, "Codex session started")
-        case "SessionEnd":
-            return (.idle, .observed, "Codex session ended")
         case "UserPromptSubmit":
             return (.working, .observed, "Codex prompt submitted")
         case "PreToolUse":

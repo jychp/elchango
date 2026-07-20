@@ -13,6 +13,11 @@ public struct FoundationHTTPHandler: HTTPHandler {
     private let expectedAuthority: String
     private let allowedOrigin: String
     private let allowedHookProviderIDs: Set<String>
+    /// Hook-capable providers whose `/api/hooks/<id>` route is accepted by
+    /// default. Every provider that ships a hook plugin must appear here.
+    public static let defaultAllowedHookProviderIDs: Set<String> = [
+        "cursor", "claude-code", "codex",
+    ]
     private let requireLoopbackPeer: Bool
     private let unavailableProviders: [String: String]
     private let encoder: JSONEncoder
@@ -25,7 +30,8 @@ public struct FoundationHTTPHandler: HTTPHandler {
         authorization: LoopbackAuthorization,
         hookRateLimiter: HookRateLimiter = HookRateLimiter(),
         expectedAuthority: String = "127.0.0.1:8765",
-        allowedHookProviderIDs: Set<String> = ["cursor", "claude-code"],
+        allowedHookProviderIDs: Set<String> =
+            FoundationHTTPHandler.defaultAllowedHookProviderIDs,
         requireLoopbackPeer: Bool = true,
         unavailableProviders: [String: String] = [:]
     ) {
