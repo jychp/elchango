@@ -312,8 +312,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // Hand the artifact to the system association for .streamDeckPlugin so
         // Stream Deck owns confirmation and installation.
-        NSWorkspace.shared.open(url)
-        lastStreamDeckInstallFailure = nil
+        let opened = NSWorkspace.shared.open(url)
+        lastStreamDeckInstallFailure =
+            opened
+            ? nil
+            : "macOS could not open the Stream Deck plugin installer"
         rebuildMenu()
     }
 
