@@ -19,8 +19,6 @@ plugins/claude/            Claude Code HTTP hook marketplace plugin
 plugins/streamdeck/        Elgato plugin and generated MK.2 profile
 contracts/                 HTTP, preference, and provider fixtures
 docs/providers/            Provider evidence, safety boundaries, and limitations
-scripts/poc/cursor/        Cursor reconnaissance POCs
-scripts/poc/claude/        Claude Code reconnaissance POCs
 ```
 
 The app binds only to `http://127.0.0.1:8765`. Web and Stream Deck use one deck
@@ -59,7 +57,7 @@ The root Makefile is the supported entry point.
 
 | Target | Purpose |
 | --- | --- |
-| `make` or `make test` | Run version checks, Swift tests, web checks, all plugin checks, POC checks, and `git diff --check`. |
+| `make` or `make test` | Run version checks, Swift tests, web checks, all plugin checks, release-script checks, and `git diff --check`. |
 | `make test-versions` | Verify that every package version matches `VERSION`. |
 | `make test-app-macos` | Run Swift formatting checks and test suites. |
 | `make test-web` | Run ESLint, Prettier, Svelte, TypeScript, and browser behavior tests. |
@@ -67,7 +65,6 @@ The root Makefile is the supported entry point.
 | `make test-plugin-cursor` | Validate Cursor plugin structure and versions. |
 | `make test-plugin-claude` | Run repository validation and Claude CLI strict validation when available. |
 | `make test-plugin-streamdeck` | Check licenses, TypeScript, tests, generated profile, and Elgato manifest. |
-| `make test-pocs` | Compile every provider POC and exercise its `--help`. |
 | `make build` | Package the debug macOS app and all plugins. |
 | `make build-app-macos` | Build the current-architecture debug app. |
 | `make build-app-macos-universal` | Build the ad hoc signed Universal 2 stable app. |
@@ -217,17 +214,22 @@ fresh button IDs and revisions. See
 [plugins/streamdeck/README.md](../plugins/streamdeck/README.md) for linking,
 runtime behavior, and uninstall steps.
 
-## Provider evidence and POCs
+## Provider evidence
 
-Undocumented provider integrations must be established with focused,
-self-documenting experiments before production abstractions are extended.
-Executable evidence belongs under `scripts/poc/<provider>/`; findings and
-limitations belong in `docs/providers/<provider>.md`.
+Undocumented provider integrations must be established with focused evidence
+before production abstractions are extended. All findings, observations, and
+limitations live in `docs/providers/<provider>.md`, which follows the required
+structure in
+[`.agents/skills/new-harness/templates/provider-doc.md`](../.agents/skills/new-harness/templates/provider-doc.md)
+and opens with a feature-coverage table.
+[`docs/providers/feature-matrix.md`](providers/feature-matrix.md) compares the
+providers side by side.
 
-Each POC must run directly, expose useful `--help`, distinguish observations
-from conclusions and assumptions, document safety and side effects, avoid
-writes unless the experiment requires them, and fail clearly when an external
-schema no longer matches.
+Each provider doc must distinguish observations from conclusions and
+assumptions, document safety and side effects, record a conservative verdict per
+feature, and explain how the integration fails when an external schema no longer
+matches. Back inventory and ordering claims with versioned fixtures under
+`contracts/providers/<provider>/v1/`, shared with the Swift tests.
 
 Use synthetic or sanitized fixtures. Never commit provider databases,
 transcripts, prompts, tokens, credentials, private code, or personal workspace

@@ -1,5 +1,15 @@
 # Codex Desktop provider findings
 
+| Feature | Status | Note |
+| --- | --- | --- |
+| Sessions inventory | ✅ supported | Bounded scan of `~/.codex/sessions` rollouts, filtered to Desktop/user threads (`INVENTORY_SUPPORTED`). |
+| Session live status | ⚠️ best-effort | Codex plugin hooks only, idle default; live hook delivery unproven (`UNPROVEN_REQUIRES_LIVE_HOOK_OBSERVATION`). |
+| Session focus | ✅ supported | Exact id-addressed `codex://threads/<id>` deep link; verifies foreground only (`FOCUS_DISPATCH_VERIFIED`). |
+| Session creation | ✅ supported | Neutral `codex://threads/new` deep link. |
+| Commands | ⚠️ best-effort | Naive typed dispatch, no verified input-target marker; user verifies the result (`COMMAND_DISPATCHED`). |
+
+Status legend: `✅ supported`, `⚠️ best-effort`, `❌ not supported`.
+
 ## Scope and status
 
 This provider targets the Codex desktop app shipped inside ChatGPT on macOS
@@ -65,9 +75,8 @@ refining a recipe (or proving an exact input-target) is a change there.
 
 ## Evidence
 
-The executable POCs under `scripts/poc/codex/` provide the primary evidence and
-share versioned fixtures with the Swift tests under
-`contracts/providers/codex/v1/`.
+The observations recorded here provide the primary evidence and share versioned
+fixtures with the Swift tests under `contracts/providers/codex/v1/`.
 
 Observations from the tested installation:
 
@@ -84,24 +93,6 @@ Observations from the tested installation:
 
 Conclusions are limited to what these observations support; hypotheses about
 launch, selection, and live hook delivery are listed under open questions.
-
-## Selected session
-
-No static signal. `~/.codex/.codex-global-state.json` persists `selected-project`
-(`{type, projectId}`) but no selected or active *thread* id. The active thread
-likely lives in renderer state (the app's Chromium `Local Storage`/`Session
-Storage` leveldb), which was not parsed.
-
-For the deck's selected highlight, the provider tracks the session elChango last
-focused (set on a verified focus) and reports it as `selectedNativeSessionID`,
-dropped when it leaves the inventory. This is a proxy for display only: if the
-user switches threads inside Codex, it goes stale until elChango focuses again.
-
-Commands do not use this signal. A command acts on whatever Codex has on screen
-and only requires Codex to be frontmost, so it works whether the thread was
-focused from the deck or by hand. Reading the true active thread from renderer
-state remains an open question, and would let elChango show an accurate highlight
-and confirm the command hit the intended thread.
 
 ## Inventory and identity
 
@@ -140,6 +131,17 @@ Identity rules:
 Metadata is cached by file modification time and size; an appended (growing)
 rollout invalidates its cache entry so live state is re-read.
 
+Selected session: no static signal. `~/.codex/.codex-global-state.json` persists
+`selected-project` (`{type, projectId}`) but no selected or active *thread* id.
+The active thread likely lives in renderer state (the app's Chromium
+`Local Storage`/`Session Storage` leveldb), which was not parsed. For the deck's
+selected highlight only, the provider tracks the session elChango last focused
+(set on a verified focus) and reports it as `selectedNativeSessionID`, dropped
+when it leaves the inventory; if the user switches threads inside Codex it goes
+stale until elChango focuses again. Commands do not use this signal: a command
+acts on whatever Codex has on screen and only requires Codex to be frontmost.
+Reading the true active thread from renderer state remains an open question.
+
 ## Workspace mapping
 
 Every observed Desktop user record supplied `cwd` (the current working
@@ -164,6 +166,35 @@ The provider still scans a bounded rollout tail, but only to timestamp the
 newest `event_msg` lifecycle marker (`task_started`, `task_complete`,
 `turn_aborted`) for last-activity ordering; the marker never sets a session
 state.
+
+The handled states are:
+
+| State | Deck color | Produced by |
+| --- | --- | --- |
+| `working` | blue | hooks `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PreCompact`, `PostCompact`, `SubagentStart`, `SubagentStop`; a `Stop` while subagents remain active |
+| `waiting` | orange | hook `PermissionRequest` (with the tool name) |
+| `done` | green | hook `Stop` when no subagents remain active |
+| `error` | red | None established (Codex hooks expose no terminal error event) |
+| `idle` | gray | hook `SessionStart`; no live hook signal (persisted confidence) |
+| `unknown` | gray | a `working`/`waiting` hook older than ten minutes without a terminal event |
+
+State-model notes:
+
+- **Which state means "green".** Only the hook `Stop` (with no active subagents)
+  produces `done`. No persisted-file path can reach `done` independently.
+- **Terminal signal handling.** `Stop` is the single terminal signal; it maps to
+  `done`. A `Stop` received while subagents are active stays `working` until they
+  finish. Codex exposes no terminal status field, so there is no `done`/`error`
+  split at the terminal event.
+- **Stale-signal expiry.** A non-terminal (`working`/`waiting`) hook older than
+  ten minutes without a terminal event degrades to `unknown` (gray) with explicit
+  degraded detail.
+- **Error surfacing.** `None established`. Codex hooks provide no terminal error
+  event, so no `error` (red) tile is produced; a `turn_aborted` rollout marker is
+  used only for ordering, never for state.
+- **Retained metadata.** The store retains only session id, active subagent
+  count, and the latest event, state, timestamp, confidence, and bounded detail.
+  It retains no prompt, assistant, tool input/output, or transcript content.
 
 Live hooks: Codex supports a plugin hook system with the same file schema and
 payload field names as Claude Code, but only `type: "command"` handlers run, so
@@ -244,7 +275,7 @@ This deep link supersedes the earlier plan of a Claude-style focus-by-position
 shortcut. The sidebar order is still persisted and reconstructable from
 `~/.codex/.codex-global-state.json` (`pinned-thread-ids`, `local-projects` +
 `thread-project-assignments`, `sidebar-project-thread-orders`,
-`projectless-thread-ids`; see POC 07), but a positional shortcut is unnecessary
+`projectless-thread-ids`), but a positional shortcut is unnecessary
 now that each thread is directly addressable by id, and no sidebar-position
 keyboard shortcut is known for Codex Desktop.
 
@@ -325,8 +356,8 @@ unknown with explicit degraded detail.
   back a selected thread; it relies on the exact id in the deep link and a
   frontmost check.
 - Focus uses the id-addressed deep link (`codex://threads/<id>`), so the
-  reconstructable sidebar order (POC 07) and the unknown sidebar-position
-  keyboard shortcut are no longer needed for focus.
+  reconstructable sidebar order and the unknown sidebar-position keyboard
+  shortcut are no longer needed for focus.
 - New session opens the composer but the app persists no selected-thread signal,
   so the resulting thread cannot be read back; success is confirmed only by the
   app coming to the foreground.
@@ -335,28 +366,6 @@ unknown with explicit degraded detail.
 - Native id stability across Codex Desktop resume is unproven.
 - Exact Codex Desktop hook event vocabulary beyond the documented set, and
   whether an `http` hook type will ever exist, are undocumented and may change.
-
-## POCs
-
-- `scripts/poc/codex/01_codex_desktop_session_inventory.py`: bounded persistent
-  inventory, Desktop/user filtering, native identity, workspace and repository
-  mapping, titles, ordering. Verdict: `INVENTORY_SUPPORTED`.
-- `scripts/poc/codex/02_codex_desktop_state_from_rollout.py`: rollout-tail
-  lifecycle-marker state derivation. Verdict: `STATE_DERIVED_PERSISTED`
-  (waiting not derivable from rollouts).
-- `scripts/poc/codex/03_codex_hook_probe.py`: generated Codex plugin hooks,
-  event-to-state mapping, payload sanitization, self-check. Verdict:
-  `UNPROVEN_REQUIRES_LIVE_HOOK_OBSERVATION`.
-- `scripts/poc/codex/04_codex_desktop_focus.py`: exact per-thread deep link
-  (`codex://threads/<id>`). Verdict: `FOCUS_DEEP_LINK_AVAILABLE`.
-- `scripts/poc/codex/05_codex_new_session.py`: neutral new-thread deep link
-  (`codex://threads/new`). Verdict: `NEW_SESSION_DEEP_LINK_AVAILABLE`.
-- `scripts/poc/codex/06_codex_command_dispatch.py`: command preflight; documents
-  the naive recipes for all four commands. Verdict: `COMMANDS_WIRED_NAIVE`.
-- `scripts/poc/codex/07_codex_sidebar_order.py`: sidebar-order reconstruction
-  from `~/.codex/.codex-global-state.json` (pinned, projects, manual orders,
-  projectless) cross-referenced with rollout last activity. Verdict:
-  `SIDEBAR_ORDER_RECONSTRUCTED`.
 
 ## References
 

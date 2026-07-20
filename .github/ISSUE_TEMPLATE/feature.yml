@@ -39,7 +39,7 @@ body:
     id: evidence
     attributes:
       label: Evidence
-      description: Link sanitized experiments, POCs, provider documentation, or examples that support the need.
+      description: Link sanitized experiments, provider documentation, or examples that support the need.
   - type: textarea
     id: safety
     attributes:

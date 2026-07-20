@@ -4,6 +4,32 @@ Update `docs/providers/<provider>.md` using this required structure. Do not omit
 a section. Write `None established` where evidence does not yet support content.
 Do not fill gaps by inference or copy a finding from another provider.
 
+## Feature coverage table (required, at the very top of the doc)
+
+Open the doc, immediately after the H1 title, with this table. It gives an
+at-a-glance summary that stays consistent across every provider and feeds
+`docs/providers/feature-matrix.md`. One row per feature, in this exact order:
+
+| Feature | Status | Note |
+| --- | --- | --- |
+| Sessions inventory | <status> | <one-line summary> |
+| Session live status | <status> | <one-line summary> |
+| Session focus | <status> | <one-line summary> |
+| Session creation | <status> | <one-line summary> |
+| Commands | <status> | <one-line summary> |
+
+Status legend (use exactly one per row):
+
+- `✅ supported`: implemented and verified for the observed installation.
+- `⚠️ best-effort`: implemented but not fully verified, or with a documented
+  caveat (for example a dispatch with no verified input-target marker).
+- `❌ not supported`: not implemented, or no evidence-backed mechanism exists.
+
+The `Note` is a short phrase, not a paragraph; the detailed verdicts stay in
+the "Scope and status" section below.
+
+## Sections (required, in order)
+
 1. **Scope and status**: define the exact product and session type, exclusions,
    implementation status, and conservative capability verdicts.
 2. **Tested versions and environment**: record product version, date, operating
@@ -32,9 +58,7 @@ Do not fill gaps by inference or copy a finding from another provider.
     harnesses, stale hooks, and provider isolation.
 11. **Limitations and open questions**: preserve every unproven assumption and
     required live experiment.
-12. **POCs**: list every executable evidence file under the provider's POC
-    directory with its purpose and current verdict.
-13. **References**: link official provider documentation and any other primary
+12. **References**: link official provider documentation and any other primary
     sources used.
 
 ## Handled states (required in the State model section)

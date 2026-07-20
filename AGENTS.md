@@ -5,8 +5,8 @@
 elChango aims to monitor and control native, local AI coding agent sessions from
 pluggable surfaces such as a web deck, Stream Deck hardware, and mobile.
 
-The current native macOS host supports Cursor and Claude Code sessions opened
-by Claude Desktop. Provider behavior remains evidence-driven and must degrade
+The current native macOS host supports Cursor, Claude Code, and Codex Desktop
+sessions. Provider behavior remains evidence-driven and must degrade
 conservatively when undocumented integrations change.
 
 ## Sources of truth
@@ -14,9 +14,10 @@ conservatively when undocumented integrations change.
 Use these sources according to their role:
 
 1. `AGENTS.md` contains durable project-wide working instructions.
-2. `scripts/poc/<provider>/` contains executable evidence from technical
-   reconnaissance.
-3. `docs/providers/` contains provider-specific understanding and findings.
+2. `docs/providers/` contains provider-specific understanding, evidence, and
+   findings. It is the single source of truth for provider behavior.
+3. `docs/providers/feature-matrix.md` compares the providers side by side:
+   feature coverage and cross-provider consistency.
 
 ## Working agreement
 
@@ -47,25 +48,27 @@ Use these sources according to their role:
   optional scope, and concise description such as
   `feat(web): add the fixed deck grid`.
 
-## POC standard
+## Evidence standard
 
-Every reconnaissance deliverable must be a self-documenting Python POC under
-`scripts/poc/<provider>/`. Each provider has its own sequence beginning at
-`01`. A separate report is not a substitute for the executable POC.
+Every reconnaissance finding lives in `docs/providers/<provider>.md`. That
+document is the single, self-contained source of truth for a provider; keeping
+evidence there instead of in a parallel set of scripts prevents drift between
+what the code does and what the docs claim.
 
-Each POC must:
+For each capability, the provider doc must:
 
-- use a numbered, descriptive filename such as
-  `scripts/poc/cursor/01_cursor_session_inventory.py`;
-- run directly and expose useful `--help` documentation;
-- explain its purpose, method, safety properties, interpretation, and limitations;
-- print observable evidence and a conservative verdict;
-- offer machine-readable output when it is useful;
-- avoid writes and side effects unless the experiment explicitly requires and
-  documents them;
-- prefer the Python standard library unless a dependency is clearly justified;
-- fail clearly when an undocumented external schema no longer matches;
-- distinguish observations from conclusions and unproven assumptions.
+- state the exact observed product version and environment;
+- distinguish observations from conclusions and unproven assumptions;
+- record a conservative verdict per feature;
+- cite official documentation, or explicitly mark evidence as absent;
+- describe the safety properties and any side effects of a live experiment;
+- explain how the integration fails when an undocumented external schema no
+  longer matches.
+
+Share versioned fixtures under `contracts/providers/<provider>/v1/` between the
+Swift tests and the documented evidence so ordering and inventory assertions are
+reproducible. Follow the required structure in
+[`.agents/skills/new-harness/templates/provider-doc.md`](.agents/skills/new-harness/templates/provider-doc.md).
 
 ## Validated launch sequence
 
@@ -89,4 +92,6 @@ durable contracts and build a vertical slice using a real session.
 
 Cursor findings are documented in `docs/providers/cursor.md`. Claude Code
 findings are documented in `docs/providers/claude-code.md`. Codex Desktop
-findings are documented in `docs/providers/codex.md`.
+findings are documented in `docs/providers/codex.md`. Each doc opens with a
+feature-coverage table. `docs/providers/feature-matrix.md` compares the
+providers side by side and tracks cross-provider consistency.

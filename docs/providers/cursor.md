@@ -1,5 +1,15 @@
 # Cursor provider findings
 
+| Feature | Status | Note |
+| --- | --- | --- |
+| Sessions inventory | ✅ supported | Strict read-only SQLite `state.vscdb`, schema-validated. |
+| Session live status | ⚠️ best-effort | DB inference merged with lifecycle hooks; live hook ID correlation still needs a focused test. |
+| Session focus | ✅ supported | Agents Window `Cmd+1`..`Cmd+9` sidebar shortcuts with exact selected-composer verification. |
+| Session creation | ⚠️ best-effort | `Cmd+N` opens an unpersisted blank New Agent view (`NO_NEW_COMPOSER`). |
+| Commands | ✅ supported | Verified composer accessibility marker; acts on the frontmost Cursor window. |
+
+Status legend: `✅ supported`, `⚠️ best-effort`, `❌ not supported`.
+
 ## Scope and status
 
 This provider targets local Cursor agent sessions on macOS. The evidence was
@@ -26,7 +36,7 @@ Current conservative verdicts:
 - Observation dates: July 16 and July 17, 2026.
 - Cursor version captured for New Agent testing: 3.12.17.
 - Cursor version for other tests: the installation observed on July 16, 2026;
-  exact version was not recorded in those POCs.
+  exact version was not recorded in those observations.
 - Operating system: macOS; exact version was not captured.
 - Global database:
   `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb`.
@@ -35,9 +45,9 @@ Current conservative verdicts:
 
 ## Evidence
 
-The executable POCs listed below are the primary evidence. Python and Swift
-inventory implementations are also checked against the same versioned fixture
-under `contracts/providers/cursor/v1/`.
+The observations recorded here are the primary evidence. The Swift inventory
+implementation is checked against the versioned fixture under
+`contracts/providers/cursor/v1/`.
 
 A 90-second inventory observation at 0.2-second intervals covered switching
 away and back, creating and interacting with a session, and closing or
@@ -203,8 +213,9 @@ was inconsistent when key-down and key-up events were too fast: two Tab events
 toward rank 2 selected rank 1, three later selected rank 6, and the full recency
 snapshot remained unchanged. A physical Control+Tab selected rank 1. With
 100 ms key presses and pauses, two synthetic presses selected and verified rank
-2. The POC activates Cursor, refreshes selection and recency, repeats preflight
-immediately before input, and aborts if either changed. Post-action verification
+2. The focus routine activates Cursor, refreshes selection and recency, repeats
+preflight immediately before input, and aborts if either changed. Post-action
+verification
 detects a wrong result but cannot prevent a wrong session from briefly
 receiving focus.
 
@@ -216,8 +227,9 @@ composer afterward. A stale web snapshot is accepted only if the target remains
 a focusable button in a fresh deck snapshot.
 
 Cursor 3.12.17 exposes `glass.newAgentFromKeyboard` as `Cmd+N` in the Agents
-Window. The launch POC activated Cursor, sent `Option+Cmd+N` to focus the Agents
-Window, then sent `Cmd+N` once. `cursor/glass.selectedAgent` became `null`, but
+Window. The launch experiment activated Cursor, sent `Option+Cmd+N` to focus the
+Agents Window, then sent `Cmd+N` once. `cursor/glass.selectedAgent` became
+`null`, but
 no top-level `composerHeaders` row appeared during the five-second timeout and
 settling period. The result likely represents an unpersisted blank New Agent
 view. It cannot be added to the deck or verified by composer ID before the user
@@ -256,10 +268,9 @@ The `/summarize` sequence triggered summarization successfully. The timing is
 operator-approved but does not semantically identify the autocomplete
 suggestion.
 
-The POC defaults to dry-run, requires an explicit recipe for execution, repeats
-two preflights, submits once, and never retries. `DISPATCH_SENT` proves only
-verified one-shot recipe injection, not provider understanding or semantic
-completion.
+Dispatch requires an explicit recipe, repeats two preflights, submits once, and
+never retries. `DISPATCH_SENT` proves only verified one-shot recipe injection,
+not provider understanding or semantic completion.
 
 ## Safety and target verification
 
@@ -312,35 +323,7 @@ terminal evidence supports another state. Unmatched hook events are ignored.
 - Live behavior still needs manual confirmation for automatic and manual
   compaction plus foreground and background parallel subagents.
 
-## POCs
-
-- `scripts/poc/cursor/01_cursor_session_inventory.py`: strict read-only
-  inventory and candidate lifecycle. Verdict:
-  `EXPLOITABLE_WITH_PRECAUTIONS`.
-- `scripts/poc/cursor/02_cursor_active_session.py`: exact selected-agent
-  detection. Verdict: `SUPPORTED`.
-- `scripts/poc/cursor/03_cursor_session_state_from_db.py`: aggregate database
-  state limitations.
-- `scripts/poc/cursor/04_cursor_bubble_state_from_db.py`: individual tool bubble
-  transitions and provisional values.
-- `scripts/poc/cursor/05_cursor_best_effort_focus.py`: recency switcher
-  experiments and exact post-action verification. Verdict: `FOCUS_VERIFIED` for
-  the controlled rank-2 path and an earlier two-way scenario.
-- `scripts/poc/cursor/06_cursor_readonly_web_deck.py`: read-only deck snapshot
-  integration.
-- `scripts/poc/cursor/07_cursor_web_deck_focus.py`: deck-to-session focus
-  targeting and verification.
-- `scripts/poc/cursor/08_cursor_new_session.py`: one-shot blank New Agent
-  launch. Verdict: `NO_NEW_COMPOSER`.
-- `scripts/poc/cursor/09_cursor_command_dispatch.py`: dry-run-first,
-  exact-composer, one-shot semantic command dispatch. Verdict:
-  `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
-- `scripts/poc/cursor/10_cursor_hook_sequences.py`: sanitized generation,
-  compaction, subagent, and terminal reducer. Verdict:
-  `REDUCER_SUPPORTED_LIVE_ID_CORRELATION_UNPROVEN`.
-
 ## References
 
 - [Cursor hooks](https://docs.cursor.com/agent/hooks)
-- Executable observations in `scripts/poc/cursor/`
 - Versioned fixture in `contracts/providers/cursor/v1/`

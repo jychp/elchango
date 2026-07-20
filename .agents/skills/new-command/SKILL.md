@@ -1,6 +1,6 @@
 ---
 name: new-command
-description: Adds or researches a personalized agent command in elChango using stable semantic IDs, provider-specific evidence, exact session and command-target verification, one-shot POCs, and conservative dispatch verdicts. Use when adding accept, create PR, commit and push, compact, or another privileged session command.
+description: Adds or researches a personalized agent command in elChango using stable semantic IDs, provider-specific evidence, exact session and command-target verification, one-shot dispatch, and conservative dispatch verdicts. Use when adding accept, create PR, commit and push, compact, or another privileged session command.
 ---
 
 # Add a personalized command
@@ -50,34 +50,33 @@ Surfaces emit only the stable semantic ID and target button identity. Web,
 Stream Deck, mobile, and other surfaces must never send arbitrary prompt text,
 slash commands, keyboard shortcuts, shell commands, or scripts.
 
-## 3. Build the POC first
+## 3. Establish and document evidence first
 
-Create a numbered, self-documenting standard-library Python POC under
-`scripts/poc/<provider>/` before defining a product contract or adapter method.
-Continue that provider directory's independent sequence. Follow the POC
-standard in `AGENTS.md`.
+Establish the command's evidence and record it in
+`docs/providers/<provider>.md` before defining a product contract or adapter
+method. The provider doc is the single source of truth; follow the evidence
+standard in `AGENTS.md`. Keep observations, conclusions, and hypotheses separate.
 
-The POC must:
+The dispatch path you design and document must:
 
-1. default to read-only or dry-run;
-2. require explicit `--execute` for any input injection;
-3. accept only known semantic IDs;
-4. require an explicit provider recipe when no official mapping is proven;
-5. identify one exact provider-native session;
-6. verify the intended session is currently selected;
-7. verify the matching provider application is frontmost;
-8. verify the exact agent prompt input for text recipes, or the proven
+1. accept only known semantic IDs;
+2. require an explicit provider recipe when no official mapping is proven;
+3. resolve one exact provider-native target;
+4. verify the matching provider application is frontmost;
+5. verify the exact agent prompt input for text recipes, or the proven
    application-level shortcut scope and command eligibility for shortcut
    recipes;
-9. repeat all volatile checks immediately before injection;
-10. inject at most once;
-11. avoid coordinate clicks, broad paste targets, fallbacks, and retries;
-12. print observable evidence and a conservative verdict;
-13. offer JSON output when useful.
+6. repeat all volatile checks immediately before injection;
+7. inject at most once;
+8. avoid coordinate clicks, broad paste targets, fallbacks, and retries;
+9. produce a conservative verdict.
 
-Explain why selected-session and frontmost-application evidence alone cannot
-distinguish an agent prompt from a terminal, editor, search field, title field,
-or other text input.
+The provider doc must record, for each command: the recipe and its source
+(official, configured, or unproven), the observed dispatch evidence, and the
+conservative verdict.
+
+Explain why frontmost-application evidence alone cannot distinguish an agent
+prompt from a terminal, editor, search field, title field, or other text input.
 
 ## 4. Establish exact target evidence
 
@@ -157,7 +156,7 @@ Update `docs/providers/<provider>.md` with:
 - measured target, foreground, and command-target signals, including input
   focus when the recipe types text;
 - recipe source and whether it is official or operator supplied;
-- dry-run and execute evidence;
+- observed dispatch evidence;
 - verdicts and limitations;
 - unproven command mappings and open questions.
 
@@ -167,7 +166,7 @@ successful keystroke into a claim of official support.
 ## 8. Define product contracts only after evidence
 
 Do not edit backend, bridge, web, Stream Deck, mobile, or tests until the user
-reviews the POC evidence and validates the development point.
+reviews the documented evidence and validates the development point.
 
 When implementation is authorized:
 
@@ -184,20 +183,19 @@ Do not add provider-specific branches to shared surfaces or the deck service.
 
 ## 9. Verify
 
-For reconnaissance-only work, run:
+Run the relevant checks (or `make test` for the full gate):
 
 ```bash
-python3 -m py_compile scripts/poc/<provider>/<number>_<provider>_command_dispatch.py
-python3 scripts/poc/<provider>/<number>_<provider>_command_dispatch.py --help
+swift test --package-path macos-app
 git diff --check
 ```
 
 Also verify:
 
-- the POC performs no dispatch without `--execute`;
-- execute mode rejects absent target, recipe, and input-focus evidence;
+- the dispatch rejects an absent target, recipe, or input-focus evidence;
 - each attempt has one injection path and no retry;
-- provider docs label mappings as observed, official, configured, or unproven;
+- provider docs label mappings as observed, official, configured, or unproven,
+  and the provider's feature-coverage table reflects the command status;
 - this skill remains under 500 lines.
 
 Do not commit or push unless the user explicitly asks.

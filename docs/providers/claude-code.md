@@ -1,5 +1,15 @@
 # Claude Code provider findings
 
+| Feature | Status | Note |
+| --- | --- | --- |
+| Sessions inventory | ✅ supported | Bounded metadata parse of `local_*.json` with 1:1 transcript correlation (`INVENTORY_SUPPORTED`). |
+| Session live status | ⚠️ best-effort | Official hooks only, idle default; live hook observation still outstanding. |
+| Session focus | ✅ supported | Sidebar shortcut from persisted config order; verified for tested positions (`FOCUS_VERIFIED`). |
+| Session creation | ✅ supported | Documented `claude://code/new` neutral deep link. |
+| Commands | ✅ supported | Verified composer marker with best-effort `AXGroup` exception; acts on the frontmost Claude window. |
+
+Status legend: `✅ supported`, `⚠️ best-effort`, `❌ not supported`.
+
 ## Scope and status
 
 This provider targets Claude Code sessions opened by Claude Desktop on macOS.
@@ -33,23 +43,23 @@ Current conservative verdicts:
 
 ## Evidence
 
-The executable POCs listed below provide the primary evidence. The Python and
-Swift implementations also share versioned fixtures under
+The observations recorded here provide the primary evidence. The Swift
+implementation shares versioned fixtures under
 `contracts/providers/claude-code/v1/`.
 
-The inventory POC observed 711 persistent Desktop Code records, including 17
-non-archived sessions that matched the Claude Desktop session list. Five of
+The inventory observation covered 711 persistent Desktop Code records, including
+17 non-archived sessions that matched the Claude Desktop session list. Five of
 those 17 had a live Claude Code process. Every non-archived record had unique
 Desktop and CLI IDs, exact workspace fields, timestamps, archive state, and a
 matching top-level transcript.
 
-The hook probe generated a non-installed configuration and passed its synthetic
-self-check. It recorded no live hook events because testing was deferred to
-avoid disturbing ongoing sessions. The focus probe rejected unverified deep
-links, then independently verified native sidebar positions 3 and 10. The
-command probe observed one harmless text submission, successful `/compact`
-dispatch, and a real `Cmd+Enter` plan acceptance under the documented target
-checks.
+The hook observation generated a non-installed configuration and passed its
+synthetic self-check. It recorded no live hook events because testing was
+deferred to avoid disturbing ongoing sessions. The focus observation rejected
+unverified deep links, then independently verified native sidebar positions 3
+and 10. The command observation recorded one harmless text submission, a
+successful `/compact` dispatch, and a real `Cmd+Enter` plan acceptance under the
+documented target checks.
 
 Fixture measurements on July 17, 2026:
 
@@ -226,8 +236,6 @@ Claude, verify the foreground process, enabled input role, and exact marker, the
 capture, replace, submit, and restore any existing draft. The command acts on
 whatever session the frontmost Claude window has on screen; elChango no longer
 verifies which session is selected.
-The POC remains a dry-run-first evidence probe and does not define the product
-transaction.
 
 Provider mappings:
 
@@ -306,22 +314,6 @@ live hook testing.
 - Exact Claude Desktop and Claude Code versions were not captured.
 - Accessibility markers and undocumented sidebar configuration may change.
 - Semantic completion is not proven by successful dispatch.
-
-## POCs
-
-- `scripts/poc/claude/01_claude_code_session_inventory.py`: bounded persistent
-  inventory, IDs, workspace fields, transcripts, and process annotation.
-  Verdict: `INVENTORY_SUPPORTED` for the observed installation.
-- `scripts/poc/claude/02_claude_code_hook_probe.py`: generated hook
-  configuration, payload sanitization, and synthetic analysis. Verdict:
-  `UNPROVEN_REQUIRES_LIVE_HOOK_OBSERVATION`.
-- `scripts/poc/claude/03_claude_desktop_focus.py`: deep-link rejection and
-  verified native sidebar focus. Verdict: `FOCUS_VERIFIED` for tested positions
-  3 and 10.
-- `scripts/poc/claude/04_claude_command_dispatch.py`: dry-run-first,
-  input-verified, one-shot command dispatch (the shipped provider dispatches on
-  the frontmost window without verifying the session). Verdict:
-  `SUPPORTED_WITH_VERIFIED_COMPOSER_TARGET`.
 
 ## References
 

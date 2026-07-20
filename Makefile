@@ -8,7 +8,7 @@ DIST_DIR ?= dist
 	setup \
 	generate-contracts test-contracts \
 	test test-versions test-app-macos test-web test-plugins test-plugin-cursor \
-	test-plugin-claude test-plugin-streamdeck test-pocs test-release-scripts \
+	test-plugin-claude test-plugin-streamdeck test-release-scripts \
 	build build-app-macos build-app-macos-universal notarize-app-macos \
 	submit-notarization-app-macos finish-notarization-app-macos \
 	verify-release-app-macos build-web build-plugins build-plugin-cursor \
@@ -21,7 +21,7 @@ setup:
 	swift package --package-path macos-app resolve
 
 test: \
-	test-versions test-contracts test-app-macos test-web test-plugins test-pocs \
+	test-versions test-contracts test-app-macos test-web test-plugins \
 	test-release-scripts
 	git diff --check
 
@@ -69,13 +69,6 @@ test-plugin-streamdeck: test-versions
 	test -s plugins/streamdeck/com.jychp.elchango.sdPlugin/TRADEMARKS.md
 	npm --prefix plugins/streamdeck run check
 	npm --prefix plugins/streamdeck run validate
-
-test-pocs:
-	@set -eu; \
-	for poc in scripts/poc/cursor/*.py scripts/poc/claude/*.py scripts/poc/codex/*.py; do \
-		$(PYTHON) -m py_compile "$$poc"; \
-		$(PYTHON) "$$poc" --help >/dev/null; \
-	done
 
 test-release-scripts:
 	./macos-app/Tests/Scripts/notarize-app-tests.sh
