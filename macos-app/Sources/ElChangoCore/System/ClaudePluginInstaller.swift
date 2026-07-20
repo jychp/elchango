@@ -76,6 +76,12 @@ public struct ClaudePluginInstaller: Sendable {
         ClaudeCodePluginInspector.marketplaceReference,
     ]
 
+    /// Arguments for `claude plugin marketplace update elchango`.
+    public static let marketplaceUpdateArguments = [
+        "plugin", "marketplace", "update",
+        ClaudeCodePluginInspector.marketplaceName,
+    ]
+
     /// Arguments for `claude plugin install elchango@elchango`.
     public static let installArguments = [
         "plugin", "install", ClaudeCodePluginInspector.pluginReference,
@@ -83,13 +89,23 @@ public struct ClaudePluginInstaller: Sendable {
 
     public init() {}
 
-    /// Adds the marketplace and installs (or updates) the plugin, running each
-    /// command sequentially. Never throws; the result reports the first failure.
+    /// Adds the marketplace, refreshes it from its source, and installs (or
+    /// updates) the plugin. `add` is best-effort so an already-registered
+    /// marketplace does not abort the update path; `update` then refreshes the
+    /// cached source so the newest version is installed rather than a stale one.
+    /// Never throws; the result reports the first failure of a required step.
     public func install(
         claudeExecutable: URL
     ) async -> Result<Void, Error> {
+        // Ensure the marketplace exists. When it is already registered this
+        // exits non-zero; that is expected on the update path, so ignore it and
+        // let the required steps below surface a genuinely unavailable source.
+        try? Self.run(
+            executable: claudeExecutable,
+            arguments: Self.marketplaceAddArguments
+        )
         for arguments in [
-            Self.marketplaceAddArguments,
+            Self.marketplaceUpdateArguments,
             Self.installArguments,
         ] {
             do {
@@ -113,7 +129,9 @@ public struct ClaudePluginInstaller: Sendable {
         process.arguments = arguments
         let errorPipe = Pipe()
         process.standardError = errorPipe
-        process.standardOutput = Pipe()
+        // Discard stdout: an unread pipe would deadlock the process once its
+        // buffer fills, since nothing drains it before `waitUntilExit`.
+        process.standardOutput = FileHandle.nullDevice
 
         do {
             try process.run()

@@ -12,6 +12,18 @@ struct CursorPluginInspectorTests {
 
     private func writeManifest(
         version: String,
+        toPluginDirectory directory: URL,
+        name: String = "elchango",
+        repository: String = "https://github.com/jychp/elchango"
+    ) throws {
+        try writeRawManifest(
+            #"{"name": "\#(name)", "version": "\#(version)", "repository": "\#(repository)"}"#,
+            toPluginDirectory: directory
+        )
+    }
+
+    private func writeRawManifest(
+        _ contents: String,
         toPluginDirectory directory: URL
     ) throws {
         let manifest =
@@ -22,8 +34,7 @@ struct CursorPluginInspectorTests {
             at: manifest.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try #"{"name": "elchango", "version": "\#(version)"}"#
-            .write(to: manifest, atomically: true, encoding: .utf8)
+        try contents.write(to: manifest, atomically: true, encoding: .utf8)
     }
 
     private func cacheDirectory(
@@ -125,24 +136,17 @@ struct CursorPluginInspectorTests {
         #expect(state.needsUpdate)
     }
 
-    @Test("a manifest without a version is malformed")
+    @Test("an official manifest without a version is malformed")
     func malformed() throws {
         let root = makeRootURL()
-        let directory = cacheDirectory(
-            root: root,
-            marketplace: "elchango",
-            ref: "abc123"
+        try writeRawManifest(
+            #"{"name": "elchango", "repository": "https://github.com/jychp/elchango"}"#,
+            toPluginDirectory: cacheDirectory(
+                root: root,
+                marketplace: "elchango",
+                ref: "abc123"
+            )
         )
-        let manifest =
-            directory
-            .appendingPathComponent(".cursor-plugin", isDirectory: true)
-            .appendingPathComponent("plugin.json", isDirectory: false)
-        try FileManager.default.createDirectory(
-            at: manifest.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        try #"{"name": "elchango"}"#
-            .write(to: manifest, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: root) }
 
         let inspector = CursorPluginInspector(
@@ -150,6 +154,52 @@ struct CursorPluginInspectorTests {
             pluginsRootURL: root
         )
         #expect(inspector.classify(cursorInstalled: true) == .malformed)
+    }
+
+    @Test("a same-named third-party plugin is not treated as installed")
+    func foreignIdentityIsNotOurs() throws {
+        let root = makeRootURL()
+        // Correct name and matching version, but an unrelated repository.
+        try writeManifest(
+            version: "1.0.0",
+            toPluginDirectory: cacheDirectory(
+                root: root,
+                marketplace: "acme",
+                ref: "abc123"
+            ),
+            repository: "https://github.com/acme/elchango"
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let inspector = CursorPluginInspector(
+            expectedVersion: "1.0.0",
+            pluginsRootURL: root
+        )
+        #expect(inspector.classify(cursorInstalled: true) == .pluginMissing)
+    }
+
+    @Test("an inaccessible cache is unreadable, not missing")
+    func inaccessibleCacheIsUnreadable() throws {
+        let root = makeRootURL()
+        try FileManager.default.createDirectory(
+            at: root,
+            withIntermediateDirectories: true
+        )
+        // A `cache` that exists but is not a directory cannot be enumerated,
+        // standing in for a permission-denied cache.
+        let cache = root.appendingPathComponent("cache", isDirectory: false)
+        try Data("x".utf8).write(to: cache)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let inspector = CursorPluginInspector(
+            expectedVersion: "1.0.0",
+            pluginsRootURL: root
+        )
+        let state = inspector.classify(cursorInstalled: true)
+        guard case .unreadable = state else {
+            Issue.record("expected unreadable, got \(state)")
+            return
+        }
     }
 
     @Test("conflicting Marketplace versions are malformed")

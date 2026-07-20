@@ -51,6 +51,10 @@ public struct ClaudeCodePluginInspector: ClaudeCodePluginInspecting, Sendable {
     /// add`.
     public static let marketplaceReference = "jychp/elchango"
 
+    /// The registered marketplace name passed to `claude plugin marketplace
+    /// update`. It is the `name` declared in the marketplace manifest.
+    public static let marketplaceName = "elchango"
+
     /// The plugin reference passed to `claude plugin install`.
     public static let pluginReference = "elchango@elchango"
 

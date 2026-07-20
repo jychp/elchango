@@ -48,6 +48,11 @@ public struct CursorPluginInspector: CursorPluginInspecting, Sendable {
     /// The directory name Cursor uses for the elChango plugin.
     public static let pluginName = "elchango"
 
+    /// A fragment every official manifest's `repository` or `homepage` must
+    /// contain. This guards against an unrelated Team/Marketplace plugin that
+    /// merely happens to be named `elchango`.
+    public static let officialRepositoryFragment = "jychp/elchango"
+
     private let expectedVersion: String
     private let pluginsRootURL: URL
 
@@ -87,31 +92,33 @@ public struct CursorPluginInspector: CursorPluginInspecting, Sendable {
 
         // A Marketplace install lives under
         // `plugins/cache/<marketplace>/elchango/<ref>/.cursor-plugin/plugin.json`.
-        let manifests = cacheManifestURLs()
-        guard !manifests.isEmpty else {
-            return .pluginMissing
+        let manifests: [URL]
+        do {
+            manifests = try cacheManifestURLs()
+        } catch {
+            // An existing but inaccessible cache is unreadable, not missing.
+            return .unreadable(error.localizedDescription)
         }
 
         var versions = Set<String>()
         for manifest in manifests {
-            let data: Data
-            do {
-                data = try Data(contentsOf: manifest)
-            } catch {
-                return .unreadable(error.localizedDescription)
-            }
-            guard
-                let object = try? JSONSerialization.jsonObject(with: data),
-                let dictionary = object as? [String: Any],
-                let version = dictionary["version"] as? String,
-                !version.isEmpty
-            else {
+            switch Self.readOfficialManifest(at: manifest) {
+            case .version(let version):
+                versions.insert(version)
+            case .notOfficial:
+                // A same-named but unofficial plugin is not our installation.
+                continue
+            case .malformed:
                 return .malformed
+            case .unreadable(let reason):
+                return .unreadable(reason)
             }
-            versions.insert(version)
         }
 
-        guard let installedVersion = versions.first, versions.count == 1 else {
+        guard let installedVersion = versions.first else {
+            return .pluginMissing
+        }
+        guard versions.count == 1 else {
             return .malformed
         }
 
@@ -125,33 +132,40 @@ public struct CursorPluginInspector: CursorPluginInspecting, Sendable {
     }
 
     /// Every `.cursor-plugin/plugin.json` under
-    /// `cache/<marketplace>/elchango/<ref>/`.
-    private func cacheManifestURLs() -> [URL] {
+    /// `cache/<marketplace>/elchango/<ref>/`. Throws when a directory that does
+    /// exist cannot be enumerated (e.g. permission denied), so the caller can
+    /// distinguish an inaccessible cache from an absent one.
+    private func cacheManifestURLs() throws -> [URL] {
         let fileManager = FileManager.default
         let cacheURL =
             pluginsRootURL
             .appendingPathComponent("cache", isDirectory: true)
-        guard
-            let marketplaces = try? fileManager.contentsOfDirectory(
-                at: cacheURL,
-                includingPropertiesForKeys: nil
-            )
-        else {
+        guard fileManager.fileExists(atPath: cacheURL.path) else {
             return []
         }
+        let marketplaces = try fileManager.contentsOfDirectory(
+            at: cacheURL,
+            includingPropertiesForKeys: nil
+        )
         var manifests: [URL] = []
         for marketplace in marketplaces {
             let pluginURL =
                 marketplace
                 .appendingPathComponent(Self.pluginName, isDirectory: true)
+            var isDirectory: ObjCBool = false
             guard
-                let refs = try? fileManager.contentsOfDirectory(
-                    at: pluginURL,
-                    includingPropertiesForKeys: nil
-                )
+                fileManager.fileExists(
+                    atPath: pluginURL.path,
+                    isDirectory: &isDirectory
+                ),
+                isDirectory.boolValue
             else {
                 continue
             }
+            let refs = try fileManager.contentsOfDirectory(
+                at: pluginURL,
+                includingPropertiesForKeys: nil
+            )
             for ref in refs {
                 let manifest =
                     ref
@@ -163,6 +177,53 @@ public struct CursorPluginInspector: CursorPluginInspecting, Sendable {
             }
         }
         return manifests
+    }
+
+    /// The outcome of reading a single cached manifest.
+    private enum ManifestReading {
+        case version(String)
+        case notOfficial
+        case malformed
+        case unreadable(String)
+    }
+
+    /// Reads a cached manifest, returning its version only when the manifest's
+    /// stable identity fields mark it as the official elChango plugin.
+    private static func readOfficialManifest(at manifest: URL) -> ManifestReading {
+        let data: Data
+        do {
+            data = try Data(contentsOf: manifest)
+        } catch {
+            return .unreadable(error.localizedDescription)
+        }
+        guard
+            let object = try? JSONSerialization.jsonObject(with: data),
+            let dictionary = object as? [String: Any]
+        else {
+            return .malformed
+        }
+        guard isOfficial(dictionary) else {
+            return .notOfficial
+        }
+        guard
+            let version = dictionary["version"] as? String,
+            !version.isEmpty
+        else {
+            return .malformed
+        }
+        return .version(version)
+    }
+
+    /// Whether a manifest's name and repository/homepage identify it as the
+    /// official elChango plugin rather than a same-named third-party plugin.
+    private static func isOfficial(_ manifest: [String: Any]) -> Bool {
+        guard (manifest["name"] as? String) == pluginName else {
+            return false
+        }
+        let repository = (manifest["repository"] as? String) ?? ""
+        let homepage = (manifest["homepage"] as? String) ?? ""
+        return repository.contains(officialRepositoryFragment)
+            || homepage.contains(officialRepositoryFragment)
     }
 
     /// Best-effort read of the `version` from a plugin directory's

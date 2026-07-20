@@ -183,6 +183,11 @@ struct ClaudeCodePluginInspectorTests {
             ]
         )
         #expect(
+            ClaudePluginInstaller.marketplaceUpdateArguments == [
+                "plugin", "marketplace", "update", "elchango",
+            ]
+        )
+        #expect(
             ClaudePluginInstaller.installArguments == [
                 "plugin", "install", "elchango@elchango",
             ]
