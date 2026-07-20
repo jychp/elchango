@@ -890,6 +890,20 @@ public final class CodexActivityStore: @unchecked Sendable {
                 )
             )
 
+        // Subagent lifecycle always reconciles, even for a stale prior-turn
+        // event, so a dropped SubagentStop cannot leak activeAgentCount and leave
+        // a later Stop stuck as working.
+        if event == "SubagentStart" {
+            guard turn.activeAgentCount < maximumActiveSubagents else {
+                throw ProviderOperationError.invalidHook(
+                    "Codex active subagent limit exceeded"
+                )
+            }
+            turn.activeAgentCount += 1
+        } else if event == "SubagentStop" {
+            turn.activeAgentCount = max(0, turn.activeAgentCount - 1)
+        }
+
         // Codex `turn_id` identifies the turn. UserPromptSubmit opens a new turn;
         // a later event carrying a different turn_id (for example a delayed `Stop`
         // from a previous turn arriving after the next prompt) is stale and must
@@ -901,18 +915,9 @@ public final class CodexActivityStore: @unchecked Sendable {
             let currentTurn = turn.turnID,
             eventTurn != currentTurn
         {
+            // Keep the subagent bookkeeping above but do not overwrite state.
+            turns[sessionID] = turn
             return turn.observation
-        }
-
-        if event == "SubagentStart" {
-            guard turn.activeAgentCount < maximumActiveSubagents else {
-                throw ProviderOperationError.invalidHook(
-                    "Codex active subagent limit exceeded"
-                )
-            }
-            turn.activeAgentCount += 1
-        } else if event == "SubagentStop" {
-            turn.activeAgentCount = max(0, turn.activeAgentCount - 1)
         }
 
         var state = mapped.state

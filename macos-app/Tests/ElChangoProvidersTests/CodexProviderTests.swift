@@ -420,6 +420,31 @@ struct CodexProviderTests {
         #expect(record("Stop", turn: "B", at: 4) == .done)
     }
 
+    @Test("a delayed prior-turn SubagentStop still reconciles the subagent count")
+    func staleSubagentStopReconciles() throws {
+        let store = CodexActivityStore()
+        func record(_ event: String, turn: String?, at: Int64) -> SessionState {
+            let observation = try? store.record(
+                ProviderHookPayload(
+                    hookEventName: event,
+                    sessionID: "t",
+                    cwd: "/tmp",
+                    turnID: turn
+                ),
+                observedAtMilliseconds: at
+            )
+            return observation?.state ?? .unknown
+        }
+        #expect(record("UserPromptSubmit", turn: "A", at: 1) == .working)
+        #expect(record("SubagentStart", turn: "A", at: 2) == .working)
+        #expect(record("UserPromptSubmit", turn: "B", at: 3) == .working)
+        // A delayed Stop from turn A must not mark turn B done, but a delayed
+        // SubagentStop from turn A must still decrement the count so turn B's own
+        // Stop completes instead of hanging on a leaked subagent.
+        _ = record("SubagentStop", turn: "A", at: 4)
+        #expect(record("Stop", turn: "B", at: 5) == .done)
+    }
+
     @Test("stale working hook degrades to unknown")
     func staleHookDegrades() throws {
         let store = CodexActivityStore(terminalDeadlineMilliseconds: 1_000)
