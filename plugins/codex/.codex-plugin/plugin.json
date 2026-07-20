@@ -1,0 +1,18 @@
+{
+  "name": "elchango",
+  "displayName": "elChango",
+  "version": "1.0.0",
+  "description": "Reports Codex Desktop lifecycle events to the local elChango app.",
+  "author": {
+    "name": "jychp"
+  },
+  "homepage": "https://github.com/jychp/elchango",
+  "repository": "https://github.com/jychp/elchango",
+  "keywords": [
+    "codex",
+    "hooks",
+    "monitoring",
+    "stream-deck"
+  ],
+  "hooks": "./hooks/hooks.json"
+}

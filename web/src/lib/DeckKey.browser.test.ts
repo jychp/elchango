@@ -81,6 +81,27 @@ describe('DeckKey', () => {
     unmount(component)
   })
 
+  test('renders the Codex Desktop provider icon', () => {
+    const component = mount(DeckKey, {
+      target: document.body,
+      props: {
+        button: {
+          ...sessionButton,
+          id: 'codex:thread-1',
+          icon: 'codex',
+          detail: 'Codex',
+          provider_id: 'codex',
+          session_id: 'thread-1',
+        },
+        slot: 0,
+      },
+    })
+    const key = requiredKey()
+    const path = key.querySelector('svg path')
+    expect(path?.getAttribute('d')).toMatch(/^M22\.2819 9\.8211/)
+    unmount(component)
+  })
+
   test('cancels pointer cancellation and lost capture', () => {
     const onactivate = vi.fn()
     const canceledComponent = mount(DeckKey, {

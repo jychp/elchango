@@ -2,6 +2,7 @@ extension DeckIcon {
     public static let personalizationOptions: [DeckIcon] = [
         .cursor,
         .claude,
+        .codex,
         .robot,
         .terminal,
         .code,

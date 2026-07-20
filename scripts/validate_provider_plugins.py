@@ -17,6 +17,10 @@ REPORTER_COMMAND = (
     "/Applications/elChango.app/Contents/MacOS/"
     "elChangoHookReporter --provider cursor"
 )
+REPORTER_CODEX_COMMAND = (
+    "/Applications/elChango.app/Contents/MacOS/"
+    "elChangoHookReporter --provider codex"
+)
 HOOK_URL = "http://127.0.0.1:8765/api/hooks/claude-code"
 
 
@@ -234,11 +238,67 @@ def validate_claude() -> None:
         )
 
 
+def validate_codex() -> None:
+    validate_marketplace("codex", ".codex-plugin")
+    validate_manifest("codex", ".codex-plugin")
+    path = ROOT / "plugins/codex/hooks/hooks.json"
+    document = load_object(path)
+    hooks = document.get("hooks")
+    require(isinstance(hooks, dict), f"{path}: hooks must be an object")
+    # Codex shares Claude Code's hook file schema, but only command handlers
+    # run, so every event relays through the fail-open reporter command.
+    expected_matchers: dict[str, str | None] = {
+        "SessionStart": None,
+        "UserPromptSubmit": None,
+        "PreToolUse": None,
+        "PermissionRequest": None,
+        "PostToolUse": None,
+        "PreCompact": "manual|auto",
+        "PostCompact": "manual|auto",
+        "SubagentStart": None,
+        "SubagentStop": None,
+        "Stop": None,
+        "SessionEnd": None,
+    }
+    require(set(hooks) == set(expected_matchers), f"{path}: unexpected events")
+    expected_command = {
+        "type": "command",
+        "command": REPORTER_CODEX_COMMAND,
+        "timeout": 2,
+    }
+    for event, matcher in expected_matchers.items():
+        groups = hooks[event]
+        require(
+            isinstance(groups, list) and len(groups) == 1,
+            f"{path}: {event} must have exactly one hook group",
+        )
+        group = groups[0]
+        require(isinstance(group, dict), f"{path}: {event} group is invalid")
+        require_allowed_keys(
+            group,
+            {"hooks"} if matcher is None else {"matcher", "hooks"},
+            path,
+        )
+        if matcher is None:
+            require("matcher" not in group, f"{path}: {event} matcher is invalid")
+        else:
+            require(
+                group.get("matcher") == matcher,
+                f"{path}: {event} matcher is invalid",
+            )
+        require(
+            group.get("hooks") == [expected_command],
+            f"{path}: {event} must use the fail-open reporter command contract",
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Validate elChango Cursor and Claude provider plugins."
+        description="Validate elChango Cursor, Claude, and Codex provider plugins."
     )
-    parser.add_argument("provider", choices=("cursor", "claude", "all"))
+    parser.add_argument(
+        "provider", choices=("cursor", "claude", "codex", "all")
+    )
     args = parser.parse_args()
 
     try:
@@ -246,6 +306,8 @@ def main() -> int:
             validate_cursor()
         if args.provider in {"claude", "all"}:
             validate_claude()
+        if args.provider in {"codex", "all"}:
+            validate_codex()
     except ValueError as error:
         parser.exit(1, f"ERROR: {error}\n")
 

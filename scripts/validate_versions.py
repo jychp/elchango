@@ -67,8 +67,12 @@ def validate(expected: str | None = None) -> str:
     claude_manifest = load_object(
         "plugins/claude/.claude-plugin/plugin.json"
     )
+    codex_manifest = load_object(
+        "plugins/codex/.codex-plugin/plugin.json"
+    )
     cursor_marketplace = load_object(".cursor-plugin/marketplace.json")
     claude_marketplace = load_object(".claude-plugin/marketplace.json")
+    codex_marketplace = load_object(".codex-plugin/marketplace.json")
 
     checks = [
         (web_package.get("version"), "web/package.json version"),
@@ -123,6 +127,21 @@ def validate(expected: str | None = None) -> str:
                 ".claude-plugin/marketplace.json",
             ),
             ".claude-plugin/marketplace.json plugin version",
+        ),
+        (
+            codex_manifest.get("version"),
+            "plugins/codex/.codex-plugin/plugin.json version",
+        ),
+        (
+            codex_marketplace.get("version"),
+            ".codex-plugin/marketplace.json version",
+        ),
+        (
+            first_plugin_version(
+                codex_marketplace,
+                ".codex-plugin/marketplace.json",
+            ),
+            ".codex-plugin/marketplace.json plugin version",
         ),
     ]
     for actual, location in checks:

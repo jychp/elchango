@@ -6,6 +6,19 @@ The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Codex Desktop provider: read-only inventory of `Codex Desktop` user sessions
+  from `~/.codex/sessions`, rollout-derived state, and a plugin hook path for
+  live lifecycle state. Focus, new-session, and command dispatch are
+  implemented but fail closed pending live verification. See
+  `docs/providers/codex.md`.
+- `codex` deck icon across the HTTP, web, and Stream Deck contracts.
+- elChango Codex plugin (`plugins/codex`) that relays lifecycle events through
+  the reporter, plus a `codex` reporter provider.
+
 ## [1.0.0] - 2026-07-18
 
 ### Added

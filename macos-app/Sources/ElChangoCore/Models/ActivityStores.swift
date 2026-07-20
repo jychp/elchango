@@ -784,3 +784,205 @@ public final class ClaudeActivityStore: @unchecked Sendable {
         }
     }
 }
+
+/// Activity store for Codex Desktop plugin hooks. Codex uses the same hook file
+/// schema and payload field names as Claude Code (official docs:
+/// https://learn.chatgpt.com/docs/hooks), but only `type: "command"` hooks run,
+/// so elChango relays events through `elChangoHookReporter --provider codex`.
+public final class CodexActivityStore: @unchecked Sendable {
+    private struct Turn {
+        var observation: ActivityObservation
+        var activeAgentCount: Int = 0
+    }
+
+    private let terminalDeadlineMilliseconds: Int64
+    private let ttlMilliseconds: Int64
+    private let maximumSignals: Int
+    private let maximumActiveSubagents: Int
+    private let lock = NSLock()
+    private var turns: [String: Turn] = [:]
+    private var acknowledgedAt: [String: Int64] = [:]
+
+    public init(
+        terminalDeadlineMilliseconds: Int64 = 10 * 60 * 1_000,
+        ttlMilliseconds: Int64 = 60 * 60 * 1_000,
+        maximumSignals: Int = 1_000,
+        maximumActiveSubagents: Int = 64
+    ) {
+        self.terminalDeadlineMilliseconds = terminalDeadlineMilliseconds
+        self.ttlMilliseconds = ttlMilliseconds
+        self.maximumSignals = maximumSignals
+        self.maximumActiveSubagents = maximumActiveSubagents
+    }
+
+    public func record(
+        _ payload: ProviderHookPayload,
+        observedAtMilliseconds: Int64
+    ) throws -> ActivityObservation {
+        guard let event = payload.hookEventName else {
+            throw ProviderOperationError.invalidHook(
+                "unsupported Codex hook event: nil"
+            )
+        }
+        guard let sessionID = payload.sessionID, !sessionID.isEmpty else {
+            throw ProviderOperationError.invalidHook(
+                "Codex hook event is missing session_id"
+            )
+        }
+        let mapped = try Self.codexState(
+            event: event,
+            toolName: payload.toolName
+        )
+
+        lock.lock()
+        defer { lock.unlock() }
+        purgeExpired(at: observedAtMilliseconds)
+        if turns[sessionID] == nil,
+            turns.count >= maximumSignals,
+            let oldest = turns.min(by: {
+                $0.value.observation.observedAtMilliseconds
+                    < $1.value.observation.observedAtMilliseconds
+            })?.key
+        {
+            turns.removeValue(forKey: oldest)
+            acknowledgedAt.removeValue(forKey: oldest)
+        }
+        var turn =
+            turns[sessionID]
+            ?? Turn(
+                observation: ActivityObservation(
+                    sessionID: sessionID,
+                    event: "SessionStart",
+                    observedAtMilliseconds: observedAtMilliseconds,
+                    state: .idle,
+                    confidence: .observed,
+                    detail: "Codex session started"
+                )
+            )
+
+        if event == "SubagentStart" {
+            guard turn.activeAgentCount < maximumActiveSubagents else {
+                throw ProviderOperationError.invalidHook(
+                    "Codex active subagent limit exceeded"
+                )
+            }
+            turn.activeAgentCount += 1
+        } else if event == "SubagentStop" {
+            turn.activeAgentCount = max(0, turn.activeAgentCount - 1)
+        }
+
+        var state = mapped.state
+        var detail = mapped.detail
+        if event == "Stop", turn.activeAgentCount > 0 {
+            state = .working
+            detail = "Codex subagents still working"
+        }
+
+        turn.observation = ActivityObservation(
+            sessionID: sessionID,
+            event: event,
+            observedAtMilliseconds: observedAtMilliseconds,
+            state: state,
+            confidence: mapped.confidence,
+            detail: detail
+        )
+        if event == "SessionEnd" {
+            turn.activeAgentCount = 0
+        }
+        turns[sessionID] = turn
+        return turn.observation
+    }
+
+    public func state(
+        for sessionID: String,
+        observedAtMilliseconds: Int64
+    ) -> (SessionState, DeckConfidence, String)? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let turn = turns[sessionID] else { return nil }
+        let signal = turn.observation
+        let age = observedAtMilliseconds - signal.observedAtMilliseconds
+        if age > ttlMilliseconds {
+            turns.removeValue(forKey: sessionID)
+            acknowledgedAt.removeValue(forKey: sessionID)
+            return nil
+        }
+        if signal.state == .working || signal.state == .waiting,
+            age > terminalDeadlineMilliseconds
+        {
+            return (
+                .unknown,
+                .unknown,
+                "Codex \(signal.event) signal is stale; expected terminal event was not observed"
+            )
+        }
+        if signal.state == .done,
+            let acknowledged = acknowledgedAt[sessionID],
+            acknowledged >= signal.observedAtMilliseconds
+        {
+            return (.idle, .observed, "completion acknowledged by focus")
+        }
+        return (signal.state, signal.confidence, signal.detail)
+    }
+
+    public func acknowledge(
+        _ sessionID: String,
+        observedAtMilliseconds: Int64
+    ) {
+        lock.lock()
+        acknowledgedAt[sessionID] = observedAtMilliseconds
+        lock.unlock()
+    }
+
+    private func purgeExpired(at observedAtMilliseconds: Int64) {
+        let expired = turns.compactMap { sessionID, turn in
+            observedAtMilliseconds - turn.observation.observedAtMilliseconds
+                > ttlMilliseconds
+                ? sessionID
+                : nil
+        }
+        for sessionID in expired {
+            turns.removeValue(forKey: sessionID)
+            acknowledgedAt.removeValue(forKey: sessionID)
+        }
+    }
+
+    private static func codexState(
+        event: String,
+        toolName: String?
+    ) throws -> (state: SessionState, confidence: DeckConfidence, detail: String) {
+        switch event {
+        case "SessionStart":
+            return (.idle, .observed, "Codex session started")
+        case "SessionEnd":
+            return (.idle, .observed, "Codex session ended")
+        case "UserPromptSubmit":
+            return (.working, .observed, "Codex prompt submitted")
+        case "PreToolUse":
+            return (.working, .observed, "Codex is running a tool")
+        case "PostToolUse":
+            return (.working, .observed, "Codex tool finished; turn continues")
+        case "PermissionRequest":
+            guard let toolName, !toolName.isEmpty else {
+                throw ProviderOperationError.invalidHook(
+                    "Codex PermissionRequest is missing tool_name"
+                )
+            }
+            return (.waiting, .observed, "Codex needs permission: \(toolName)")
+        case "PreCompact":
+            return (.working, .observed, "Codex is compacting context")
+        case "PostCompact":
+            return (.working, .observed, "Codex context compaction completed")
+        case "SubagentStart":
+            return (.working, .observed, "Codex subagent started")
+        case "SubagentStop":
+            return (.working, .observed, "Codex subagent stopped")
+        case "Stop":
+            return (.done, .observed, "Codex turn completed")
+        default:
+            throw ProviderOperationError.invalidHook(
+                "unsupported Codex hook event: \(event)"
+            )
+        }
+    }
+}

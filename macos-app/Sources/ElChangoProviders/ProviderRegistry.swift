@@ -22,6 +22,10 @@ public struct ProviderRegistry: Sendable {
                     automation: automation,
                     actionGate: actionGate
                 ),
+                CodexProvider(
+                    automation: automation,
+                    actionGate: actionGate
+                ),
             ]
         }
         self.unavailableProviders = unavailableProviders

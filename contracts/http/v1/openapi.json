@@ -176,6 +176,7 @@
         "enum": [
           "cursor",
           "claude",
+          "codex",
           "plus",
           "arrow-left",
           "arrow-right",

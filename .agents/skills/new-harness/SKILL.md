@@ -100,10 +100,25 @@ file modification time plus size.
 ## 5. Implement state signals
 
 If the harness has lifecycle hooks, create a provider-specific activity store
-and expose a loopback hook recorder through:
+(add it to `macos-app/Sources/ElChangoCore/Models/ActivityStores.swift`
+alongside the existing stores) and expose a loopback hook recorder through:
 
 Implement `recordHook(_:observedAtMilliseconds:)` on the provider and route it
-through the existing provider registry.
+through the existing provider registry. The HTTP route `/api/hooks/<provider_id>`
+is already provider-agnostic (`FoundationHTTPHandler` -> `DeckService.recordHook`
+looks the provider up by id), so no surface change is needed.
+
+The relay mechanism depends on the harness's hook type:
+
+- If the harness supports HTTP hooks (as Claude Code does), the plugin can POST
+  directly to `http://127.0.0.1:8765/api/hooks/<provider_id>`.
+- If the harness only supports command hooks (as Cursor and Codex do), add a
+  `case` for the provider to `macos-app/Sources/ElChangoHookReporter/main.swift`
+  with a strict sanitized key allow-list. The plugin invokes
+  `elChangoHookReporter --provider <provider_id>`, which POSTs the sanitized
+  payload. Read the harness's official hook docs first: capture the exact event
+  names, payload field names, and whether an HTTP hook type exists; record
+  absent evidence rather than inferring.
 
 Map signals conservatively to:
 
@@ -161,27 +176,60 @@ Update `macos-app/Sources/ElChangoProviders/ProviderRegistry.swift` to:
 3. add the provider to the registry without coupling its availability to other
    providers.
 
-Add the implementation to the `ElChangoProviders` SwiftPM target.
+The `ElChangoProviders` SwiftPM target uses directory-based sources, so a new
+file under `macos-app/Sources/ElChangoProviders/<Provider>/` is picked up
+automatically; no `Package.swift` edit is needed.
 
 Do not add provider-specific branches to `DeckService`, the HTTP surfaces, web,
 or Stream Deck. Routing must use provider metadata and capabilities.
+
+If the provider ships a hook plugin, also wire it so `make test` covers it:
+
+1. add `plugins/<provider>/` mirroring an existing plugin: its manifest (for
+   example `.codex-plugin/plugin.json` with `"hooks": "./hooks/hooks.json"`),
+   `hooks/hooks.json`, `README.md`, and `CHANGELOG.md`;
+2. add the root marketplace file `.<provider>-plugin/marketplace.json`
+   (`source` = `./plugins/<provider>`, versions matching `VERSION`);
+3. add a `validate_<provider>()` and a CLI choice to
+   `scripts/validate_provider_plugins.py`, asserting the exact event set and the
+   fail-open hook contract;
+4. add the manifest and marketplace to the version checks in
+   `scripts/validate_versions.py`;
+5. add a `test-plugin-<provider>` target to the `Makefile`, add it to
+   `test-plugins`, and add the provider's POC glob to `test-pocs`.
 
 ## 8. Add the icon across contracts
 
 If the provider needs a new icon:
 
-1. extend `DeckIcon` in
-   `macos-app/Sources/ElChangoCore/Contracts/DeckContracts.swift`;
-2. extend `DeckIconName` in `web/src/lib/contracts.ts`;
-3. render it in `web/src/lib/DeckIcon.svelte`;
-4. extend `DeckIconName` and parser validation in
-   `plugins/streamdeck/src/contracts.ts`;
-5. render it in `plugins/streamdeck/src/render.ts`.
+1. add the icon name to the `DeckIconName` enum in the single source of truth,
+   `contracts/http/v1/openapi.json`;
+2. run `python3 scripts/generate_http_contracts.py` to regenerate the three
+   contract files (`macos-app/Sources/ElChangoCore/Contracts/HTTPContracts.swift`,
+   `web/src/lib/contracts.ts`, `plugins/streamdeck/src/contracts.ts`). Do not
+   hand-edit these generated files; `make test` runs the generator with
+   `--check` and fails on drift;
+3. render it in `web/src/lib/DeckIcon.svelte` (add the name to the
+   non-Phosphor `Exclude<...>` type and add a branch);
+4. render it in `plugins/streamdeck/src/render.ts` (`iconSvg`);
+5. if the icon should be user-selectable, add it to the
+   `personalizationOptions` list in
+   `macos-app/Sources/ElChangoCore/Contracts/DeckIcon+Personalization.swift`.
 
-Use official artwork with a documented source. When editing Svelte, follow the
-Svelte skills and run the Svelte autofixer until clean.
+Use official artwork with a documented source (for example Simple Icons, CC0).
+Provider icons render dynamically via `currentColor` SVG paths, so no per-icon
+static asset is needed. When editing Svelte, follow the Svelte skills and run
+the Svelte autofixer until clean.
 
 ## 9. Test each boundary
+
+Put versioned fixtures under `contracts/providers/<provider>/v1/` and share them
+between the Python POC and the Swift tests, as Cursor and Claude Code do. Include
+an `expected-inventory.json` whose shape matches the other providers' files;
+the Swift test decodes it and compares it to a snapshot mapped from the provider
+(see `CodexProviderTests` / `ClaudeCodeProviderTests`). Keep timestamps explicit
+in fixtures so ordering and last-activity assertions are deterministic (do not
+rely on file mtime for expected values).
 
 Add provider tests covering:
 
@@ -210,16 +258,29 @@ If adding an icon or action contract, update web and Stream Deck tests too.
 
 ## 10. Verify and document
 
-Run:
+Run `make test`, which is the full gate. It includes, and you can run
+individually while iterating:
 
 ```bash
+python3 scripts/validate_versions.py
+python3 scripts/generate_http_contracts.py --check    # regenerate first if this fails
+swift format lint --recursive --strict --configuration .swift-format \
+  macos-app/Sources macos-app/Tests                   # swift format --in-place to fix
 swift test --package-path macos-app
+python3 scripts/validate_provider_plugins.py <provider>
+npm --prefix web run lint
+npm --prefix web run format:check
 npm --prefix web run check
+npm --prefix web test
 npm --prefix web run build
 npm --prefix plugins/streamdeck run check
 npm --prefix plugins/streamdeck run validate
+for poc in scripts/poc/<provider>/*.py; do \
+  python3 -m py_compile "$poc"; python3 "$poc" --help >/dev/null; done
 git diff --check
 ```
+
+Also grep the diff for em-dashes (project writing rule) before finishing.
 
 Update `docs/providers/<provider>.md` using this required structure:
 
