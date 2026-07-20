@@ -158,6 +158,13 @@ observed confidence:
 - `Stop`: green, done, unless subagents are still active, in which case it stays
   blue until they finish.
 
+Plugin install status is detected read-only by `CodexPluginInspector`, which
+classifies the elChango plugin under `~/.codex/plugins/cache/<marketplace>/elchango/<ref>/.codex-plugin/plugin.json`
+(missing, matching, mismatched, managed, malformed, or unreadable) and surfaces
+it in the app's Diagnostics. Detection is inspect-only: unlike Claude Code, no
+official command to install a local elChango Codex plugin is confirmed yet, so
+the app does not offer a Codex install action (mirroring Cursor).
+
 A working or waiting hook older than ten minutes without a terminal event
 becomes unknown with explicit degraded detail. The store retains only session
 id, active subagent count, and the latest event, state, timestamp, confidence,

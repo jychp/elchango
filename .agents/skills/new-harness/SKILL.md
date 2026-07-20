@@ -198,6 +198,16 @@ If the provider ships a hook plugin, also wire it so `make test` covers it:
    `scripts/validate_versions.py`;
 5. add a `test-plugin-<provider>` target to the `Makefile`, add it to
    `test-plugins`, and add the provider's POC glob to `test-pocs`.
+6. add a read-only `<Provider>PluginInspector` in
+   `macos-app/Sources/ElChangoCore/System/` that classifies whether the elChango
+   plugin is installed (missing / matching / mismatched / managed / malformed /
+   unreadable), modeled on `CursorPluginInspector` (which reads the marketplace
+   cache) or `ClaudeCodePluginInspector` (which uses the harness CLI). Detect the
+   host app by bundle id with `NSWorkspace.urlForApplication`. Surface it in
+   `AppDelegate` Diagnostics and in the `providerStatuses` map. Add an installer
+   and a menu install action only when an official, evidence-backed install
+   command exists (as Claude Code has); otherwise keep it inspect-only (as
+   Cursor and Codex are) rather than inventing an install path.
 
 ## 8. Add the icon across contracts
 

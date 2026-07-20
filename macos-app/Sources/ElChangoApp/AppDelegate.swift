@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let accessibility = AccessibilityAuthorizer()
     private let streamDeckPluginBundleIdentifier = "com.elgato.StreamDeck"
     private let cursorBundleIdentifier = "com.todesktop.230313mzl4w4u92"
+    private let codexBundleIdentifier = "com.openai.codex"
     private var lastStreamDeckInstallFailure: String?
     private var lastClaudeInstallFailure: String?
     private var runtimeProfile: RuntimeProfile = .stable
@@ -101,7 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 registry.providers.map { $0.descriptor.id }
             )
             providerStatuses = Dictionary(
-                uniqueKeysWithValues: ["cursor", "claude-code"].map { id in
+                uniqueKeysWithValues: ["cursor", "claude-code", "codex"].map { id in
                     if let reason = registry.unavailableProviders[id] {
                         return (id, "unavailable: \(reason)")
                     }
@@ -405,6 +406,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Stream Deck: \(streamDeckDiagnosticsDetail)
             Claude: \(claudeDiagnosticsDetail)
             Cursor: \(cursorDiagnosticsDetail)
+            Codex: \(codexDiagnosticsDetail)
             """
     }
 
@@ -440,6 +442,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch cursorPluginState {
         case .cursorNotDetected:
             return "Cursor not detected"
+        case .pluginMissing:
+            return "not installed"
+        case .matching(let installedVersion):
+            return installedVersion
+        case .mismatched(let installedVersion, let expectedVersion):
+            return "\(installedVersion) -> \(expectedVersion)"
+        case .malformed:
+            return "malformed"
+        case .managed(let version):
+            if let version {
+                return "manual (\(version))"
+            }
+            return "manual"
+        case .unreadable(let reason):
+            return "unreadable: \(reason)"
+        }
+    }
+
+    private var codexDiagnosticsDetail: String {
+        if let unavailable = unavailableProviderDetail(for: "codex") {
+            return unavailable
+        }
+        switch codexPluginState {
+        case .codexNotDetected:
+            return "Codex not detected"
         case .pluginMissing:
             return "not installed"
         case .matching(let installedVersion):
@@ -527,6 +554,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var cursorPluginState: CursorPluginState {
         let inspector = CursorPluginInspector(expectedVersion: appVersion)
         return inspector.classify(cursorInstalled: isCursorInstalled)
+    }
+
+    private var isCodexInstalled: Bool {
+        NSWorkspace.shared.urlForApplication(
+            withBundleIdentifier: codexBundleIdentifier
+        ) != nil
+    }
+
+    private var codexPluginState: CodexPluginState {
+        let inspector = CodexPluginInspector(expectedVersion: appVersion)
+        return inspector.classify(codexInstalled: isCodexInstalled)
     }
 
     private static var bundledStreamDeckPluginURL: URL? {
