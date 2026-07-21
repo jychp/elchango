@@ -4,10 +4,7 @@ import Foundation
 /// running elChango app expects. States are distinguished conservatively so the
 /// app only offers an action when it is confident one is needed and safe.
 public enum ClaudeCodePluginState: Equatable, Sendable {
-    /// The `claude` CLI could not be located, so no install or update action is
-    /// meaningful because nothing can perform the official flow.
-    case cliNotAvailable
-    /// The `claude` CLI is available but the elChango plugin is not installed.
+    /// The elChango plugin is not installed.
     case pluginMissing
     /// The installed plugin version matches the version the app expects.
     case matching(version: String)
@@ -36,10 +33,10 @@ public enum ClaudeCodePluginState: Equatable, Sendable {
 /// Reads Claude Code's installed-plugins registry and classifies the elChango
 /// plugin against the version the app expects, without modifying Claude state.
 public protocol ClaudeCodePluginInspecting: Sendable {
-    /// Classify the installed plugin. `cliAvailable` reports whether the
-    /// `claude` CLI was located; when false, no install or update action is
-    /// meaningful because nothing can perform the official flow.
-    func classify(cliAvailable: Bool) -> ClaudeCodePluginState
+    /// Classify the installed plugin by reading Claude Code's registry. CLI
+    /// availability is intentionally not an input: it only gates whether the app
+    /// offers to run the install flow, never the reported plugin state.
+    func classify() -> ClaudeCodePluginState
 }
 
 public struct ClaudeCodePluginInspector: ClaudeCodePluginInspecting, Sendable {
@@ -87,10 +84,7 @@ public struct ClaudeCodePluginInspector: ClaudeCodePluginInspecting, Sendable {
             )
     }
 
-    public func classify(cliAvailable: Bool) -> ClaudeCodePluginState {
-        guard cliAvailable else {
-            return .cliNotAvailable
-        }
+    public func classify() -> ClaudeCodePluginState {
         if !FileManager.default.fileExists(atPath: installedPluginsURL.path) {
             return .pluginMissing
         }

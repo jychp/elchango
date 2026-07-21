@@ -16,9 +16,10 @@ public struct ClaudeCLILocator: Sendable {
         fileManager: FileManager = .default,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> [URL] {
+        let home = fileManager.homeDirectoryForCurrentUser
         var candidates: [URL] = [
-            fileManager.homeDirectoryForCurrentUser
-                .appendingPathComponent(".claude/local/claude", isDirectory: false),
+            home.appendingPathComponent(".local/bin/claude", isDirectory: false),
+            home.appendingPathComponent(".claude/local/claude", isDirectory: false),
             URL(fileURLWithPath: "/opt/homebrew/bin/claude"),
             URL(fileURLWithPath: "/usr/local/bin/claude"),
             URL(fileURLWithPath: "/usr/bin/claude"),

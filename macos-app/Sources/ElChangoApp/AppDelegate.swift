@@ -23,12 +23,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private let accessibility = AccessibilityAuthorizer()
+    private let loginItem = LoginItemAuthorizer()
     private let streamDeckPluginBundleIdentifier = "com.elgato.StreamDeck"
     private let cursorBundleIdentifier = "com.todesktop.230313mzl4w4u92"
     private let codexBundleIdentifier = "com.openai.codex"
     private var lastStreamDeckInstallFailure: String?
     private var lastClaudeInstallFailure: String?
     private var lastCodexInstallFailure: String?
+    private var lastLoginItemFailure: String?
     private var runtimeProfile: RuntimeProfile = .stable
     private var serviceLease: ServiceLease?
     private var service: LoopbackService?
@@ -181,6 +183,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ).target = self
         }
 
+        let loginItemToggle = menu.addItem(
+            withTitle: "Start at Login",
+            action: #selector(toggleStartAtLogin),
+            keyEquivalent: ""
+        )
+        loginItemToggle.target = self
+        // Reflect the on/off state through the leading icon so it aligns with
+        // the other rows' icon column, rather than a state checkmark that would
+        // render in NSMenu's separate, left-offset state column.
+        loginItemToggle.image = menuIcon(
+            named: loginItem.status == .enabled
+                ? "checkmark.circle.fill" : "circle"
+        )
+
         switch streamDeckPluginState {
         case .pluginMissing:
             let installItem = menu.addItem(
@@ -203,7 +219,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         switch claudeCodePluginState {
-        case .pluginMissing:
+        case .pluginMissing where claudeCLIAvailable:
             let installItem = menu.addItem(
                 withTitle: "Install Claude Code Plugin",
                 action: #selector(installClaudeCodePlugin),
@@ -211,7 +227,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             installItem.target = self
             installItem.image = menuIcon(named: "square.and.arrow.down")
-        case .mismatched:
+        case .mismatched where claudeCLIAvailable:
             let updateItem = menu.addItem(
                 withTitle: "Update Claude Code Plugin",
                 action: #selector(installClaudeCodePlugin),
@@ -219,12 +235,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             updateItem.target = self
             updateItem.image = menuIcon(named: "arrow.down.circle")
-        case .cliNotAvailable, .matching, .malformed, .unreadable:
+        case .pluginMissing, .mismatched, .matching, .malformed, .unreadable:
             break
         }
 
         switch codexPluginState {
-        case .pluginMissing:
+        case .pluginMissing where codexCLIAvailable:
             let installItem = menu.addItem(
                 withTitle: "Install Codex Plugin",
                 action: #selector(installCodexPlugin),
@@ -232,7 +248,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             installItem.target = self
             installItem.image = menuIcon(named: "square.and.arrow.down")
-        case .mismatched:
+        case .mismatched where codexCLIAvailable:
             let updateItem = menu.addItem(
                 withTitle: "Update Codex Plugin",
                 action: #selector(installCodexPlugin),
@@ -240,7 +256,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             updateItem.target = self
             updateItem.image = menuIcon(named: "arrow.down.circle")
-        case .codexNotDetected, .matching, .managed, .malformed, .unreadable:
+        case .pluginMissing, .mismatched, .codexNotDetected, .matching,
+            .managed, .malformed, .unreadable:
             break
         }
 
@@ -329,6 +346,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc
     private func requestAccessibilityAccess() {
         _ = accessibility.requestAccess()
+        rebuildMenu()
+    }
+
+    @objc
+    private func toggleStartAtLogin() {
+        do {
+            if loginItem.status == .enabled {
+                try loginItem.disable()
+            } else {
+                try loginItem.enable()
+            }
+            lastLoginItemFailure = nil
+        } catch {
+            lastLoginItemFailure = error.localizedDescription
+        }
+        // A fresh registration may be held for the user's approval; send them to
+        // the Login Items pane so the change can actually take effect.
+        if loginItem.status == .requiresApproval {
+            loginItem.openSettings()
+        }
         rebuildMenu()
     }
 
@@ -433,6 +470,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Service: \(serviceDetails)
             Endpoint: http://127.0.0.1:\(LoopbackService.defaultPort)
             Accessibility: \(accessibility.isTrusted ? "granted" : "not granted")
+            Start at login: \(loginItemDiagnosticsDetail)
 
             Stream Deck: \(streamDeckDiagnosticsDetail)
             Claude: \(claudeDiagnosticsDetail)
@@ -441,14 +479,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             """
     }
 
+    private var loginItemDiagnosticsDetail: String {
+        let stateDetail: String
+        switch loginItem.status {
+        case .enabled:
+            stateDetail = "enabled"
+        case .disabled:
+            stateDetail = "disabled"
+        case .requiresApproval:
+            stateDetail = "requires approval"
+        case .notFound:
+            stateDetail = "unavailable"
+        }
+        guard let failure = lastLoginItemFailure else {
+            return stateDetail
+        }
+        return "\(stateDetail); last change failed: \(failure)"
+    }
+
     private var claudeDiagnosticsDetail: String {
         if let unavailable = unavailableProviderDetail(for: "claude-code") {
             return unavailable
         }
         let stateDetail: String
         switch claudeCodePluginState {
-        case .cliNotAvailable:
-            stateDetail = "claude CLI not found"
         case .pluginMissing:
             stateDetail = "not installed"
         case .matching(let installedVersion):
@@ -582,10 +636,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private var claudeCodePluginState: ClaudeCodePluginState {
-        let inspector = ClaudeCodePluginInspector(expectedVersion: appVersion)
-        return inspector.classify(
-            cliAvailable: ClaudeCLILocator().locate() != nil
-        )
+        ClaudeCodePluginInspector(expectedVersion: appVersion).classify()
+    }
+
+    /// Whether the app can run the official Claude flow. It only gates offering
+    /// the install/update menu items; a missing CLI is never surfaced as state.
+    private var claudeCLIAvailable: Bool {
+        ClaudeCLILocator().locate() != nil
+    }
+
+    /// Whether the app can run the official Codex flow. Gates the Codex
+    /// install/update menu items the same way; a missing CLI is never surfaced.
+    private var codexCLIAvailable: Bool {
+        CodexCLILocator().locate() != nil
     }
 
     private var cursorPluginState: CursorPluginState {
