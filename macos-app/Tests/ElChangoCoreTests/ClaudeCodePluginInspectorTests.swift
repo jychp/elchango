@@ -34,22 +34,13 @@ struct ClaudeCodePluginInspectorTests {
         """
     }
 
-    @Test("a missing CLI is reported conservatively")
-    func cliNotAvailable() {
-        let inspector = ClaudeCodePluginInspector(
-            expectedVersion: "1.0.0",
-            installedPluginsURL: makeRegistryURL()
-        )
-        #expect(inspector.classify(cliAvailable: false) == .cliNotAvailable)
-    }
-
     @Test("an absent registry means the plugin is missing")
     func pluginMissingWhenRegistryAbsent() {
         let inspector = ClaudeCodePluginInspector(
             expectedVersion: "1.0.0",
             installedPluginsURL: makeRegistryURL()
         )
-        let state = inspector.classify(cliAvailable: true)
+        let state = inspector.classify()
         #expect(state == .pluginMissing)
         #expect(state.needsInstall)
         #expect(!state.needsUpdate)
@@ -68,7 +59,7 @@ struct ClaudeCodePluginInspectorTests {
             expectedVersion: "1.0.0",
             installedPluginsURL: url
         )
-        #expect(inspector.classify(cliAvailable: true) == .pluginMissing)
+        #expect(inspector.classify() == .pluginMissing)
     }
 
     @Test("equal versions match and offer no action")
@@ -81,7 +72,7 @@ struct ClaudeCodePluginInspectorTests {
             expectedVersion: "1.0.0",
             installedPluginsURL: url
         )
-        let state = inspector.classify(cliAvailable: true)
+        let state = inspector.classify()
         #expect(state == .matching(version: "1.0.0"))
         #expect(!state.needsInstall)
         #expect(!state.needsUpdate)
@@ -97,7 +88,7 @@ struct ClaudeCodePluginInspectorTests {
             expectedVersion: "1.0.0",
             installedPluginsURL: url
         )
-        let state = inspector.classify(cliAvailable: true)
+        let state = inspector.classify()
         #expect(state == .mismatched(installed: "0.9.0", expected: "1.0.0"))
         #expect(state.needsUpdate)
         #expect(!state.needsInstall)
@@ -113,7 +104,7 @@ struct ClaudeCodePluginInspectorTests {
             expectedVersion: "1.0.0",
             installedPluginsURL: url
         )
-        #expect(inspector.classify(cliAvailable: true) == .malformed)
+        #expect(inspector.classify() == .malformed)
     }
 
     @Test("a present key with no version is malformed")
@@ -129,7 +120,7 @@ struct ClaudeCodePluginInspectorTests {
             expectedVersion: "1.0.0",
             installedPluginsURL: url
         )
-        #expect(inspector.classify(cliAvailable: true) == .malformed)
+        #expect(inspector.classify() == .malformed)
     }
 
     @Test("conflicting versions are malformed")
@@ -150,7 +141,7 @@ struct ClaudeCodePluginInspectorTests {
             expectedVersion: "1.0.0",
             installedPluginsURL: url
         )
-        #expect(inspector.classify(cliAvailable: true) == .malformed)
+        #expect(inspector.classify() == .malformed)
     }
 
     @Test("an unreadable registry is reported as unreadable")
@@ -168,7 +159,7 @@ struct ClaudeCodePluginInspectorTests {
             expectedVersion: "1.0.0",
             installedPluginsURL: directory
         )
-        let state = inspector.classify(cliAvailable: true)
+        let state = inspector.classify()
         guard case .unreadable = state else {
             Issue.record("expected unreadable, got \(state)")
             return
