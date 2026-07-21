@@ -189,7 +189,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             keyEquivalent: ""
         )
         loginItemToggle.target = self
-        loginItemToggle.state = loginItem.status == .enabled ? .on : .off
+        // Reflect the on/off state through the leading icon so it aligns with
+        // the other rows' icon column, rather than a state checkmark that would
+        // render in NSMenu's separate, left-offset state column.
+        loginItemToggle.image = menuIcon(
+            named: loginItem.status == .enabled
+                ? "checkmark.circle.fill" : "circle"
+        )
 
         switch streamDeckPluginState {
         case .pluginMissing:
