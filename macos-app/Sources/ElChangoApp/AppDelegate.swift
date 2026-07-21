@@ -23,12 +23,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private let accessibility = AccessibilityAuthorizer()
+    private let loginItem = LoginItemAuthorizer()
     private let streamDeckPluginBundleIdentifier = "com.elgato.StreamDeck"
     private let cursorBundleIdentifier = "com.todesktop.230313mzl4w4u92"
     private let codexBundleIdentifier = "com.openai.codex"
     private var lastStreamDeckInstallFailure: String?
     private var lastClaudeInstallFailure: String?
     private var lastCodexInstallFailure: String?
+    private var lastLoginItemFailure: String?
     private var runtimeProfile: RuntimeProfile = .stable
     private var serviceLease: ServiceLease?
     private var service: LoopbackService?
@@ -180,6 +182,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 keyEquivalent: ""
             ).target = self
         }
+
+        let loginItemToggle = menu.addItem(
+            withTitle: "Start at Login",
+            action: #selector(toggleStartAtLogin),
+            keyEquivalent: ""
+        )
+        loginItemToggle.target = self
+        loginItemToggle.state = loginItem.status == .enabled ? .on : .off
 
         switch streamDeckPluginState {
         case .pluginMissing:
@@ -334,6 +344,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc
+    private func toggleStartAtLogin() {
+        do {
+            if loginItem.status == .enabled {
+                try loginItem.disable()
+            } else {
+                try loginItem.enable()
+            }
+            lastLoginItemFailure = nil
+        } catch {
+            lastLoginItemFailure = error.localizedDescription
+        }
+        // A fresh registration may be held for the user's approval; send them to
+        // the Login Items pane so the change can actually take effect.
+        if loginItem.status == .requiresApproval {
+            loginItem.openSettings()
+        }
+        rebuildMenu()
+    }
+
+    @objc
     private func installStreamDeckPlugin() {
         guard let url = Self.bundledStreamDeckPluginURL else {
             lastStreamDeckInstallFailure =
@@ -434,12 +464,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Service: \(serviceDetails)
             Endpoint: http://127.0.0.1:\(LoopbackService.defaultPort)
             Accessibility: \(accessibility.isTrusted ? "granted" : "not granted")
+            Start at login: \(loginItemDiagnosticsDetail)
 
             Stream Deck: \(streamDeckDiagnosticsDetail)
             Claude: \(claudeDiagnosticsDetail)
             Cursor: \(cursorDiagnosticsDetail)
             Codex: \(codexDiagnosticsDetail)
             """
+    }
+
+    private var loginItemDiagnosticsDetail: String {
+        let stateDetail: String
+        switch loginItem.status {
+        case .enabled:
+            stateDetail = "enabled"
+        case .disabled:
+            stateDetail = "disabled"
+        case .requiresApproval:
+            stateDetail = "requires approval"
+        case .notFound:
+            stateDetail = "unavailable"
+        }
+        guard let failure = lastLoginItemFailure else {
+            return stateDetail
+        }
+        return "\(stateDetail); last change failed: \(failure)"
     }
 
     private var claudeDiagnosticsDetail: String {
