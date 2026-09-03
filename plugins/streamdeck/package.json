@@ -21,10 +21,10 @@
     "profile": "tsx scripts/build-profile.ts"
   },
   "dependencies": {
-    "@elgato/streamdeck": "^2.1.0"
+    "@elgato/streamdeck": "^2.1.2"
   },
   "devDependencies": {
-    "@elgato/cli": "^1.7.4",
+    "@elgato/cli": "^1.9.0",
     "@elgato/prettier-config": "^0.3.3",
     "@eslint/js": "^10.0.1",
     "@phosphor-icons/core": "^2.1.1",
@@ -32,17 +32,17 @@
     "@rollup/plugin-node-resolve": "^16.0.3",
     "@rollup/plugin-terser": "^1.0.0",
     "@rollup/plugin-typescript": "^12.3.0",
-    "@tsconfig/node20": "^20.1.9",
+    "@tsconfig/node20": "^20.1.10",
     "@types/node": "^24.13.2",
-    "eslint": "^10.8.0",
+    "eslint": "^10.9.1",
     "fflate": "^0.8.3",
     "prettier": "^3.9.6",
-    "rollup": "^4.62.3",
+    "rollup": "^4.63.0",
     "tslib": "^2.8.1",
-    "tsx": "^4.23.1",
-    "typescript": "^6.0.3",
-    "typescript-eslint": "^8.65.0",
-    "uuid": "^14.0.1"
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "typescript-eslint": "^8.68.0",
+    "uuid": "^14.0.2"
   },
   "license": "MIT"
 }
