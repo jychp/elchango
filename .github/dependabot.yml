@@ -40,6 +40,10 @@ updates:
       - dependency-name: "@types/node"
         update-types:
           - version-update:semver-major
+      # typescript-eslint and svelte-check do not accept TypeScript 7 as a peer yet.
+      - dependency-name: "typescript"
+        update-types:
+          - version-update:semver-major
 
   - package-ecosystem: npm
     directory: /plugins/streamdeck
@@ -60,6 +64,10 @@ updates:
           - "*"
     ignore:
       - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
+      # typescript-eslint and svelte-check do not accept TypeScript 7 as a peer yet.
+      - dependency-name: "typescript"
         update-types:
           - version-update:semver-major
 
