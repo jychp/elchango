@@ -21,10 +21,10 @@
     "profile": "tsx scripts/build-profile.ts"
   },
   "dependencies": {
-    "@elgato/streamdeck": "^3.0.4"
+    "@elgato/streamdeck": "^3.0.5"
   },
   "devDependencies": {
-    "@elgato/cli": "^1.10.4",
+    "@elgato/cli": "^1.10.5",
     "@elgato/prettier-config": "^0.3.3",
     "@eslint/js": "^10.0.1",
     "@phosphor-icons/core": "^2.1.1",
@@ -34,10 +34,10 @@
     "@rollup/plugin-typescript": "^12.3.1",
     "@tsconfig/node20": "^20.1.11",
     "@types/node": "^24.19.2",
-    "eslint": "^10.14.0",
+    "eslint": "^10.15.0",
     "fflate": "^0.8.3",
-    "prettier": "^3.9.10",
-    "rollup": "^4.68.2",
+    "prettier": "^3.10.1",
+    "rollup": "^4.68.7",
     "tslib": "^2.9.1",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
